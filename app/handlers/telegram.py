@@ -1,14 +1,13 @@
 from telethon import TelegramClient, events
 
-from app.config import API_HASH, API_ID, SESSION_NAME
+from app.config import (
+    API_HASH,
+    API_ID,
+    SESSION_NAME,
+    TARGET_CHANNELS,
+)
 from app.logger import logger
 from app.message_processor import process_message
-
-TARGET_CHANNELS = {
-    -1001335768304,  # Nafezly
-    -1002142292720,  # Mostaql Programming
-    -1001994689105,  # Mostaql Data Entry
-}
 
 
 async def start():

@@ -32,6 +32,22 @@ def _require_int_env(name: str) -> int:
         ) from e
 
 
+def _require_channel_ids(name: str) -> set[int]:
+    value = _require_env(name)
+
+    try:
+        return {
+            int(channel.strip())
+            for channel in value.split(",")
+            if channel.strip()
+        }
+    except ValueError as e:
+        raise RuntimeError(
+            f"Environment variable '{name}' must contain a comma-separated "
+            f"list of integer channel IDs."
+        ) from e
+
+
 API_ID = _require_int_env("API_ID")
 API_HASH = _require_env("API_HASH")
 PHONE_NUMBER = _require_env("PHONE_NUMBER")
@@ -40,5 +56,7 @@ GEMINI_API_KEY = _require_env("GEMINI_API_KEY")
 
 BOT_TOKEN = _require_env("BOT_TOKEN")
 BOT_CHAT_ID = _require_int_env("BOT_CHAT_ID")
+
+TARGET_CHANNELS = _require_channel_ids("TARGET_CHANNEL_IDS")
 
 SESSION_NAME = str(BASE_DIR / "sessions" / "telegram")
