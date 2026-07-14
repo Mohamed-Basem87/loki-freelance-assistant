@@ -11,6 +11,8 @@ from app.config import BOT_CHAT_ID, BOT_TOKEN
 from app.logger import logger
 
 
+MAX_DESCRIPTION_LENGTH = 3000
+
 bot = Bot(BOT_TOKEN)
 
 
@@ -31,6 +33,9 @@ async def send_notification(
 
     if categories is None:
         categories = []
+
+    if description and len(description) > MAX_DESCRIPTION_LENGTH:
+        description = description[: MAX_DESCRIPTION_LENGTH - 3].rstrip() + "..."
 
     header = (
         "🧠 <b>AI Recommendation</b>"

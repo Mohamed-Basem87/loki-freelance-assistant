@@ -1,3 +1,4 @@
+import asyncio
 import time
 import uuid
 
@@ -71,7 +72,8 @@ async def process_message(event):
 
         try:
 
-            gemini = evaluate_job(
+            gemini = await asyncio.to_thread(
+                evaluate_job,
                 filter_text,
                 result,
             )

@@ -1,6 +1,7 @@
 from telethon import TelegramClient, events
 
 from app.config import API_HASH, API_ID, SESSION_NAME
+from app.logger import logger
 from app.message_processor import process_message
 
 TARGET_CHANNELS = {
@@ -35,6 +36,18 @@ async def start():
             f"Message ID: {event.id}"
         )
 
-        await process_message(event)
+        try:
+            await process_message(event)
+
+        except Exception as e:
+            logger.log_error(
+                "MessageHandler",
+                e,
+            )
+
+            print(
+                f"[ERROR] Failed to process message "
+                f"{event.id}: {e}"
+            )
 
     await client.run_until_disconnected()
