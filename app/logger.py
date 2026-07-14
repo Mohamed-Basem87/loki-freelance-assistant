@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import datetime
+
 from openpyxl import Workbook, load_workbook
 
 
@@ -25,7 +26,7 @@ JOB_HEADERS = [
     "Notification Status",
     "Final Decision",
     "Decision Reason",
-    "Filter Time (ms)"
+    "Filter Time (ms)",
 ]
 
 
@@ -37,7 +38,7 @@ GEMINI_HEADERS = [
     "Completion Tokens",
     "Response Time (ms)",
     "Decision",
-    "Confidence"
+    "Confidence",
 ]
 
 
@@ -45,14 +46,14 @@ NOTIFICATION_HEADERS = [
     "Timestamp",
     "Job UUID",
     "Platform",
-    "Status"
+    "Status",
 ]
 
 
 ERROR_HEADERS = [
     "Timestamp",
     "Module",
-    "Error"
+    "Error",
 ]
 
 
@@ -84,6 +85,7 @@ class ExcelLogger:
     def __init__(self):
         self.path = LOG_FILE
         self.workbook = None
+        self._row_index: dict[str, int] = {}
 
     def initialize(self):
 
@@ -110,6 +112,24 @@ class ExcelLogger:
             wb.save(self.path)
 
         self.workbook = load_workbook(self.path)
+
+        self._build_row_index()
+
+    def _build_row_index(self):
+
+        self._row_index.clear()
+
+        ws = self.workbook["Jobs"]
+
+        for row in range(2, ws.max_row + 1):
+
+            job_uuid = ws.cell(
+                row=row,
+                column=COLUMN_MAP["job_uuid"],
+            ).value
+
+            if job_uuid:
+                self._row_index[job_uuid] = row
 
     def save(self):
         self.workbook.save(self.path)
@@ -161,32 +181,35 @@ class ExcelLogger:
             filter_time_ms,
         ])
 
+        self._row_index[job_uuid] = ws.max_row
+
         self.save()
 
     def update_job(self, job_uuid, **fields):
 
+        row = self._row_index.get(job_uuid)
+
+        if row is None:
+            return False
+
         ws = self.workbook["Jobs"]
 
-        for row in range(2, ws.max_row + 1):
+        for key, value in fields.items():
 
-            if ws.cell(row=row, column=COLUMN_MAP["job_uuid"]).value == job_uuid:
+            if key not in COLUMN_MAP:
+                continue
 
-                for key, value in fields.items():
+            if isinstance(value, list):
+                value = ", ".join(value)
 
-                    if key not in COLUMN_MAP:
-                        continue
+            ws.cell(
+                row=row,
+                column=COLUMN_MAP[key],
+            ).value = value
 
-                    col = COLUMN_MAP[key]
+        self.save()
 
-                    if isinstance(value, list):
-                        value = ", ".join(value)
-
-                    ws.cell(row=row, column=col).value = value
-
-                self.save()
-                return True
-
-        return False
+        return True
 
     def log_gemini(
         self,
@@ -254,4 +277,3 @@ logger = ExcelLogger()
 
 def initialize_workbook():
     logger.initialize()
-
