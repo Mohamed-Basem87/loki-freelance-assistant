@@ -40,7 +40,7 @@ def parse_job(source: str, text: str) -> dict[str, str]:
         )
 
         description = re.search(
-            r"تفاصيل المشروع\s*:\s*(.*?)\s*الميزانية",
+            r"تفاصيل المشروع\s*:\s*(.*?)(?:\s*الميزانية|$)",
             text,
             re.DOTALL,
         )
@@ -52,9 +52,13 @@ def parse_job(source: str, text: str) -> dict[str, str]:
 
         if title:
             job["title"] = title.group(1).strip()
+        else:
+            job["title"] = _fallback_title(text)
 
         if description:
             job["description"] = description.group(1).strip()
+        else:
+            job["description"] = text.strip()
 
         if budget:
             job["budget"] = budget.group(1).strip()
