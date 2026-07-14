@@ -20,6 +20,27 @@ async def process_message(event):
 
     job = parse_job(source, text)
 
+    # If the parser didn't find a URL in the message text,
+    # try extracting one from Telegram inline buttons.
+    if not job["url"] and event.message.buttons:
+        for row in event.message.buttons:
+            for button in row:
+
+                # Some Telethon versions expose the URL directly.
+                url = getattr(button, "url", None)
+
+                # Most versions wrap it inside MessageButton.button.
+                if not url:
+                    inner_button = getattr(button, "button", None)
+                    url = getattr(inner_button, "url", None)
+
+                if url:
+                    job["url"] = url
+                    break
+
+            if job["url"]:
+                break
+
     filter_text = f"{job['title']}\n{job['description']}"
 
     result = keyword_filter(filter_text)
