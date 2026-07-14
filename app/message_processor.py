@@ -2,7 +2,10 @@ import time
 import uuid
 
 from app.filters import keyword_filter
+from app.gemini import evaluate_job
 from app.logger import logger
+from app.notifier import send_notification
+from app.parser import parse_job
 
 
 async def process_message(event):
@@ -12,22 +15,31 @@ async def process_message(event):
     job_uuid = str(uuid.uuid4())
 
     text = event.raw_text or ""
+    source = event.chat.title if event.chat else ""
 
-    result = keyword_filter(text)
+    job = parse_job(source, text)
+
+    filter_text = f"{job['title']}\n{job['description']}"
+
+    result = keyword_filter(filter_text)
 
     filter_time = round((time.perf_counter() - start) * 1000, 2)
 
     logger.create_job(
         job_uuid=job_uuid,
         job_id=str(event.id),
-        source=event.chat.title if event.chat else "",
-        title=text.splitlines()[0][:250] if text else "",
+        source=job["source"],
+        title=job["title"],
         company="",
-        url="",
+        url=job["url"],
         score=result.get("score"),
         categories=result.get("categories", []),
-        positive_matches=result.get("positive_matches", []),
-        negative_matches=result.get("negative_matches", []),
+        positive_matches=[
+            m["keyword"] for m in result.get("positive_matches", [])
+        ],
+        negative_matches=[
+            m["keyword"] for m in result.get("soft_negative_matches", [])
+        ],
         hard_reject=result["hard_reject"],
         notify_directly=result["notify_directly"],
         needs_gemini=result["needs_gemini"],
@@ -35,37 +47,89 @@ async def process_message(event):
         filter_time_ms=filter_time,
     )
 
+    final_decision = "Rejected"
+    decision_reason = ""
+    should_notify = False
+
     if result["hard_reject"]:
 
-        logger.update_job(
-            job_uuid,
-            final_decision="Rejected",
-            decision_reason="Hard Reject"
-        )
+        decision_reason = "Hard Reject"
 
-        return
+    elif not result["matched"]:
 
-    if not result["matched"]:
+        decision_reason = "No Matching Keywords"
 
-        logger.update_job(
-            job_uuid,
-            final_decision="Rejected",
-            decision_reason="No Matching Keywords"
-        )
+    elif result["notify_directly"]:
 
-        return
+        final_decision = "Accepted"
+        decision_reason = "High Keyword Score"
+        should_notify = True
+
+    elif result["needs_gemini"]:
+
+        gemini_start = time.perf_counter()
+
+        try:
+
+            gemini = evaluate_job(
+                filter_text,
+                result,
+            )
+
+        except Exception as e:
+
+            logger.log_error(
+                "Gemini",
+                e,
+            )
+
+            final_decision = "Rejected"
+            decision_reason = "Gemini Error"
+
+        else:
+
+            gemini_time = round(
+                (time.perf_counter() - gemini_start) * 1000,
+                2,
+            )
+
+            final_decision = gemini["decision"].capitalize()
+            decision_reason = gemini["reason"]
+            should_notify = gemini["decision"] == "accept"
+
+            logger.update_job(
+                job_uuid,
+                gemini_decision=gemini["decision"],
+            )
+
+            logger.log_gemini(
+                job_uuid=job_uuid,
+                score_before=result["score"],
+                prompt_tokens="",
+                completion_tokens="",
+                response_time_ms=gemini_time,
+                decision=gemini["decision"],
+                confidence=gemini["confidence"],
+            )
 
     logger.update_job(
         job_uuid,
-        final_decision="Matched",
-        decision_reason="Passed Keyword Filter"
+        final_decision=final_decision,
+        decision_reason=decision_reason,
     )
 
-    print("=" * 80)
-    print(event.chat.title)
-    print()
-    print(text)
-    print()
-    print(result)
-    print("=" * 80)
+    if should_notify:
 
+        await send_notification(
+            job_uuid=job_uuid,
+            title=job["title"],
+            description=job["description"],
+            source=job["source"],
+            decision=final_decision,
+            reason=decision_reason,
+            url=job["url"],
+            budget=job["budget"],
+            score=result["score"],
+            categories=result["categories"],
+            ai_used=result["needs_gemini"],
+        )
