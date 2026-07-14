@@ -4,6 +4,10 @@
 # Environment variables
 .env
 
+# Telegram sessions
+sessions/
+*.session
+
 # Python cache
 __pycache__/
 *.py[cod]
