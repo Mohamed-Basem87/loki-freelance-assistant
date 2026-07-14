@@ -24,11 +24,17 @@ async def start():
     print("=" * 70)
     print(f"Logged in as: {me.first_name}")
     print("=" * 70)
-
     print("Listening for new jobs...\n")
 
     @client.on(events.NewMessage(chats=list(TARGET_CHANNELS)))
     async def handler(event):
+        chat = await event.get_chat()
+
+        print(
+            f"[TARGET] {chat.title} | "
+            f"Message ID: {event.id}"
+        )
+
         await process_message(event)
 
     await client.run_until_disconnected()
