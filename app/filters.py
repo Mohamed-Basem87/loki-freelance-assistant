@@ -8,8 +8,14 @@ from app.keywords import (
 from app.normalize import normalize
 
 
-DIRECT_NOTIFY_THRESHOLD = 70
+DIRECT_NOTIFY_THRESHOLD = 85
 GEMINI_THRESHOLD = 30
+
+SAFE_DIRECT_CATEGORIES = {
+    "power_bi",
+    "excel",
+    "data_analysis",
+}
 
 
 def _contains_keyword(text: str, keyword: str) -> bool:
@@ -60,8 +66,6 @@ def keyword_filter(text: str):
     # Build one master keyword list.
     #
     # Duplicate keywords across categories keep only the highest weight.
-    # Example:
-    #   ETL -> data_analysis (30) beats python (20)
     # ------------------------------------------------------------------
     keyword_map = {}
 
@@ -78,8 +82,6 @@ def keyword_filter(text: str):
                     "category": category,
                 }
 
-    # Longest phrases first so:
-    # "power pivot" beats "pivot"
     ordered_keywords = sorted(
         keyword_map.values(),
         key=lambda x: len(normalize(x["keyword"])),
@@ -134,16 +136,23 @@ def keyword_filter(text: str):
 
     matched = len(positive_matches) > 0
 
+    categories_are_safe = (
+        matched_categories
+        and matched_categories.issubset(SAFE_DIRECT_CATEGORIES)
+    )
+
     notify_directly = (
-        score >= DIRECT_NOTIFY_THRESHOLD
+        matched
         and not hard_reject
+        and score >= DIRECT_NOTIFY_THRESHOLD
+        and categories_are_safe
     )
 
     needs_gemini = (
         matched
-        and score >= GEMINI_THRESHOLD
-        and score < DIRECT_NOTIFY_THRESHOLD
         and not hard_reject
+        and not notify_directly
+        and score >= GEMINI_THRESHOLD
     )
 
     return {
