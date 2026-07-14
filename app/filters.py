@@ -6,6 +6,10 @@ from app.keywords import (
 from app.normalize import normalize
 
 
+DIRECT_NOTIFY_THRESHOLD = 70
+GEMINI_THRESHOLD = 30
+
+
 def keyword_filter(text: str):
     normalized = normalize(text)
 
@@ -47,18 +51,22 @@ def keyword_filter(text: str):
         and len(positive_matches) == 0
     )
 
+    matched = len(positive_matches) > 0
+
     notify_directly = (
-        score >= 70
+        score >= DIRECT_NOTIFY_THRESHOLD
         and not hard_reject
     )
 
     needs_gemini = (
-        not notify_directly
+        matched
+        and score >= GEMINI_THRESHOLD
+        and score < DIRECT_NOTIFY_THRESHOLD
         and not hard_reject
     )
 
     return {
-        "matched": len(positive_matches) > 0,
+        "matched": matched,
 
         "score": score,
 
