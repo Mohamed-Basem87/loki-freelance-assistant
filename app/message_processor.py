@@ -11,6 +11,8 @@ from app.parser import parse_job
 
 async def process_message(event):
 
+  try:
+
     start = time.perf_counter()
 
     job_uuid = str(uuid.uuid4())
@@ -156,3 +158,9 @@ async def process_message(event):
             categories=result["categories"],
             ai_used=result["needs_gemini"],
         )
+
+  finally:
+      try:
+          logger.save()
+      except Exception as e:
+          logger.log_error("Logger", e)

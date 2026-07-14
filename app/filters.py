@@ -1,3 +1,5 @@
+import re
+
 from app.keywords import (
     HARD_REJECT_KEYWORDS,
     INTEREST_CATEGORIES,
@@ -10,6 +12,40 @@ DIRECT_NOTIFY_THRESHOLD = 70
 GEMINI_THRESHOLD = 30
 
 
+def _contains_keyword(text: str, keyword: str) -> bool:
+    """
+    English keywords use word boundaries to avoid false positives
+    like 'bot' matching 'robotics'.
+
+    Arabic keywords continue using substring matching because \b
+    is unreliable for Arabic.
+    """
+    if re.search(r"[a-z]", keyword):
+        pattern = r"\b" + re.escape(keyword) + r"\b"
+        return re.search(pattern, text) is not None
+
+    return keyword in text
+
+
+def _mask_keyword(text: str, keyword: str) -> str:
+    """
+    Replace matched keyword with spaces so shorter overlapping
+    keywords cannot match afterwards.
+
+    Keeps string length unchanged.
+    """
+    if re.search(r"[a-z]", keyword):
+        pattern = r"\b" + re.escape(keyword) + r"\b"
+    else:
+        pattern = re.escape(keyword)
+
+    return re.sub(
+        pattern,
+        lambda m: " " * len(m.group(0)),
+        text,
+    )
+
+
 def keyword_filter(text: str):
     normalized = normalize(text)
 
@@ -20,30 +56,75 @@ def keyword_filter(text: str):
     soft_negative_matches = []
     hard_reject_matches = []
 
-    # Positive keywords
+    # ------------------------------------------------------------------
+    # Build one master keyword list.
+    #
+    # Duplicate keywords across categories keep only the highest weight.
+    # Example:
+    #   ETL -> data_analysis (30) beats python (20)
+    # ------------------------------------------------------------------
+    keyword_map = {}
+
     for category, keywords in INTEREST_CATEGORIES.items():
         for keyword, weight in keywords.items():
-            if normalize(keyword) in normalized:
-                score += weight
-                matched_categories.add(category)
-                positive_matches.append({
+            normalized_keyword = normalize(keyword)
+
+            existing = keyword_map.get(normalized_keyword)
+
+            if existing is None or weight > existing["weight"]:
+                keyword_map[normalized_keyword] = {
                     "keyword": keyword,
                     "weight": weight,
                     "category": category,
-                })
+                }
 
+    # Longest phrases first so:
+    # "power pivot" beats "pivot"
+    ordered_keywords = sorted(
+        keyword_map.values(),
+        key=lambda x: len(normalize(x["keyword"])),
+        reverse=True,
+    )
+
+    remaining_text = normalized
+
+    for item in ordered_keywords:
+        keyword = normalize(item["keyword"])
+
+        if _contains_keyword(remaining_text, keyword):
+            score += item["weight"]
+
+            matched_categories.add(item["category"])
+
+            positive_matches.append({
+                "keyword": item["keyword"],
+                "weight": item["weight"],
+                "category": item["category"],
+            })
+
+            remaining_text = _mask_keyword(
+                remaining_text,
+                keyword,
+            )
+
+    # ------------------------------------------------------------------
     # Soft negatives
+    # ------------------------------------------------------------------
+
     for keyword, penalty in SOFT_NEGATIVE_KEYWORDS.items():
-        if normalize(keyword) in normalized:
+        if _contains_keyword(normalized, normalize(keyword)):
             score += penalty
             soft_negative_matches.append({
                 "keyword": keyword,
                 "weight": penalty,
             })
 
+    # ------------------------------------------------------------------
     # Hard rejects
+    # ------------------------------------------------------------------
+
     for keyword in HARD_REJECT_KEYWORDS:
-        if normalize(keyword) in normalized:
+        if _contains_keyword(normalized, normalize(keyword)):
             hard_reject_matches.append(keyword)
 
     hard_reject = (
@@ -67,22 +148,13 @@ def keyword_filter(text: str):
 
     return {
         "matched": matched,
-
         "score": score,
-
         "categories": sorted(matched_categories),
-
         "positive_matches": positive_matches,
-
         "soft_negative_matches": soft_negative_matches,
-
         "hard_reject_matches": hard_reject_matches,
-
         "hard_reject": hard_reject,
-
         "notify_directly": notify_directly,
-
         "needs_gemini": needs_gemini,
-
         "normalized_text": normalized,
     }

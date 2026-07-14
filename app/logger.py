@@ -183,7 +183,6 @@ class ExcelLogger:
 
         self._row_index[job_uuid] = ws.max_row
 
-        self.save()
 
     def update_job(self, job_uuid, **fields):
 
@@ -207,7 +206,6 @@ class ExcelLogger:
                 column=COLUMN_MAP[key],
             ).value = value
 
-        self.save()
 
         return True
 
@@ -235,7 +233,6 @@ class ExcelLogger:
             confidence,
         ])
 
-        self.save()
 
     def log_notification(
         self,
@@ -253,7 +250,6 @@ class ExcelLogger:
             status,
         ])
 
-        self.save()
 
     def log_error(
         self,
