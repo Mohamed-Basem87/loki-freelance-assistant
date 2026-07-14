@@ -86,6 +86,8 @@ class ExcelLogger:
         self.path = LOG_FILE
         self.workbook = None
         self._row_index: dict[str, int] = {}
+        self._pending_writes = 0
+        self._save_interval = 25
 
     def initialize(self):
 
@@ -112,7 +114,6 @@ class ExcelLogger:
             wb.save(self.path)
 
         self.workbook = load_workbook(self.path)
-
         self._build_row_index()
 
     def _build_row_index(self):
@@ -131,8 +132,15 @@ class ExcelLogger:
             if job_uuid:
                 self._row_index[job_uuid] = row
 
+    def _mark_dirty(self):
+        self._pending_writes += 1
+
+        if self._pending_writes >= self._save_interval:
+            self.save()
+
     def save(self):
         self.workbook.save(self.path)
+        self._pending_writes = 0
 
     def close(self):
         self.save()
@@ -182,7 +190,7 @@ class ExcelLogger:
         ])
 
         self._row_index[job_uuid] = ws.max_row
-
+        self._mark_dirty()
 
     def update_job(self, job_uuid, **fields):
 
@@ -206,7 +214,7 @@ class ExcelLogger:
                 column=COLUMN_MAP[key],
             ).value = value
 
-
+        self._mark_dirty()
         return True
 
     def log_gemini(
@@ -233,6 +241,7 @@ class ExcelLogger:
             confidence,
         ])
 
+        self._mark_dirty()
 
     def log_notification(
         self,
@@ -250,6 +259,7 @@ class ExcelLogger:
             status,
         ])
 
+        self._mark_dirty()
 
     def log_error(
         self,
@@ -265,6 +275,7 @@ class ExcelLogger:
             str(error),
         ])
 
+        # Always flush errors immediately.
         self.save()
 
 
