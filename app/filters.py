@@ -15,7 +15,13 @@ SAFE_DIRECT_CATEGORIES = {
     "power_bi",
     "excel",
     "data_analysis",
+    "sql",
+    "portfolio",
 }
+
+# If the accumulated soft-negative penalties reach this value,
+# the project becomes too "tech-heavy" to bypass Gemini.
+DIRECT_NOTIFY_SOFT_PENALTY_LIMIT = -60
 
 
 def _contains_keyword(text: str, keyword: str) -> bool:
@@ -90,6 +96,10 @@ def keyword_filter(text: str):
 
     remaining_text = normalized
 
+    # ------------------------------------------------------------------
+    # Positive keywords
+    # ------------------------------------------------------------------
+
     for item in ordered_keywords:
         keyword = normalize(item["keyword"])
 
@@ -116,10 +126,20 @@ def keyword_filter(text: str):
     for keyword, penalty in SOFT_NEGATIVE_KEYWORDS.items():
         if _contains_keyword(normalized, normalize(keyword)):
             score += penalty
+
             soft_negative_matches.append({
                 "keyword": keyword,
                 "weight": penalty,
             })
+
+    total_soft_penalty = sum(
+        match["weight"]
+        for match in soft_negative_matches
+    )
+
+    has_dangerous_tech = (
+        total_soft_penalty <= DIRECT_NOTIFY_SOFT_PENALTY_LIMIT
+    )
 
     # ------------------------------------------------------------------
     # Hard rejects
@@ -138,14 +158,21 @@ def keyword_filter(text: str):
 
     categories_are_safe = (
         matched_categories
-        and matched_categories.issubset(SAFE_DIRECT_CATEGORIES)
+        and matched_categories.issubset(
+            SAFE_DIRECT_CATEGORIES
+        )
     )
+
+    # ------------------------------------------------------------------
+    # Routing
+    # ------------------------------------------------------------------
 
     notify_directly = (
         matched
         and not hard_reject
         and score >= DIRECT_NOTIFY_THRESHOLD
         and categories_are_safe
+        and not has_dangerous_tech
     )
 
     needs_gemini = (
@@ -163,7 +190,12 @@ def keyword_filter(text: str):
         "soft_negative_matches": soft_negative_matches,
         "hard_reject_matches": hard_reject_matches,
         "hard_reject": hard_reject,
+
+        "total_soft_penalty": total_soft_penalty,
+        "has_dangerous_tech": has_dangerous_tech,
+
         "notify_directly": notify_directly,
         "needs_gemini": needs_gemini,
+
         "normalized_text": normalized,
     }
