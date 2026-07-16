@@ -17,6 +17,40 @@ def _fallback_title(text: str) -> str:
     return ""
 
 
+def _normalize_description(text: str) -> str:
+    """
+    Normalize Telegram message formatting while preserving paragraphs.
+    """
+
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    # Remove trailing spaces from lines
+    lines = [line.strip() for line in text.split("\n")]
+
+    normalized = []
+    previous_blank = False
+
+    for line in lines:
+        if not line:
+            if not previous_blank:
+                normalized.append("")
+            previous_blank = True
+            continue
+
+        previous_blank = False
+        normalized.append(line)
+
+    text = "\n".join(normalized)
+
+    # Single newlines become spaces.
+    text = re.sub(r"(?<!\n)\n(?!\n)", " ", text)
+
+    # Collapse excessive spaces.
+    text = re.sub(r"[ \t]{2,}", " ", text)
+
+    return text.strip()
+
+
 def parse_job(source: str, text: str) -> dict[str, str]:
     job = {
         "title": "",
@@ -56,9 +90,11 @@ def parse_job(source: str, text: str) -> dict[str, str]:
             job["title"] = _fallback_title(text)
 
         if description:
-            job["description"] = description.group(1).strip()
+            job["description"] = _normalize_description(
+                description.group(1)
+            )
         else:
-            job["description"] = text.strip()
+            job["description"] = _normalize_description(text)
 
         if budget:
             job["budget"] = budget.group(1).strip()
@@ -71,7 +107,7 @@ def parse_job(source: str, text: str) -> dict[str, str]:
     # Mostaql & Generic channels
     # -----------------------------
     job["title"] = _fallback_title(text)
-    job["description"] = text
+    job["description"] = _normalize_description(text)
     job["url"] = _extract_url(text)
 
     return job

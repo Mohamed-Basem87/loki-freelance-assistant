@@ -49,27 +49,21 @@ async def send_channel_notification(
     message = f"""🚀 <b>New Data Analysis Opportunity</b>
 
 📄 <b>{escape(title)}</b>
-
 🏢 <b>Platform</b>
-{escape(source)}
-"""
+{escape(source)}"""
 
     if budget:
         message += f"""
 
 💰 <b>Budget</b>
-{escape(budget)}
-"""
+{escape(budget)}"""
 
     if description:
         message += f"""
 
 ────────────────────────
-
 📋 <b>Description</b>
-
-{escape(description)}
-"""
+{escape(description)}"""
 
     if categories:
         hashtags = " ".join(
@@ -80,11 +74,8 @@ async def send_channel_notification(
         message += f"""
 
 ────────────────────────
-
 🏷 <b>Tags</b>
-
-{escape(hashtags)}
-"""
+{escape(hashtags)}"""
 
     keyboard = None
 

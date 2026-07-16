@@ -116,8 +116,6 @@ async def send_notification(
 
     targets = [BOT_CHAT_ID]
 
-    if BOT_CHANNEL_ID:
-        targets.append(BOT_CHANNEL_ID)
 
     try:
         for chat_id in targets:
