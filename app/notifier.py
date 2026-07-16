@@ -7,7 +7,11 @@ from telegram import (
 )
 from telegram.constants import ParseMode
 
-from app.config import BOT_CHAT_ID, BOT_TOKEN
+from app.config import (
+    BOT_CHAT_ID,
+    BOT_CHANNEL_ID,
+    BOT_TOKEN,
+)
 from app.logger import logger
 
 
@@ -35,7 +39,9 @@ async def send_notification(
         categories = []
 
     if description and len(description) > MAX_DESCRIPTION_LENGTH:
-        description = description[: MAX_DESCRIPTION_LENGTH - 3].rstrip() + "..."
+        description = (
+            description[: MAX_DESCRIPTION_LENGTH - 3].rstrip() + "..."
+        )
 
     header = (
         "🧠 <b>AI Recommendation</b>"
@@ -108,15 +114,20 @@ async def send_notification(
             ]
         )
 
-    try:
+    targets = [BOT_CHAT_ID]
 
-        await bot.send_message(
-            chat_id=BOT_CHAT_ID,
-            text=message,
-            parse_mode=ParseMode.HTML,
-            reply_markup=keyboard,
-            disable_web_page_preview=True,
-        )
+    if BOT_CHANNEL_ID:
+        targets.append(BOT_CHANNEL_ID)
+
+    try:
+        for chat_id in targets:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=message,
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard,
+                disable_web_page_preview=True,
+            )
 
         logger.log_notification(
             job_uuid,
@@ -127,7 +138,6 @@ async def send_notification(
         return True
 
     except Exception as e:
-
         logger.log_notification(
             job_uuid,
             "Telegram",
