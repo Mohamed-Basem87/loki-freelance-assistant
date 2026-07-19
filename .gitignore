@@ -8,6 +8,9 @@
 sessions/
 *.session
 
+# Runtime state
+database/state.json
+
 # Python cache
 __pycache__/
 *.py[cod]

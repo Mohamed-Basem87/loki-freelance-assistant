@@ -271,7 +271,7 @@ Loki is a single-process, event-driven bot. There is no web server, no database,
 | `run.py` | Entry point. Calls `app.bot.main()`. |
 | `app/bot.py` | Initializes the Excel workbook, then starts the asyncio event loop via `app/handlers/telegram.py`. |
 | `app/config.py` | Loads and validates all environment variables; the single source of truth for configuration. |
-| `app/handlers/telegram.py` | Owns the Telethon client: logs in, registers the `NewMessage` event handler scoped to `TARGET_CHANNELS`, and dispatches each incoming message to `process_message`. |
+| `app/handlers/telegram.py` | Owns the Telethon client: logs in, performs startup recovery using the persistent message state, registers the `NewMessage` event handler scoped to `TARGET_CHANNELS`, and dispatches each incoming message to `process_message`. |
 | `app/parser.py` | Converts a raw Telegram message into a structured job dict (title, description, budget, URL, source). Contains source-specific logic for Nafezly-style posts and a generic fallback for everything else. |
 | `app/normalize.py` | Normalizes text (Arabic character unification, diacritic stripping, punctuation removal, lowercasing) so the keyword engine matches consistently regardless of formatting or Arabic orthographic variation. |
 | `app/keywords.py` | The static data: `INTEREST_CATEGORIES` (positive keyword categories and weights), `HARD_REJECT_KEYWORDS`, and `SOFT_NEGATIVE_KEYWORDS`. This is the file you edit to retarget Loki at a different niche — see [The Keyword Engine](#5-the-keyword-engine). |
@@ -280,6 +280,7 @@ Loki is a single-process, event-driven bot. There is no web server, no database,
 | `app/message_processor.py` | The orchestrator. Ties parsing → filtering → (optional) Gemini → logging → notification together for a single incoming message. |
 | `app/notifier.py` | Sends the private Telegram notification (to `BOT_CHAT_ID`, and `BOT_CHANNEL_ID` if set) with full job detail, score, and reasoning. |
 | `app/channel_notifier.py` | Sends a separate, public-facing notification to `BOT_CHANNEL_ID` only (if configured), with a simplified message and no internal scoring detail. |
+| `app/state.py` | Stores the last processed message ID for each monitored channel, enabling startup recovery. |
 | `app/logger.py` | `ExcelLogger` — a thin wrapper over `openpyxl` that maintains the four-worksheet audit workbook, including an in-memory row index so a job's row can be efficiently re-updated later in the pipeline. |
 
 ### Module Interaction
@@ -669,6 +670,21 @@ The Jobs and Gemini sheets together form a decision audit trail you can use to i
 - **Check the Errors sheet regularly** — a spike in `"Gemini"` errors, for instance, is a much faster diagnostic than digging through console output after the fact.
 
 Because scoring and routing are entirely deterministic given `keywords.py` + `filters.py`, you can also replay historical `Positive Matches`/`Negative Matches` combinations mentally (or by re-running `test_keyword_routing.py` with new sample text) before touching production weights.
+
+---
+
+
+## Startup Recovery
+
+Before listening for new messages, Loki:
+
+1. Loads `database/state.json`.
+2. Fetches the latest 40 messages from each monitored channel.
+3. Processes only messages newer than the stored ID.
+4. Updates the state file after each processed message.
+5. Begins normal real-time monitoring.
+
+`database/state.json` is runtime state and should generally be ignored by Git.
 
 ---
 

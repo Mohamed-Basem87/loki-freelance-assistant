@@ -38,13 +38,21 @@ dramatically reducing noise.
 -   Excel audit logging
 -   Linux systemd deployment
 -   Modular architecture
+-   Startup recovery of missed Telegram messages after downtime
 
 ------------------------------------------------------------------------
 
 # Decision Pipeline
 
 ``` text
-Telegram Channel
+Bot Starts
+        │
+        ▼
+Recover Latest Messages
+ (up to 40 per channel)
+        │
+        ▼
+Listen for New Messages
         │
         ▼
    Parse Message
@@ -84,6 +92,7 @@ loki-freelance-assistant/
 │
 ├── app/
 │   ├── handlers/
+│   ├── state.py
 │   ├── parser.py
 │   ├── filters.py
 │   ├── gemini.py
@@ -91,6 +100,9 @@ loki-freelance-assistant/
 │   ├── logger.py
 │   ├── message_processor.py
 │   └── ...
+│
+├── database/
+│   └── state.json
 │
 ├── run.py
 ├── requirements.txt
@@ -138,6 +150,19 @@ python run.py
 ```
 
 For production, configure the project as a **systemd** service.
+
+------------------------------------------------------------------------
+
+# Startup Recovery
+
+Loki automatically recovers recent freelance opportunities after an unexpected shutdown, crash, or reboot.
+
+On startup it:
+- Loads the last processed message ID for every monitored channel.
+- Fetches only the latest **40** messages per channel.
+- Processes only unseen messages.
+- Updates its persistent state after every processed message.
+- Starts live monitoring after recovery completes.
 
 ------------------------------------------------------------------------
 
