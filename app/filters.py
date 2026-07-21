@@ -16,7 +16,6 @@ SAFE_DIRECT_CATEGORIES = {
     "excel",
     "data_analysis",
     "sql",
-    "portfolio",
 }
 
 # If the accumulated soft-negative penalties reach this value,

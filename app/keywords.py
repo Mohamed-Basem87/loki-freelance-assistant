@@ -22,6 +22,9 @@ INTEREST_CATEGORIES = {
         "داشبورد": 30,
         "باور بي": 50,
         "بور بي": 50,
+        "power query editor": 40,
+        "m query": 35,
+        "m code": 30,
     },
 
 "excel": {
@@ -87,6 +90,10 @@ INTEREST_CATEGORIES = {
         # Existing
         "data analysis": 40,
         "data analyst": 40,
+        "tableau": 35,
+        "looker": 25,
+        "looker studio": 30,
+        "qlik": 30,
         "business analyst": 35,
         "business intelligence": 35,
         "analytics": 25,
@@ -111,6 +118,28 @@ INTEREST_CATEGORIES = {
         "reporting": 15,
         "etl": 30,
         "data cleaning": 35,
+        "excel dashboard": 40,
+        "dashboard design": 30,
+
+        "business metrics": 25,
+        "executive dashboard": 35,
+
+        "data transformation": 35,
+        "transform data": 30,
+
+        "fact table": 30,
+        "dimension table": 30,
+        "snowflake schema": 35,
+
+        "cohort analysis": 35,
+        "customer segmentation": 35,
+
+        "data validation": 25,
+
+        "pivot chart": 25,
+
+        "power query m": 40,
+        "m language": 30,
 
         # New English
         "dataset": 15,
@@ -135,9 +164,16 @@ INTEREST_CATEGORIES = {
         "مؤشرات الأداء": 30,
         "تنظيف البيانات": 35,
         "التنبؤ": 30,
+        "لوحة بيانات": 30,
+        "تحويل البيانات": 30,
+        "معالجة البيانات": 30,
+        "مؤشرات": 20,
+        "مؤشر أداء": 25,
+        "لوحة مؤشرات": 30,
 
         # New Arabic
         "بيانات": 10,
+        "تابلو": 35,
         "البيانات": 10,
         "داتا": 15,
         "الداتا": 15,
@@ -173,53 +209,38 @@ INTEREST_CATEGORIES = {
     },
 
     "python": {
-        "python": 20,
-        "automation": 20,
-        "script": 15,
-        "scripting": 15,
-        "pandas": 30,
-        "numpy": 25,
-        "selenium": 20,
-        "beautifulsoup": 20,
-        "web scraping": 25,
-        "scraping": 20,
-        "etl": 20,
-        "csv": 10,
-        "json": 10,
-        "api integration": 20,
-    },
 
-    "automation": {
-        "automation": 30,
-        "workflow": 25,
-        "automate": 25,
-        "bot": 20,
-        "integration": 20,
-        "make.com": 20,
-        "n8n": 25,
-        "zapier": 20,
-    },
+    "python": 25,
 
-    "portfolio": {
-    "portfolio": 35,
-    "portfolio website": 50,
-    "personal website": 40,
-    "resume website": 40,
-    "cv website": 40,
+    "pandas": 35,
+    "numpy": 30,
+    "matplotlib": 25,
+    "plotly": 25,
+    "seaborn": 25,
 
-    "landing page": 30,
-    "landing pages": 30,
-    "landingpage": 30,
+    "jupyter": 25,
+    "notebook": 20,
+    "dataframe": 20,
 
-    "landing": 15,
+    "polars": 25,
+    "openpyxl": 20,
+    "xlwings": 20,
 
-    "موقع شخصي": 40,
-    "بورتفوليو": 50,
-    "معرض أعمال": 40,
+    "etl": 30,
+    "csv": 15,
+    "json": 10,
 
-    "صفحة هبوط": 30,
-    "لاندنج بيج": 30,
+    "data processing": 30,
+    "data transformation": 30,
+    "data pipeline": 30,
+
+    "web scraping": 20,
+    "scraping": 15,
 },
+
+    
+
+    
 }
 
 HARD_REJECT_KEYWORDS = {
@@ -238,54 +259,64 @@ SOFT_NEGATIVE_KEYWORDS = {
     # --------------------------------------------------
     # CMS / Website Builders
     # --------------------------------------------------
-    "wordpress": -40,
-    "woocommerce": -40,
-    "shopify": -40,
-    "webflow": -40,
-    "wix": -40,
-    "framer": -35,
-    "elementor": -30,
-
+    "wordpress": -50,
+    "woocommerce": -50,
+    "shopify": -50,
+    "webflow": -50,
+    "wix": -50,
+    "framer": -40,
+    "elementor": -40,
     # --------------------------------------------------
     # Frameworks
     # --------------------------------------------------
-    "laravel": -40,
-    "django": -30,
-    "flask": -20,
-    "fastapi": -25,
-    "spring": -35,
-    "spring boot": -35,
-    ".net": -35,
-    "asp.net": -35,
+    "laravel": -50,
+    "django": -40,
+    "flask": -25,
+    "fastapi": -30,
+    "spring": -40,
+    "spring boot": -40,
+    ".net": -40,
+    "asp.net": -40,
 
     # --------------------------------------------------
     # Frontend
     # --------------------------------------------------
-    "react": -35,
-    "reactjs": -35,
-    "next.js": -35,
-    "nextjs": -35,
-    "vue": -35,
-    "angular": -35,
-    "svelte": -35,
-    "html": -15,
-    "css": -15,
-    "javascript": -25,
-    "typescript": -25,
+    "react": -50,
+    "reactjs": -50,
+    "next.js": -50,
+    "nextjs": -50,
+    "vue": -50,
+    "angular": -50,
+    "svelte": -50,
 
+    "javascript": -30,
+    "typescript": -30,
+
+    "landing page": -50,
+    "landing pages": -50,
+    "landingpage": -50,
+
+    "portfolio website": -50,
+    "personal website": -50,
+    "resume website": -50,
+    "cv website": -50,
+
+    "bootstrap": -30,
+    "tailwind": -30,
+    "figma": -30,
     # --------------------------------------------------
     # Backend
     # --------------------------------------------------
-    "node": -30,
-    "nodejs": -30,
-    "express": -25,
-    "nestjs": -30,
-    "backend": -30,
-    "frontend": -30,
-    "full stack": -40,
-    "fullstack": -40,
-    "api": -20,
-    "rest api": -25,
+    "node": -40,
+    "nodejs": -40,
+    "express": -35,
+    "nestjs": -40,
+    "backend": -40,
+    "frontend": -40,
+    "full stack": -60,
+    "fullstack": -60,
+    "api": -30,
+    "rest api": -35,
     "graphql": -25,
     "authentication": -30,
     "authorization": -25,
@@ -425,6 +456,11 @@ SOFT_NEGATIVE_KEYWORDS = {
     "متجر الكتروني": -40,
     "متجر": -30,
     "متاجر": -30,
+    "صفحة هبوط": -50,
+    "لاندنج بيج": -50,
+    "موقع شخصي": -50,
+    "بورتفوليو": -40,
+    "معرض أعمال": -40,
 
     # Admin
     "لوحة تحكم إدارية": -40,
