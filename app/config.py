@@ -60,4 +60,16 @@ BOT_CHANNEL_ID = os.getenv("BOT_CHANNEL_ID")
 
 TARGET_CHANNELS = _require_channel_ids("TARGET_CHANNEL_IDS")
 
+# ----------------------------
+# FreeHub
+# ----------------------------
+
+FREEHUB_USER_ID = _require_env("FREEHUB_USER_ID")
+FREEHUB_POLL_INTERVAL = int(
+    os.getenv("FREEHUB_POLL_INTERVAL", "60")
+)
+FREEHUB_PAGE_SIZE = int(
+    os.getenv("FREEHUB_PAGE_SIZE", "30")
+)
+
 SESSION_NAME = str(BASE_DIR / "sessions" / "telegram")
