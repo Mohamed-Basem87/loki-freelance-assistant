@@ -52,6 +52,7 @@ NOTIFICATION_HEADERS = [
 
 ERROR_HEADERS = [
     "Timestamp",
+    "Job UUID",
     "Module",
     "Error",
 ]
@@ -265,12 +266,14 @@ class ExcelLogger:
         self,
         module,
         error,
+        job_uuid="",
     ):
 
         ws = self.workbook["Errors"]
 
         ws.append([
             datetime.now().isoformat(),
+            job_uuid,
             module,
             str(error),
         ])
