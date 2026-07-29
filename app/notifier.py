@@ -145,6 +145,7 @@ async def send_notification(
         logger.log_error(
             "Notifier",
             e,
+            job_uuid,
         )
 
         return False

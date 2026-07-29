@@ -118,6 +118,7 @@ async def send_channel_notification(
         logger.log_error(
             "ChannelNotifier",
             e,
+            job_uuid,
         )
 
         return False

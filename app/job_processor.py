@@ -83,6 +83,7 @@ async def process_job(job: dict, job_id: str):
             logger.log_error(
                 "Gemini",
                 e,
+                job_uuid,
             )
 
             final_decision = "Rejected"
