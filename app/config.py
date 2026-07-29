@@ -61,7 +61,7 @@ GEMINI_API_KEYS = [
 if not GEMINI_API_KEYS:
     raise RuntimeError("GEMINI_API_KEYS is required")
 
-
+GROQ_API_KEY = _require_env("GROQ_API_KEY")
 BOT_TOKEN = _require_env("BOT_TOKEN")
 BOT_CHAT_ID = _require_int_env("BOT_CHAT_ID")
 BOT_CHANNEL_ID = os.getenv("BOT_CHANNEL_ID")
