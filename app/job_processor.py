@@ -4,7 +4,7 @@ import uuid
 
 from app.channel_notifier import send_channel_notification
 from app.filters import keyword_filter
-from app.gemini import evaluate_job
+from app.llm.manager import evaluate_job
 from app.logger import logger
 from app.notifier import send_notification
 

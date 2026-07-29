@@ -52,7 +52,15 @@ API_ID = _require_int_env("API_ID")
 API_HASH = _require_env("API_HASH")
 PHONE_NUMBER = _require_env("PHONE_NUMBER")
 
-GEMINI_API_KEY = _require_env("GEMINI_API_KEY")
+GEMINI_API_KEYS = [
+    key.strip()
+    for key in os.getenv("GEMINI_API_KEYS", "").split(",")
+    if key.strip()
+]
+
+if not GEMINI_API_KEYS:
+    raise RuntimeError("GEMINI_API_KEYS is required")
+
 
 BOT_TOKEN = _require_env("BOT_TOKEN")
 BOT_CHAT_ID = _require_int_env("BOT_CHAT_ID")

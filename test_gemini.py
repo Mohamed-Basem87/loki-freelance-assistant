@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from app.gemini import evaluate_job
+from app.llm.manager import evaluate_job
 
 
 TEST_CASES = [
