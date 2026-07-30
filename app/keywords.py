@@ -28,6 +28,7 @@ INTEREST_CATEGORIES = {
     },
 
 "excel": {
+    "exel": 30,
     "excel": 30,
     "اكسل": 30,
     "إكسل": 30,

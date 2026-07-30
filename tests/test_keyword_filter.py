@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app.filters import keyword_filter
-from app.gemini import evaluate_job
+from app.llm.gemini import evaluate_job
 
 
 TEST_CASES = [
