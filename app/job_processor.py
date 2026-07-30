@@ -96,7 +96,11 @@ async def process_job(job: dict, job_id: str):
                 2,
             )
 
-            final_decision = gemini["decision"].capitalize()
+            final_decision = (
+                "Accepted"
+                if gemini["decision"] == "accept"
+                else "Rejected"
+            )
             decision_reason = gemini["reason"]
             should_notify = gemini["decision"] == "accept"
 
@@ -114,6 +118,10 @@ async def process_job(job: dict, job_id: str):
                 decision=gemini["decision"],
                 confidence=gemini["confidence"],
             )
+
+    else:
+
+        decision_reason = "Below Gemini Threshold"
 
     logger.update_job(
         job_uuid,

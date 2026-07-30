@@ -57,6 +57,34 @@ def _mask_keyword(text: str, keyword: str) -> str:
     )
 
 
+# ------------------------------------------------------------------
+# Build one master keyword list once at import time.
+#
+# Duplicate keywords across categories keep only the highest weight.
+# ------------------------------------------------------------------
+
+_keyword_map = {}
+
+for category, keywords in INTEREST_CATEGORIES.items():
+    for keyword, weight in keywords.items():
+        normalized_keyword = normalize(keyword)
+
+        existing = _keyword_map.get(normalized_keyword)
+
+        if existing is None or weight > existing["weight"]:
+            _keyword_map[normalized_keyword] = {
+                "keyword": keyword,
+                "weight": weight,
+                "category": category,
+            }
+
+ORDERED_KEYWORDS = sorted(
+    _keyword_map.values(),
+    key=lambda x: len(normalize(x["keyword"])),
+    reverse=True,
+)
+
+
 def keyword_filter(text: str):
     normalized = normalize(text)
 
@@ -67,39 +95,13 @@ def keyword_filter(text: str):
     soft_negative_matches = []
     hard_reject_matches = []
 
-    # ------------------------------------------------------------------
-    # Build one master keyword list.
-    #
-    # Duplicate keywords across categories keep only the highest weight.
-    # ------------------------------------------------------------------
-    keyword_map = {}
-
-    for category, keywords in INTEREST_CATEGORIES.items():
-        for keyword, weight in keywords.items():
-            normalized_keyword = normalize(keyword)
-
-            existing = keyword_map.get(normalized_keyword)
-
-            if existing is None or weight > existing["weight"]:
-                keyword_map[normalized_keyword] = {
-                    "keyword": keyword,
-                    "weight": weight,
-                    "category": category,
-                }
-
-    ordered_keywords = sorted(
-        keyword_map.values(),
-        key=lambda x: len(normalize(x["keyword"])),
-        reverse=True,
-    )
-
     remaining_text = normalized
 
     # ------------------------------------------------------------------
     # Positive keywords
     # ------------------------------------------------------------------
 
-    for item in ordered_keywords:
+    for item in ORDERED_KEYWORDS:
         keyword = normalize(item["keyword"])
 
         if _contains_keyword(remaining_text, keyword):
@@ -189,12 +191,9 @@ def keyword_filter(text: str):
         "soft_negative_matches": soft_negative_matches,
         "hard_reject_matches": hard_reject_matches,
         "hard_reject": hard_reject,
-
         "total_soft_penalty": total_soft_penalty,
         "has_dangerous_tech": has_dangerous_tech,
-
         "notify_directly": notify_directly,
         "needs_gemini": needs_gemini,
-
         "normalized_text": normalized,
     }
