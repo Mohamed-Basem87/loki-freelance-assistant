@@ -1,5 +1,6 @@
-from pathlib import Path
+import os
 from datetime import datetime
+from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
@@ -87,8 +88,6 @@ class ExcelLogger:
         self.path = LOG_FILE
         self.workbook = None
         self._row_index: dict[str, int] = {}
-        self._pending_writes = 0
-        self._save_interval = 25
 
     def initialize(self):
 
@@ -133,15 +132,14 @@ class ExcelLogger:
             if job_uuid:
                 self._row_index[job_uuid] = row
 
-    def _mark_dirty(self):
-        self._pending_writes += 1
-
-        if self._pending_writes >= self._save_interval:
-            self.save()
-
     def save(self):
-        self.workbook.save(self.path)
-        self._pending_writes = 0
+        if self.workbook is None:
+            return
+
+        temp_path = self.path.with_suffix(".tmp.xlsx")
+
+        self.workbook.save(temp_path)
+        os.replace(temp_path, self.path)
 
     def close(self):
         self.save()
@@ -191,7 +189,7 @@ class ExcelLogger:
         ])
 
         self._row_index[job_uuid] = ws.max_row
-        self._mark_dirty()
+        self.save()
 
     def update_job(self, job_uuid, **fields):
 
@@ -215,7 +213,7 @@ class ExcelLogger:
                 column=COLUMN_MAP[key],
             ).value = value
 
-        self._mark_dirty()
+        self.save()
         return True
 
     def log_gemini(
@@ -242,7 +240,7 @@ class ExcelLogger:
             confidence,
         ])
 
-        self._mark_dirty()
+        self.save()
 
     def log_notification(
         self,
@@ -260,7 +258,7 @@ class ExcelLogger:
             status,
         ])
 
-        self._mark_dirty()
+        self.save()
 
     def log_error(
         self,
@@ -278,7 +276,6 @@ class ExcelLogger:
             str(error),
         ])
 
-        # Always flush errors immediately.
         self.save()
 
 

@@ -74,13 +74,14 @@ for category, keywords in INTEREST_CATEGORIES.items():
         if existing is None or weight > existing["weight"]:
             _keyword_map[normalized_keyword] = {
                 "keyword": keyword,
+                "normalized_keyword": normalized_keyword,
                 "weight": weight,
                 "category": category,
             }
 
 ORDERED_KEYWORDS = sorted(
     _keyword_map.values(),
-    key=lambda x: len(normalize(x["keyword"])),
+    key=lambda x: len(x["normalized_keyword"]),
     reverse=True,
 )
 
@@ -102,7 +103,7 @@ def keyword_filter(text: str):
     # ------------------------------------------------------------------
 
     for item in ORDERED_KEYWORDS:
-        keyword = normalize(item["keyword"])
+        keyword = item["normalized_keyword"]
 
         if _contains_keyword(remaining_text, keyword):
             score += item["weight"]

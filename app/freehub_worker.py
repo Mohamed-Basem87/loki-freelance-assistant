@@ -23,19 +23,29 @@ async def freehub_worker():
 
             for project in projects:
 
-                job = {
-                    "title": project["title"],
-                    "description": project["description"],
-                    # Show the real marketplace instead of "FreeHub"
-                    "source": project.get("platform", "FreeHub"),
-                    "budget": project.get("price", ""),
-                    "url": project.get("project_link", ""),
-                }
+                try:
 
-                await process_job(
-                    job=job,
-                    job_id=project["uid"],
-                )
+                    job = {
+                        "title": project["title"],
+                        "description": project["description"],
+                        # Show the real marketplace instead of "FreeHub"
+                        "source": project.get("platform", "FreeHub"),
+                        "budget": project.get("price", ""),
+                        "url": project.get("project_link", ""),
+                    }
+
+                    await process_job(
+                        job=job,
+                        job_id=project["uid"],
+                    )
+
+                except Exception as e:
+
+                    logger.log_error(
+                        "FreeHub Project",
+                        e,
+                        project.get("uid", ""),
+                    )
 
         except Exception as e:
 
