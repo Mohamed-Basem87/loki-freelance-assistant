@@ -79,7 +79,7 @@ if not GEMINI_API_KEYS:
 GROQ_API_KEY = _require_env("GROQ_API_KEY")
 BOT_TOKEN = _require_env("BOT_TOKEN")
 BOT_CHAT_ID = _require_int_env("BOT_CHAT_ID")
-BOT_CHANNEL_ID = _optional_int_env("BOT_CHANNEL_ID")
+BOT_CHANNEL_ID = os.getenv("BOT_CHANNEL_ID")
 
 TARGET_CHANNELS = _require_channel_ids("TARGET_CHANNEL_IDS")
 
