@@ -75,7 +75,8 @@ async def _recover_channel(client, channel):
 
         except Exception as e:
 
-            logger.log_error(
+            await logger.run(
+                logger.log_error,
                 "StartupRecovery",
                 e,
             )
@@ -143,7 +144,8 @@ async def start():
 
         except Exception as e:
 
-            logger.log_error(
+            await logger.run(
+                logger.log_error,
                 "MessageHandler",
                 e,
             )

@@ -30,7 +30,7 @@ async def process_job(job: dict, job_id: str):
 
     job_uuid = _make_job_uuid(job.get("source", ""), job_id)
 
-    if logger.has_job(job_uuid):
+    if await logger.run(logger.has_job, job_uuid):
         # Already logged (and, if should_notify fired, already
         # notified) -- this is a reprocessing of the same source
         # message/project, not a new job. Skip it rather than
@@ -47,7 +47,8 @@ async def process_job(job: dict, job_id: str):
         2,
     )
 
-    logger.create_job(
+    await logger.run(
+        logger.create_job,
         job_uuid=job_uuid,
         job_id=job_id,
         source=job["source"],
@@ -91,15 +92,24 @@ async def process_job(job: dict, job_id: str):
 
         except Exception as e:
 
-            logger.log_error(
-                "Gemini",
+            # manager.evaluate_job() only raises once BOTH Gemini and
+            # Groq have failed (see app.llm.manager) -- so this is a
+            # total-LLM-fallback exhaustion, not specifically a
+            # Gemini problem. Logging it as "Gemini Error" (as before)
+            # mislabeled Groq-side failures too. "LLM" / "LLM Error"
+            # reflects what actually happened; the full detail from
+            # both providers is still in `e` (see manager.py) and
+            # lands in the Errors sheet either way.
+            await logger.run(
+                logger.log_error,
+                "LLM",
                 e,
                 job_uuid,
                 save=False,
             )
 
             final_decision = "Rejected"
-            decision_reason = "Gemini Error"
+            decision_reason = "LLM Error"
 
         else:
 
@@ -116,13 +126,15 @@ async def process_job(job: dict, job_id: str):
             decision_reason = gemini["reason"]
             should_notify = gemini["decision"] == "accept"
 
-            logger.update_job(
+            await logger.run(
+                logger.update_job,
                 job_uuid,
                 gemini_decision=gemini["decision"],
                 save=False,
             )
 
-            logger.log_gemini(
+            await logger.run(
+                logger.log_gemini,
                 job_uuid=job_uuid,
                 decision_before=result["decision"],
                 reason_before=result["reason"],
@@ -138,7 +150,8 @@ async def process_job(job: dict, job_id: str):
 
         decision_reason = "Below Gemini Threshold"
 
-    logger.update_job(
+    await logger.run(
+        logger.update_job,
         job_uuid,
         final_decision=final_decision,
         decision_reason=decision_reason,
@@ -165,13 +178,15 @@ async def process_job(job: dict, job_id: str):
         sent_direct = await send_notification(**notification_kwargs)
         sent_channel = await send_channel_notification(**notification_kwargs)
 
-        logger.log_notification(
+        await logger.run(
+            logger.log_notification,
             job_uuid,
             "Telegram",
             "Sent" if sent_direct else "Failed",
             save=False,
         )
-        logger.log_notification(
+        await logger.run(
+            logger.log_notification,
             job_uuid,
             "Telegram Channel",
             "Sent" if sent_channel else "Failed",
@@ -181,8 +196,9 @@ async def process_job(job: dict, job_id: str):
     # One full-workbook save per job instead of one per intermediate
     # step (create_job / update_job x2 / log_gemini / log_notification
     # x2 previously each saved independently -- up to ~7 full
-    # serializations for a single job). Offloaded to a thread so the
-    # (synchronous, and O(total history) per call) openpyxl write
-    # doesn't stall the event loop that's also handling live Telegram
-    # events and FreeHub polling.
-    await asyncio.to_thread(logger.save)
+    # serializations for a single job). Runs on the same single
+    # logger thread as every other workbook access this job made
+    # above (see ExcelLogger.run) -- not a generic asyncio.to_thread
+    # worker -- so it can never overlap with another job's workbook
+    # mutation or save.
+    await logger.run(logger.save)

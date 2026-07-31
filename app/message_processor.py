@@ -2,8 +2,6 @@ from app.job_processor import process_job
 from app.logger import logger
 from app.parser import parse_job
 
-import asyncio
-
 
 async def process_message(event):
 
@@ -48,27 +46,32 @@ async def process_message(event):
 
         failed = True
 
-        logger.log_error(
+        await logger.run(
+            logger.log_error,
             "Message Processor",
             e,
         )
 
     finally:
 
-        # process_job() already saves once, off the event loop, on
-        # its own happy/handled-error path. This is only a safety
-        # net for the case where something raised *before*
+        # process_job() already saves once, on the single logger
+        # thread, on its own happy/handled-error path. This is only a
+        # safety net for the case where something raised *before*
         # process_job got a chance to (e.g. parse_job itself failing)
         # -- so any log_error() write above (and any deferred,
         # save=False writes already sitting in memory) still reaches
         # disk. Skipped on the normal path to avoid an extra
-        # full-workbook write per message, and moved off the event
-        # loop since it's a blocking openpyxl write either way.
+        # full-workbook write per message. Routed through
+        # logger.run() (the same single dedicated thread every other
+        # workbook access uses -- see app.logger.ExcelLogger.run)
+        # rather than a bare asyncio.to_thread(), so this save can
+        # never overlap with another job's workbook mutation or save.
         if failed:
             try:
-                await asyncio.to_thread(logger.save)
+                await logger.run(logger.save)
             except Exception as e:
-                logger.log_error(
+                await logger.run(
+                    logger.log_error,
                     "Logger",
                     e,
                 )

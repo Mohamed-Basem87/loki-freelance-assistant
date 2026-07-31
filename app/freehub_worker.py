@@ -41,7 +41,8 @@ async def freehub_worker():
 
                 except Exception as e:
 
-                    logger.log_error(
+                    await logger.run(
+                        logger.log_error,
                         "FreeHub Project",
                         e,
                         project.get("uid", ""),
@@ -49,7 +50,8 @@ async def freehub_worker():
 
         except Exception as e:
 
-            logger.log_error(
+            await logger.run(
+                logger.log_error,
                 "FreeHub Worker",
                 e,
             )

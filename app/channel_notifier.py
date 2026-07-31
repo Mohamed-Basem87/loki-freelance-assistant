@@ -68,7 +68,8 @@ async def send_channel_notification(
 
     except Exception as e:
 
-        logger.log_error(
+        await logger.run(
+            logger.log_error,
             "ChannelNotifier",
             e,
             job_uuid,

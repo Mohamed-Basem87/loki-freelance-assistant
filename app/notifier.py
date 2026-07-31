@@ -65,7 +65,8 @@ async def send_notification(
 
     except Exception as e:
 
-        logger.log_error(
+        await logger.run(
+            logger.log_error,
             "Notifier",
             e,
             job_uuid,

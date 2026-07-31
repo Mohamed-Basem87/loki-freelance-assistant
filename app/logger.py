@@ -1,4 +1,6 @@
+import asyncio
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -6,6 +8,20 @@ from openpyxl import Workbook, load_workbook
 
 
 LOG_FILE = Path(__file__).resolve().parent.parent / "logs" / "freelance_bot_logs.xlsx"
+
+# All ExcelLogger reads/writes must go through this single worker
+# thread (see ExcelLogger.run below). openpyxl's Workbook is not
+# thread-safe: previously only save() was offloaded via
+# asyncio.to_thread(), which ran the (slow, blocking) full-workbook
+# serialization on a throwaway thread while other coroutines --
+# Telegram handler, FreeHub worker, both running concurrently under
+# asyncio.gather -- kept mutating the same in-memory Workbook on the
+# main thread. That's a genuine concurrent read/write race on the
+# same object. Funneling every workbook access through one dedicated
+# thread makes all of it strictly serial (no two logger calls, read
+# or write, ever touch the workbook at the same time) without ever
+# blocking the event loop itself.
+_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="excel-logger")
 
 
 # ------------------------------------------------------------------
@@ -202,6 +218,26 @@ class ExcelLogger:
     def close(self):
         self.save()
         self.workbook.close()
+
+    async def run(self, func, *args, **kwargs):
+        """
+        Run a bound ExcelLogger method (has_job, create_job,
+        update_job, log_gemini, log_notification, log_error, save,
+        ...) on the single dedicated logger thread and await its
+        result.
+
+        Callers (job_processor, message_processor, notifier,
+        channel_notifier, the Telegram handlers, the FreeHub worker)
+        must use this instead of calling the methods directly --
+        calling them straight from a coroutine would mutate the
+        workbook on the main thread while a save() from another job
+        could be serializing that same workbook on the executor
+        thread at the same time. Routing everything through the one
+        worker thread makes that impossible: nothing runs concurrently
+        with anything else here.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(_EXECUTOR, lambda: func(*args, **kwargs))
 
     def has_job(self, job_uuid) -> bool:
         """Cheap existence check so callers can skip reprocessing a

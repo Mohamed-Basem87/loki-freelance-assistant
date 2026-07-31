@@ -32,6 +32,21 @@ def _require_int_env(name: str) -> int:
         ) from e
 
 
+def _optional_int_env(name: str) -> int | None:
+    value = os.getenv(name)
+
+    if value is None or value.strip() == "":
+        return None
+
+    try:
+        return int(value)
+    except ValueError as e:
+        raise RuntimeError(
+            f"Environment variable '{name}' must be an integer "
+            f"(got '{value}')."
+        ) from e
+
+
 def _require_channel_ids(name: str) -> set[int]:
     value = _require_env(name)
 
@@ -64,7 +79,7 @@ if not GEMINI_API_KEYS:
 GROQ_API_KEY = _require_env("GROQ_API_KEY")
 BOT_TOKEN = _require_env("BOT_TOKEN")
 BOT_CHAT_ID = _require_int_env("BOT_CHAT_ID")
-BOT_CHANNEL_ID = os.getenv("BOT_CHANNEL_ID")
+BOT_CHANNEL_ID = _optional_int_env("BOT_CHANNEL_ID")
 
 TARGET_CHANNELS = _require_channel_ids("TARGET_CHANNEL_IDS")
 
