@@ -1,5 +1,5 @@
 from groq import Groq
-from tenacity import retry, stop_after_attempt, wait_fixed
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
 
 from app.config import GROQ_API_KEY
 from app.llm.prompt import SYSTEM_PROMPT
@@ -14,8 +14,25 @@ GROQ_MODELS = [
     "qwen/qwen3.6-27b",
 ]
 
+_TRANSIENT_ERROR_MARKERS = (
+    "429",
+    "503",
+    "resource_exhausted",
+    "quota exceeded",
+    "unavailable",
+    "timeout",
+    "timed out",
+)
+
+
+def _is_transient(exception: Exception) -> bool:
+    text = str(exception).lower()
+    return any(marker in text for marker in _TRANSIENT_ERROR_MARKERS)
+
 
 @retry(
+    # See app.llm.gemini for why this only retries transient errors.
+    retry=retry_if_exception(_is_transient),
     stop=stop_after_attempt(2),
     wait=wait_fixed(1),
     reraise=True,

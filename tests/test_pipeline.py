@@ -1,9 +1,17 @@
 import asyncio
+import tempfile
+from pathlib import Path
 
 from app.logger import logger
 from app.message_processor import process_message
 
 
+# Use an isolated, temporary workbook instead of the real
+# logs/freelance_bot_logs.xlsx -- the previous version of this test
+# ran directly against the production log file, silently polluting
+# real operational data with test rows every time it was run.
+_tmp_dir = tempfile.mkdtemp(prefix="freelance_assistant_test_")
+logger.path = Path(_tmp_dir) / "test_logs.xlsx"
 logger.initialize()
 
 
@@ -34,8 +42,6 @@ async def main():
 
     await process_message(FakeEvent())
 
-    logger.save()
-
     jobs_after = logger.workbook["Jobs"].max_row
 
     assert jobs_after == jobs_before + 1, (
@@ -53,9 +59,25 @@ async def main():
         "Job title is empty."
 
     assert sheet.cell(row=last_row, column=8).value is not None, \
-        "Score was not calculated."
+        "Decision was not calculated."
 
-    print("✅ Pipeline smoke test passed.")
+    print("✅ Pipeline smoke test passed (job logged with a decision).")
+
+    # Regression check for the job_uuid dedup fix (M3): reprocessing
+    # the exact same source event a second time must NOT create a
+    # second row. job_uuid is now derived deterministically from
+    # (source, job_id) instead of a fresh uuid4() every call, so
+    # logger.has_job() can actually recognize the repeat.
+    await process_message(FakeEvent())
+
+    jobs_after_repeat = logger.workbook["Jobs"].max_row
+
+    assert jobs_after_repeat == jobs_after, (
+        "Reprocessing the same message must not create a duplicate "
+        "row (job_uuid dedup regression)."
+    )
+
+    print("✅ Duplicate-message dedup check passed.")
 
 
 try:

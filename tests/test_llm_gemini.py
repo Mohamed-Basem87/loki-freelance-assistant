@@ -2,16 +2,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from app.filters import keyword_filter
 from app.llm.manager import evaluate_job
 
 
+# filter_result is now derived from the real keyword_filter() output
+# instead of a hand-built dict -- hand-building it previously used a
+# stale schema (score/positive_matches/soft_negative_matches) that
+# doesn't match what keyword_filter() actually returns, which is
+# exactly the kind of drift that broke build_prompt() in production
+# (see app.llm.utils.build_prompt).
 TEST_CASES = [
     {
         "name": "Data Collection",
-        "score": 30,
-        "categories": ["excel"],
-        "positive_matches": [{"keyword": "excel"}],
-        "soft_negative_matches": [],
+        "title": "Data Collection - Real Estate Companies",
         "text": """
 Collect data for 1000 Saudi real estate companies.
 
@@ -28,14 +32,7 @@ Manual work is acceptable but automation is preferred.
     },
     {
         "name": "Power BI Dashboard",
-        "score": 65,
-        "categories": ["power_bi", "data_analysis"],
-        "positive_matches": [
-            {"keyword": "power bi"},
-            {"keyword": "dashboard"},
-            {"keyword": "dax"},
-        ],
-        "soft_negative_matches": [],
+        "title": "Power BI Dashboard Needed",
         "text": """
 Need a Power BI dashboard built from sales data.
 
@@ -49,10 +46,7 @@ Requirements:
     },
     {
         "name": "Portfolio Website",
-        "score": 40,
-        "categories": ["portfolio"],
-        "positive_matches": [{"keyword": "portfolio website"}],
-        "soft_negative_matches": [],
+        "title": "Personal Portfolio Website",
         "text": """
 Need a personal portfolio website.
 
@@ -67,15 +61,7 @@ Responsive.
     },
     {
         "name": "ERP System",
-        "score": 55,
-        "categories": ["python"],
-        "positive_matches": [
-            {"keyword": "python"},
-            {"keyword": "dashboard"},
-        ],
-        "soft_negative_matches": [
-            {"keyword": "erp"},
-        ],
+        "title": "Complete ERP System",
         "text": """
 Need a complete ERP system.
 
@@ -92,13 +78,7 @@ Python backend.
     },
     {
         "name": "SaaS Platform",
-        "score": 70,
-        "categories": ["power_bi"],
-        "positive_matches": [
-            {"keyword": "power bi"},
-            {"keyword": "dashboard"},
-        ],
-        "soft_negative_matches": [],
+        "title": "SaaS Platform with Power BI Reporting",
         "text": """
 Build a SaaS platform.
 
@@ -121,24 +101,29 @@ for test in TEST_CASES:
     print(test["name"])
     print("=" * 70)
 
-    result = evaluate_job(
-        test["text"],
-        {
-            "score": test["score"],
-            "categories": test["categories"],
-            "positive_matches": test["positive_matches"],
-            "soft_negative_matches": test["soft_negative_matches"],
-        },
-    )
+    filter_result = keyword_filter(test["text"], title=test["title"])
 
-    print(f"Decision           : {result['decision']}")
-    print(f"Confidence         : {result['confidence']}")
-    print(f"Project Type       : {result['project_type']}")
-    print(f"Primary Deliverable: {result['primary_deliverable']}")
-    print(f"Skills             : {', '.join(result['skills_detected'])}")
-    print()
-    print("Reason")
-    print("-" * 70)
-    print(result["reason"])
-    print()
+    print(f"(keyword_filter decision: {filter_result['decision']}, "
+          f"needs_gemini={filter_result['needs_gemini']})")
 
+    try:
+        result = evaluate_job(test["text"], filter_result)
+
+        print(f"Decision           : {result['decision']}")
+        print(f"Confidence         : {result['confidence']}")
+        print(f"Project Type       : {result['project_type']}")
+        print(f"Primary Deliverable: {result['primary_deliverable']}")
+        print(f"Skills             : {', '.join(result['skills_detected'])}")
+        print()
+        print("Reason")
+        print("-" * 70)
+        print(result["reason"])
+
+    except Exception as e:
+        # No working Gemini/Groq credentials in this environment --
+        # that's fine here, this script's purpose is to exercise
+        # build_prompt()/keyword_filter() against the real schema,
+        # not to reach a live model.
+        print(f"(skipped: no working LLM credentials -- {e})")
+
+    print()

@@ -44,17 +44,21 @@ MIN_SUPPORTING_POSITIVE_FOR_LONE_CORE = 4
 
 def _contains_keyword(text: str, keyword: str) -> bool:
     """
-    English keywords use word boundaries to avoid false positives
-    like 'bot' matching 'robotics'.
+    All keywords use word-boundary matching to avoid false positives
+    like 'bot' matching 'robotics', or the Arabic word 'شيت' matching
+    inside an unrelated longer word like 'شيتات'.
 
-    Arabic keywords continue using substring matching because \\b
-    is unreliable for Arabic.
+    Python's `re` module is Unicode-aware for `str` patterns, so `\\b`
+    (which is defined in terms of `\\w`) works correctly for Arabic
+    too -- verified directly: `\\bشيت\\b` matches a standalone "شيت"
+    but not the "شيت" inside "شيتات". Note this does mean a keyword
+    won't match when a common Arabic prefix (ل/ب/و/ك/ال) is attached
+    directly with no space (e.g. "لإكسل"); that's a distinct,
+    acceptable tradeoff given the keyword lists already hand-curate
+    common spelling/attachment variants as separate entries.
     """
-    if re.search(r"[a-z]", keyword):
-        pattern = r"\b" + re.escape(keyword) + r"\b"
-        return re.search(pattern, text) is not None
-
-    return keyword in text
+    pattern = r"\b" + re.escape(keyword) + r"\b"
+    return re.search(pattern, text) is not None
 
 
 def _mask_keyword(text: str, keyword: str) -> str:
@@ -62,11 +66,7 @@ def _mask_keyword(text: str, keyword: str) -> str:
     Replace matched keyword with spaces so shorter overlapping
     keywords cannot match afterwards. Keeps string length unchanged.
     """
-    if re.search(r"[a-z]", keyword):
-        pattern = r"\b" + re.escape(keyword) + r"\b"
-    else:
-        pattern = re.escape(keyword)
-
+    pattern = r"\b" + re.escape(keyword) + r"\b"
     return re.sub(pattern, lambda m: " " * len(m.group(0)), text)
 
 
@@ -177,7 +177,13 @@ def keyword_filter(text: str, title: str = ""):
 
     matched = has_core_positive or bool(positive_supporting_hits)
 
-    hard_reject = bool(hard_reject_matches) and not matched
+    # Hard reject is an independent safety net (unpaid/internship/
+    # translation/etc.) and must win regardless of whether the
+    # posting also happens to mention a positive keyword -- e.g. an
+    # "unpaid internship, Excel/Power BI a plus" posting should still
+    # be rejected. Previously this was gated on `not matched`, which
+    # let any positive hit silently disable the reject entirely.
+    hard_reject = bool(hard_reject_matches)
 
     # --- Title-level signal (authoritative when present) -------------
     title_core_positive = bool(normalized_title) and _has_core_hit(normalized_title, _POSITIVE_CORE)

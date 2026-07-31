@@ -1,22 +1,13 @@
-from html import escape
-
 from telegram import (
-    Bot,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
 from telegram.constants import ParseMode
 
-from app.config import (
-    BOT_CHANNEL_ID,
-    BOT_TOKEN,
-)
+from app.config import BOT_CHANNEL_ID
 from app.logger import logger
-
-
-MAX_DESCRIPTION_LENGTH = 3000
-
-bot = Bot(BOT_TOKEN)
+from app.message_builder import build_job_message
+from app.telegram_bot import bot
 
 
 async def send_channel_notification(
@@ -29,53 +20,26 @@ async def send_channel_notification(
     reason: str,
     url: str = "",
     budget: str = "",
-    score: int | None = None,
     categories=None,
+    core_hit_count: int = 0,
+    supporting_weight: int = 0,
     ai_used: bool = False,
 ):
 
     if not BOT_CHANNEL_ID:
         return True
 
-    if categories is None:
-        categories = []
-
-    if description and len(description) > MAX_DESCRIPTION_LENGTH:
-        description = (
-            description[: MAX_DESCRIPTION_LENGTH - 3].rstrip()
-            + "..."
-        )
-
-    message = f"""🚀 <b>New Data Analysis Opportunity</b>
-
-📄 <b>{escape(title)}</b>
-🏢 <b>Platform</b>
-{escape(source)}"""
-
-    if budget:
-        message += f"""
-
-💰 <b>Budget</b>
-{escape(budget)}"""
-
-    if description:
-        message += f"""
-
-────────────────────────
-📋 <b>Description</b>
-{escape(description)}"""
-
-    if categories:
-        hashtags = " ".join(
-            f"#{category.replace(' ', '')}"
-            for category in categories
-        )
-
-        message += f"""
-
-────────────────────────
-🏷 <b>Tags</b>
-{escape(hashtags)}"""
+    message = build_job_message(
+        title=title,
+        description=description,
+        source=source,
+        reason=reason,
+        url=url,
+        budget=budget,
+        categories=categories,
+        ai_used=ai_used,
+        channel_style=True,
+    )
 
     keyboard = None
 
@@ -100,25 +64,15 @@ async def send_channel_notification(
             disable_web_page_preview=True,
         )
 
-        logger.log_notification(
-            job_uuid,
-            "Telegram Channel",
-            "Sent",
-        )
-
         return True
 
     except Exception as e:
-        logger.log_notification(
-            job_uuid,
-            "Telegram Channel",
-            "Failed",
-        )
 
         logger.log_error(
             "ChannelNotifier",
             e,
             job_uuid,
+            save=False,
         )
 
         return False

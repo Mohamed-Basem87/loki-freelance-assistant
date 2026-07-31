@@ -203,6 +203,11 @@ class ExcelLogger:
         self.save()
         self.workbook.close()
 
+    def has_job(self, job_uuid) -> bool:
+        """Cheap existence check so callers can skip reprocessing a
+        job they've already logged (see app.job_processor dedup)."""
+        return job_uuid in self._row_index
+
     def create_job(
         self,
         job_uuid,
@@ -213,12 +218,17 @@ class ExcelLogger:
         url="",
         filter_result=None,
         filter_time_ms=None,
+        save=True,
     ):
         """
         `filter_result` is expected to be the dict returned by
         `filters.keyword_filter()`. Passing the whole dict (instead of
         a dozen individual keyword arguments) keeps this call in sync
         automatically as the filter's evidence trail evolves.
+
+        `save=False` lets a caller defer the (expensive, full-workbook)
+        disk write and batch several updates for the same job into one
+        `save()` at the end -- see app.job_processor.process_job.
         """
 
         filter_result = filter_result or {}
@@ -266,9 +276,11 @@ class ExcelLogger:
         ])
 
         self._row_index[job_uuid] = ws.max_row
-        self.save()
 
-    def update_job(self, job_uuid, **fields):
+        if save:
+            self.save()
+
+    def update_job(self, job_uuid, save=True, **fields):
 
         row = self._row_index.get(job_uuid)
 
@@ -290,7 +302,9 @@ class ExcelLogger:
                 column=COLUMN_MAP[key],
             ).value = value
 
-        self.save()
+        if save:
+            self.save()
+
         return True
 
     def log_gemini(
@@ -303,6 +317,7 @@ class ExcelLogger:
         response_time_ms,
         decision,
         confidence,
+        save=True,
     ):
 
         ws = self.workbook["Gemini"]
@@ -319,13 +334,15 @@ class ExcelLogger:
             confidence,
         ])
 
-        self.save()
+        if save:
+            self.save()
 
     def log_notification(
         self,
         job_uuid,
         platform,
         status,
+        save=True,
     ):
 
         ws = self.workbook["Notifications"]
@@ -337,13 +354,15 @@ class ExcelLogger:
             status,
         ])
 
-        self.save()
+        if save:
+            self.save()
 
     def log_error(
         self,
         module,
         error,
         job_uuid="",
+        save=True,
     ):
 
         ws = self.workbook["Errors"]
@@ -355,7 +374,8 @@ class ExcelLogger:
             str(error),
         ])
 
-        self.save()
+        if save:
+            self.save()
 
 
 logger = ExcelLogger()

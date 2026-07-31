@@ -9,15 +9,38 @@ from app.logger import logger
 from app.notifier import send_notification
 
 
+# Deterministic namespace for deriving job_uuid from (source, job_id).
+# Using uuid5 instead of uuid4 means the same underlying message/
+# project always maps to the same job_uuid, so a job that gets
+# reprocessed (e.g. after a state.json reset or a FreeHub cache
+# reset on restart) is recognized as a duplicate instead of silently
+# creating a second row every time. See logger.has_job().
+_JOB_UUID_NAMESPACE = uuid.UUID("6f6e6465-7370-4a6f-6273-7570706f7274")
+
+
+def _make_job_uuid(source: str, job_id: str) -> str:
+    return str(
+        uuid.uuid5(_JOB_UUID_NAMESPACE, f"{source}:{job_id}")
+    )
+
+
 async def process_job(job: dict, job_id: str):
 
     start = time.perf_counter()
 
-    job_uuid = str(uuid.uuid4())
+    job_uuid = _make_job_uuid(job.get("source", ""), job_id)
+
+    if logger.has_job(job_uuid):
+        # Already logged (and, if should_notify fired, already
+        # notified) -- this is a reprocessing of the same source
+        # message/project, not a new job. Skip it rather than
+        # creating a duplicate row and sending a duplicate
+        # notification.
+        return
 
     filter_text = f"{job['title']}\n{job['description']}"
 
-    result = keyword_filter(filter_text)
+    result = keyword_filter(filter_text, title=job["title"])
 
     filter_time = round(
         (time.perf_counter() - start) * 1000,
@@ -29,23 +52,11 @@ async def process_job(job: dict, job_id: str):
         job_id=job_id,
         source=job["source"],
         title=job["title"],
-        company="",
+        company=job.get("company", ""),
         url=job["url"],
-        score=result.get("score"),
-        categories=result.get("categories", []),
-        positive_matches=[
-            m["keyword"]
-            for m in result.get("positive_matches", [])
-        ],
-        negative_matches=[
-            m["keyword"]
-            for m in result.get("soft_negative_matches", [])
-        ],
-        hard_reject=result["hard_reject"],
-        notify_directly=result["notify_directly"],
-        needs_gemini=result["needs_gemini"],
-        decision_reason="Initial Filter",
+        filter_result=result,
         filter_time_ms=filter_time,
+        save=False,
     )
 
     final_decision = "Rejected"
@@ -63,7 +74,7 @@ async def process_job(job: dict, job_id: str):
     elif result["notify_directly"]:
 
         final_decision = "Accepted"
-        decision_reason = "High Keyword Score"
+        decision_reason = result["reason"]
         should_notify = True
 
     elif result["needs_gemini"]:
@@ -84,6 +95,7 @@ async def process_job(job: dict, job_id: str):
                 "Gemini",
                 e,
                 job_uuid,
+                save=False,
             )
 
             final_decision = "Rejected"
@@ -107,16 +119,19 @@ async def process_job(job: dict, job_id: str):
             logger.update_job(
                 job_uuid,
                 gemini_decision=gemini["decision"],
+                save=False,
             )
 
             logger.log_gemini(
                 job_uuid=job_uuid,
-                score_before=result["score"],
+                decision_before=result["decision"],
+                reason_before=result["reason"],
                 prompt_tokens="",
                 completion_tokens="",
                 response_time_ms=gemini_time,
                 decision=gemini["decision"],
                 confidence=gemini["confidence"],
+                save=False,
             )
 
     else:
@@ -127,6 +142,7 @@ async def process_job(job: dict, job_id: str):
         job_uuid,
         final_decision=final_decision,
         decision_reason=decision_reason,
+        save=False,
     )
 
     if should_notify:
@@ -140,12 +156,33 @@ async def process_job(job: dict, job_id: str):
             reason=decision_reason,
             url=job["url"],
             budget=job["budget"],
-            score=result["score"],
             categories=result["categories"],
+            core_hit_count=result["core_positive_hit_count"],
+            supporting_weight=result["supporting_positive_weight"],
             ai_used=result["needs_gemini"],
         )
 
-        await send_notification(**notification_kwargs)
-        await send_channel_notification(**notification_kwargs)
+        sent_direct = await send_notification(**notification_kwargs)
+        sent_channel = await send_channel_notification(**notification_kwargs)
 
-    logger.save()
+        logger.log_notification(
+            job_uuid,
+            "Telegram",
+            "Sent" if sent_direct else "Failed",
+            save=False,
+        )
+        logger.log_notification(
+            job_uuid,
+            "Telegram Channel",
+            "Sent" if sent_channel else "Failed",
+            save=False,
+        )
+
+    # One full-workbook save per job instead of one per intermediate
+    # step (create_job / update_job x2 / log_gemini / log_notification
+    # x2 previously each saved independently -- up to ~7 full
+    # serializations for a single job). Offloaded to a thread so the
+    # (synchronous, and O(total history) per call) openpyxl write
+    # doesn't stall the event loop that's also handling live Telegram
+    # events and FreeHub polling.
+    await asyncio.to_thread(logger.save)

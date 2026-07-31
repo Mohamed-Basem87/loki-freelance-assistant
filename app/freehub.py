@@ -5,6 +5,7 @@ from app.config import (
     FREEHUB_USER_ID,
     FREEHUB_PAGE_SIZE,
 )
+from app.state import state
 
 BASE_URL = "http://ec2-51-21-119-160.eu-north-1.compute.amazonaws.com/v1/users"
 
@@ -13,10 +14,43 @@ SOURCES = (
     "freelancer",
 )
 
-_seen = {
-    source: deque(maxlen=100)
-    for source in SOURCES
-}
+# aiohttp has no default total timeout, so an unresponsive backend
+# could otherwise stall a poll cycle indefinitely.
+_REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
+
+_SEEN_MAXLEN = 100
+
+# Seeded from persisted state, not an empty cache -- previously this
+# was in-memory only, so every process restart silently reset dedup
+# tracking and any project posted between shutdown and the next
+# successful poll was lost for good (never recovered, unlike the
+# Telegram side which persists a watermark). A restart now resumes
+# from whatever was last saved.
+#
+# Built lazily (on first poll_once() call) rather than at import
+# time: app.state.state.load() runs inside app.bot.run(), which
+# happens *after* this module has already been imported (bot.py
+# imports app.freehub_worker, which imports this module, before it
+# calls state.load()) -- reading state at import time would always
+# see the empty pre-load default.
+_seen = {source: deque(maxlen=_SEEN_MAXLEN) for source in SOURCES}
+_seeded_from_state = False
+
+
+def _ensure_seeded_from_state():
+    global _seeded_from_state
+
+    if _seeded_from_state:
+        return
+
+    for source in SOURCES:
+        _seen[source].extend(state.get_freehub_seen(source))
+
+    _seeded_from_state = True
+
+
+def _persist_seen(source: str):
+    state.set_freehub_seen(source, list(_seen[source]))
 
 
 async def fetch_projects(session: aiohttp.ClientSession, source: str):
@@ -37,12 +71,17 @@ async def fetch_projects(session: aiohttp.ClientSession, source: str):
 async def poll_once():
     """
     Returns only new projects since the previous poll.
-    The first poll seeds the in-memory cache and returns nothing.
+    The first-ever poll (no persisted state for this source) seeds
+    the cache and returns nothing; every poll after that -- including
+    the first one after a restart, since the cache is now persisted
+    -- compares against what was actually seen before.
     """
+
+    _ensure_seeded_from_state()
 
     new_projects = []
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=_REQUEST_TIMEOUT) as session:
 
         for source in SOURCES:
 
@@ -54,11 +93,14 @@ async def poll_once():
 
             seen = _seen[source]
 
-            # First run -> seed cache only
+            # First-ever run for this source (nothing persisted, and
+            # nothing seen yet this process) -> seed cache only.
             if not seen:
 
                 for project in projects:
                     seen.append(project["uid"])
+
+                _persist_seen(source)
 
                 print(
                     f"[FREEHUB] Seeded {source} cache ({len(projects)} jobs)"
@@ -67,6 +109,8 @@ async def poll_once():
                 continue
 
             # Oldest -> newest
+            changed = False
+
             for project in reversed(projects):
 
                 uid = project["uid"]
@@ -76,5 +120,9 @@ async def poll_once():
 
                 seen.append(uid)
                 new_projects.append(project)
+                changed = True
+
+            if changed:
+                _persist_seen(source)
 
     return new_projects
