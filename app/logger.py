@@ -8,6 +8,17 @@ from openpyxl import Workbook, load_workbook
 LOG_FILE = Path(__file__).resolve().parent.parent / "logs" / "freelance_bot_logs.xlsx"
 
 
+# ------------------------------------------------------------------
+# Jobs sheet — one row per job, reflecting the tiered decision engine.
+#
+# Compared to the old scoring model, "Score" is gone (there is no
+# single number driving the decision anymore) and is replaced with the
+# actual evidence trail: which core/supporting keywords fired on each
+# side, and the plain-English `reason` the decision table returned.
+# This is what makes the log self-explanatory without re-deriving the
+# math by hand.
+# ------------------------------------------------------------------
+
 JOB_HEADERS = [
     "Timestamp",
     "Job UUID",
@@ -16,17 +27,35 @@ JOB_HEADERS = [
     "Title",
     "Company",
     "URL",
-    "Score",
+
+    "Decision",
+    "Decision Reason",
+
     "Categories",
-    "Positive Matches",
-    "Negative Matches",
+    "Negative Categories",
+
+    "Has Core Positive",
+    "Has Core Negative",
+    "Core Positive Hit Count",
+    "Supporting Positive Weight",
+    "Supporting Negative Weight",
+
+    "Title Core Positive",
+    "Title Core Negative",
+
+    "Core Positive Matches",
+    "Supporting Positive Matches",
+    "Core Negative Matches",
+    "Supporting Negative Matches",
+
     "Hard Reject",
+    "Hard Reject Matches",
+
     "Notify Directly",
     "Needs Gemini",
     "Gemini Decision",
     "Notification Status",
     "Final Decision",
-    "Decision Reason",
     "Filter Time (ms)",
 ]
 
@@ -34,7 +63,8 @@ JOB_HEADERS = [
 GEMINI_HEADERS = [
     "Timestamp",
     "Job UUID",
-    "Score Before",
+    "Decision Before",
+    "Reason Before",
     "Prompt Tokens",
     "Completion Tokens",
     "Response Time (ms)",
@@ -67,19 +97,47 @@ COLUMN_MAP = {
     "title": 5,
     "company": 6,
     "url": 7,
-    "score": 8,
-    "categories": 9,
-    "positive_matches": 10,
-    "negative_matches": 11,
-    "hard_reject": 12,
-    "notify_directly": 13,
-    "needs_gemini": 14,
-    "gemini_decision": 15,
-    "notification_status": 16,
-    "final_decision": 17,
-    "decision_reason": 18,
-    "filter_time_ms": 19,
+
+    "decision": 8,
+    "decision_reason": 9,
+
+    "categories": 10,
+    "negative_categories": 11,
+
+    "has_core_positive": 12,
+    "has_core_negative": 13,
+    "core_positive_hit_count": 14,
+    "supporting_positive_weight": 15,
+    "supporting_negative_weight": 16,
+
+    "title_core_positive": 17,
+    "title_core_negative": 18,
+
+    "core_positive_matches": 19,
+    "supporting_positive_matches": 20,
+    "core_negative_matches": 21,
+    "supporting_negative_matches": 22,
+
+    "hard_reject": 23,
+    "hard_reject_matches": 24,
+
+    "notify_directly": 25,
+    "needs_gemini": 26,
+    "gemini_decision": 27,
+    "notification_status": 28,
+    "final_decision": 29,
+    "filter_time_ms": 30,
 }
+
+
+def _join_matches(matches):
+    """Render a list of {"keyword", "weight", "category"} dicts as a
+    compact, human-readable string for a spreadsheet cell."""
+    if not matches:
+        return ""
+    return ", ".join(
+        f"{m['keyword']}({m['weight']}/{m['category']})" for m in matches
+    )
 
 
 class ExcelLogger:
@@ -153,16 +211,17 @@ class ExcelLogger:
         title="",
         company="",
         url="",
-        score=None,
-        categories=None,
-        positive_matches=None,
-        negative_matches=None,
-        hard_reject=False,
-        notify_directly=False,
-        needs_gemini=False,
-        decision_reason="",
+        filter_result=None,
         filter_time_ms=None,
     ):
+        """
+        `filter_result` is expected to be the dict returned by
+        `filters.keyword_filter()`. Passing the whole dict (instead of
+        a dozen individual keyword arguments) keeps this call in sync
+        automatically as the filter's evidence trail evolves.
+        """
+
+        filter_result = filter_result or {}
 
         ws = self.workbook["Jobs"]
 
@@ -174,17 +233,35 @@ class ExcelLogger:
             title,
             company,
             url,
-            score,
-            ", ".join(categories or []),
-            ", ".join(positive_matches or []),
-            ", ".join(negative_matches or []),
-            hard_reject,
-            notify_directly,
-            needs_gemini,
+
+            filter_result.get("decision", ""),
+            filter_result.get("reason", ""),
+
+            ", ".join(filter_result.get("categories", []) or []),
+            ", ".join(filter_result.get("negative_categories", []) or []),
+
+            filter_result.get("has_core_positive", False),
+            filter_result.get("has_core_negative", False),
+            filter_result.get("core_positive_hit_count", 0),
+            filter_result.get("supporting_positive_weight", 0),
+            filter_result.get("supporting_negative_weight", 0),
+
+            filter_result.get("title_core_positive", False),
+            filter_result.get("title_core_negative", False),
+
+            _join_matches(filter_result.get("positive_core_matches")),
+            _join_matches(filter_result.get("positive_supporting_matches")),
+            _join_matches(filter_result.get("negative_core_matches")),
+            _join_matches(filter_result.get("negative_supporting_matches")),
+
+            filter_result.get("hard_reject", False),
+            ", ".join(filter_result.get("hard_reject_matches", []) or []),
+
+            filter_result.get("notify_directly", False),
+            filter_result.get("needs_gemini", False),
             "",
             "",
             "",
-            decision_reason,
             filter_time_ms,
         ])
 
@@ -219,7 +296,8 @@ class ExcelLogger:
     def log_gemini(
         self,
         job_uuid,
-        score_before,
+        decision_before,
+        reason_before,
         prompt_tokens,
         completion_tokens,
         response_time_ms,
@@ -232,7 +310,8 @@ class ExcelLogger:
         ws.append([
             datetime.now().isoformat(),
             job_uuid,
-            score_before,
+            decision_before,
+            reason_before,
             prompt_tokens,
             completion_tokens,
             response_time_ms,
