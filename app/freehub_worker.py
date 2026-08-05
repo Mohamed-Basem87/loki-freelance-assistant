@@ -28,6 +28,11 @@ async def freehub_worker():
                     job = {
                         "title": project["title"],
                         "description": project["description"],
+                        # Fallback raw text for logging/debugging.
+                        "raw_text": (
+                            f"{project['title']}\n\n"
+                            f"{project['description']}"
+                        ),
                         # Show the real marketplace instead of "FreeHub"
                         "source": project.get("platform", "FreeHub"),
                         "budget": project.get("price", ""),

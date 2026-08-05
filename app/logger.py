@@ -41,6 +41,9 @@ JOB_HEADERS = [
     "Job ID",
     "Source",
     "Title",
+    "Description",
+    "Raw Message",
+    "Filter Text",
     "Company",
     "URL",
 
@@ -110,39 +113,44 @@ COLUMN_MAP = {
     "job_uuid": 2,
     "job_id": 3,
     "source": 4,
+
     "title": 5,
-    "company": 6,
-    "url": 7,
+    "description": 6,
+    "raw_message": 7,
+    "filter_text": 8,
 
-    "decision": 8,
-    "decision_reason": 9,
+    "company": 9,
+    "url": 10,
 
-    "categories": 10,
-    "negative_categories": 11,
+    "decision": 11,
+    "decision_reason": 12,
 
-    "has_core_positive": 12,
-    "has_core_negative": 13,
-    "core_positive_hit_count": 14,
-    "supporting_positive_weight": 15,
-    "supporting_negative_weight": 16,
+    "categories": 13,
+    "negative_categories": 14,
 
-    "title_core_positive": 17,
-    "title_core_negative": 18,
+    "has_core_positive": 15,
+    "has_core_negative": 16,
+    "core_positive_hit_count": 17,
+    "supporting_positive_weight": 18,
+    "supporting_negative_weight": 19,
 
-    "core_positive_matches": 19,
-    "supporting_positive_matches": 20,
-    "core_negative_matches": 21,
-    "supporting_negative_matches": 22,
+    "title_core_positive": 20,
+    "title_core_negative": 21,
 
-    "hard_reject": 23,
-    "hard_reject_matches": 24,
+    "core_positive_matches": 22,
+    "supporting_positive_matches": 23,
+    "core_negative_matches": 24,
+    "supporting_negative_matches": 25,
 
-    "notify_directly": 25,
-    "needs_gemini": 26,
-    "gemini_decision": 27,
-    "notification_status": 28,
-    "final_decision": 29,
-    "filter_time_ms": 30,
+    "hard_reject": 26,
+    "hard_reject_matches": 27,
+
+    "notify_directly": 28,
+    "needs_gemini": 29,
+    "gemini_decision": 30,
+    "notification_status": 31,
+    "final_decision": 32,
+    "filter_time_ms": 33,
 }
 
 
@@ -250,6 +258,9 @@ class ExcelLogger:
         job_id="",
         source="",
         title="",
+        description="",
+        raw_message="",
+        filter_text="",
         company="",
         url="",
         filter_result=None,
@@ -276,7 +287,12 @@ class ExcelLogger:
             job_uuid,
             job_id,
             source,
+
             title,
+            description,
+            raw_message,
+            filter_text,
+
             company,
             url,
 
