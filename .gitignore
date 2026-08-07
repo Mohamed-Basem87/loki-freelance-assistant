@@ -34,3 +34,7 @@ logs/freelance_bot_logs.xlsx
 # OS files
 .DS_Store
 Thumbs.db
+
+# Loki Auditor (Local Development Tool)
+.loki-auditor/
+AGENTS.md
