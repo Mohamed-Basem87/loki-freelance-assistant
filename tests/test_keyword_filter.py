@@ -295,6 +295,73 @@ for _case in _auto_cases:
     )
 
 # ------------------------------------------------------------------
+# Regression checks for the scraping / content-creator patch
+# (daily audit 2026-08-07). These auto-notified on a lone excel /
+# excel-workbook core hit inside an otherwise scraping or lead-gen
+# posting; the automation-core "scraper/scraping/web scraping" words
+# and the new marketing-core content-creator/follower words must route
+# them to Gemini (mixed core signals), never to a blind notification.
+# ------------------------------------------------------------------
+_scrape_leadgen_cases = [
+    {
+        "name": "Resume scraper (real job 40633076)",
+        "title": "Las Vegas Resume Scraper",
+        "text": (
+            # Mirrors production filter_text: the title is repeated at the
+            # top of the body, so the "scraper" core negative is visible to
+            # the body-level match and flips the lone "excel workbook" core
+            # positive into mixed_core_signals.
+            "Las Vegas Resume Scraper. "
+            "I need a robust script that can automatically collect every "
+            "publicly available resume for Las Vegas candidates on Indeed, "
+            "LinkedIn, Glassdoor. For each profile the scrape should capture "
+            "name, phone, email. Deliverables: a clean CSV file and an "
+            "identical Excel workbook containing all scraped records."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Property scraper (real job 40627138)",
+        "title": "Weekly Daft.ie MyHome Scraper",
+        "text": (
+            "Weekly scraping of Daft.ie and MyHome listings into an Excel "
+            "file using Selenium."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Arabic content-creator database (real job 6787)",
+        "title": "قاعدة بيانات لصناع محتوى عرب في مجال الطعام والمطاعم",
+        "text": (
+            "مطلوب بناء قاعدة بيانات منظمة تضم 500 صانع محتوى عربي على "
+            "الأقل في مجال المأكولات والمطاعم. عدد المتابعين أكثر من 100000 "
+            "متابع. طريقة التسليم ملف Excel منظم وقابل للفرز والتصفية."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Genuine Excel PDF job must still notify",
+        "title": "Batch Extract PDF Tables to Excel",
+        "text": (
+            "I have a PDF packed with tables of numerical data and I need "
+            "all of them moved into a single tidy Excel workbook ready for "
+            "pivot tables and calculations. Values preserved as numbers for "
+            "formulas."
+        ),
+        "expected": "notify_directly",
+    },
+]
+
+for _case in _scrape_leadgen_cases:
+    _res = keyword_filter(_case["text"], title=_case["title"])
+    assert _res["decision"] == _case["expected"], (
+        f"{_case['name']}: expected {_case['expected']}, "
+        f"got {_res['decision']} ({_res['reason']})"
+    )
+
+print("All scraping/content-creator regression checks passed.")
+
+# ------------------------------------------------------------------
 # Regression checks for the Arabic software bug-fixing / maintenance
 # patch (daily audit 2026-08-07). مستقل job 46233 ("إصلاح أخطاء لوحة
 # تحكم نظام تدريبي (ربط إكسل وصلاحيات)") auto-notified on a lone title

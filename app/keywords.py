@@ -302,8 +302,11 @@ POSITIVE_KEYWORDS = {
             "json": 1,
             "data processing": 4,
             "data pipeline": 4,
-            "web scraping": 2,
-            "scraping": 1,
+            # "web scraping" / "scraping" were moved OUT of the positive
+            # python list (see the automation category in NEGATIVE_KEYWORDS):
+            # in production every scraping posting was a web-automation job,
+            # not analysis work — treating scraping as positive evidence
+            # helped false-positive notifications fire on scraper jobs.
         },
     },
 }
@@ -699,6 +702,20 @@ NEGATIVE_KEYWORDS = {
             "data entry": 6,
             "ادخال بيانات": 6,
             "إدخال بيانات": 6,
+            # web scraping / scraper vocabulary. In production every
+            # scraping posting was a web-automation job, not analysis:
+            # "Weekly Daft.ie MyHome Scraper" (40627138) and "Las Vegas
+            # Resume Scraper" (40633076) both auto-notified on a lone
+            # excel/excel-workbook mention inside an otherwise
+            # scraping-automation posting. Deliberately CORE (not
+            # supporting) so "scraper" + a core positive routes to
+            # mixed_core_signals -> Gemini instead of a blind
+            # notification; previously these words were wrongly scored
+            # as POSITIVE python evidence.
+            "web scraping": 6,
+            "scraping": 6,
+            "scraper": 6,
+            "scrapers": 6,
         },
         "supporting": {
             # web-form / browser automation: verbatim in Web Form
@@ -729,6 +746,33 @@ NEGATIVE_KEYWORDS = {
             # 40630975.
             "emergent": 4,
         },
+    },
+
+    "marketing": {
+        # Influencer / content-creator lead generation. Building a
+        # database of "content creators", "influencers" or "followers"
+        # (with contact info) is lead-gen / data-collection work, not
+        # data analysis. Auto-notified false positive: مستقل 6787
+        # "قاعدة بيانات لصناع محتوى عرب في مجال الطعام والمطاعم" (a
+        # content-creator contact database delivered as an Excel file)
+        # fired on a lone "excel" core mention. Core so "excel" +
+        # "صانع محتوى" routes to mixed_core_signals -> Gemini rather
+        # than a blind notification. English equivalents are the direct
+        # translations of the Arabic terms; both were observed only in
+        # non-analysis production postings (content creators/influencer
+        # partnerships, follower-growth gigs, etc.).
+        "core": {
+            "content creator": 6,
+            "content creators": 6,
+            "influencer": 6,
+            "influencers": 6,
+            "followers": 6,
+            "صانع محتوى": 6,
+            "صناع محتوى": 6,
+            "صناع المحتوى": 6,
+            "متابعين": 6,
+        },
+        "supporting": {},
     },
 }
 
