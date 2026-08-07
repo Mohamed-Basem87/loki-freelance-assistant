@@ -27,6 +27,15 @@ SUPPORTING_POSITIVE_MIN_FOR_GEMINI = 12
 # posting also reads a lot like a full software project), downgrade
 # from an automatic notification to a Gemini review instead of trusting
 # the core-positive signal blindly.
+#
+# Left at 14 (not lowered, see prior draft). Re-checked against the
+# 876-job audit: once the vocabulary additions below are in place, the
+# one false positive that motivated the lower threshold ("Flask Web App
+# With Auth") reaches a supporting-negative weight of exactly 14 on
+# vocabulary alone -- the >= comparison catches it right at the
+# original threshold. The vocabulary change was the actual fix; the
+# threshold move added no measurable coverage on top of it, so it's not
+# justified as an independent change.
 SUPPORTING_NEGATIVE_DOWNGRADE_THRESHOLD = 14
 
 # If exactly ONE core-positive keyword fired (no second core hit to

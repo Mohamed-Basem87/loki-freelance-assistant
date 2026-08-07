@@ -51,7 +51,13 @@ POSITIVE_KEYWORDS = {
             "بور بي": 10,
         },
         "supporting": {
-            "dashboard": 4,
+            # Weight audit: bare "dashboard" (singular) was weak (7/32,
+            # 22% precision) -- it fires just as often on admin/SaaS/CRM
+            # dashboards as on BI dashboards. "dashboards" (plural) was
+            # notably better (7/13, 54%) and left unchanged rather than
+            # conflating the two. "لوحة تحكم" mirrored the singular
+            # pattern (0/4) so it was lowered to match.
+            "dashboard": 2,
             "dashboards": 4,
             "interactive dashboard": 5,
             "measure": 3,
@@ -60,7 +66,7 @@ POSITIVE_KEYWORDS = {
             "star schema": 6,
             "data model": 5,
             "data modeling": 5,
-            "لوحة تحكم": 4,
+            "لوحة تحكم": 2,
             "لوحة معلومات": 4,
             "داشبورد": 4,
         },
@@ -74,6 +80,7 @@ POSITIVE_KEYWORDS = {
             "إكسل": 8,
             "اكسيل": 8,
             "pivot table": 8,
+            "pivot tables": 8,
             "vlookup": 8,
             "xlookup": 8,
             "index match": 8,
@@ -89,40 +96,69 @@ POSITIVE_KEYWORDS = {
             "اكسل شيت": 6,
         },
         "supporting": {
-            "spreadsheet": 3,
-            "workbook": 2,
+            # Weight audit (876-job batch, ground-truth-corrected):
+            # workbook 95% precision (18/19), sheets 91% (10/11),
+            # spreadsheet 83% (10/12), google sheets 86% (6/7) -- all were
+            # sitting at generic-supporting weight (2-3) despite being
+            # strong, reliable signals. Increased accordingly. "sheet"
+            # (singular) was weaker (69%, 11/16) so only bumped modestly;
+            # left noticeably below "sheets" (plural) given the gap.
+            "spreadsheet": 4,
+            "workbook": 4,
             "worksheet": 2,
-            "sheet": 2,
-            "sheets": 2,
-            "xlsx": 3,
+            "sheet": 3,
+            "sheets": 4,
+            "xlsx": 4,
             "xls": 3,
             "شيت": 3,
             "شيتات": 3,
             "pivot": 2,
+            "pivots": 2,
+            "pivot views": 3,
             "lookup": 2,
             "remove duplicates": 3,
             "conditional formatting": 3,
             "financial model": 6,
             "financial modeling": 6,
-            "google sheets": 3,
+            "google sheets": 4,
         },
     },
 
     "sql": {
-        "core": {
-            "sql": 6,
-            "sql server": 7,
-            "mysql": 6,
-            "postgresql": 6,
-            "postgres": 6,
-            "sqlite": 6,
-            "oracle": 6,
-            "stored procedure": 5,
-            "قاعدة بيانات": 6,
-        },
+        # Weight audit (876-job batch, ground-truth-corrected): every
+        # specific DBMS product name here scored 0% precision as a lone
+        # core-positive signal -- mysql 0/18, postgresql 0/18,
+        # postgres 0/3, sqlite 0/3, oracle 0/2, "sql server" 0/4, all
+        # false positives were DB-admin/backend/ERP jobs that happened to
+        # name a database engine, not analysis work. Bare "sql" itself
+        # was only slightly better (2/16, 12%). "Core" is supposed to
+        # mean "unambiguous on its own" -- none of these meet that bar,
+        # so all are demoted to supporting. The new negative-keyword
+        # additions elsewhere in this file (DB recovery, access control,
+        # netsuite, etc.) are the intended catch for the DBA/ERP cases;
+        # this demotion is the complementary fix on the positive side.
+        # "stored procedure" and "قاعدة بيانات" (Arabic "database") had
+        # no comparable evidence of being unambiguous either -- "قاعدة
+        # بيانات" was in fact 0/2 -- so both are demoted too, matching
+        # how bare "database" was already (correctly) treated as
+        # supporting rather than core.
+        "core": {},
         "supporting": {
+            "sql": 5,
+            "sql server": 5,
+            "mysql": 4,
+            "postgresql": 4,
+            "postgres": 4,
+            "sqlite": 4,
+            "oracle": 4,
+            "stored procedure": 4,
+            "قاعدة بيانات": 4,
             "database": 2,
-            "query": 2,
+            # "query" (singular) was a strong, underweighted signal
+            # (9/11, 82% precision) -- increased. "queries" (plural) was
+            # the opposite (1/7, 14%) -- left as-is rather than raised;
+            # flagging the asymmetry rather than averaging the two away.
+            "query": 4,
             "queries": 2,
             "استعلام": 3,
             "استعلامات": 3,
@@ -147,8 +183,11 @@ POSITIVE_KEYWORDS = {
             "تابلو": 8,
         },
         "supporting": {
-            "analytics": 3,
-            "analysis": 2,
+            # "analysis" (bare) was reasonably strong (17/24, 71%) and
+            # underweighted -- increased. "analytics" was closer to a
+            # coinflip (4/11, 36%) despite a higher weight -- decreased.
+            "analytics": 2,
+            "analysis": 3,
             "sales analysis": 5,
             "marketing analysis": 4,
             "market analysis": 4,
@@ -179,6 +218,8 @@ POSITIVE_KEYWORDS = {
             "cohort analysis": 4,
             "customer segmentation": 4,
             "data validation": 3,
+            "data curation": 3,
+            "data quality": 3,
             "pivot chart": 3,
             "dataset": 2,
             "datasets": 2,
@@ -223,6 +264,8 @@ POSITIVE_KEYWORDS = {
             "تنضيف": 2,
             "ينظف": 2,
             "تنقية": 2,
+            "جودة البيانات": 3,
+            "التحقق من صحة البيانات": 3,
             "تجهيز البيانات": 3,
             "تهيئة البيانات": 3,
             "تحضير البيانات": 3,
@@ -333,6 +376,28 @@ NEGATIVE_KEYWORDS = {
             "fullstack": 9,
             "مطور تطبيقات": 7,
             "مهندس برمجيات": 7,
+            # DB administration/recovery: this bot's core-positive "sql"/
+            # "mysql"/"postgresql" keywords are unavoidably ambiguous
+            # between "analyze this data" and "administer this database".
+            # These phrases only ever showed up (in the 876-job audit) on
+            # DBA-flavored postings, e.g. "Repair & Restore MySQL Backup"
+            # ("restore process keeps flagging the dump as corrupted") and
+            # "PostgreSQL Database Development for QR Code ID System"
+            # ("automatic backups, audit logging... access control
+            # systems"). Deliberately core-tier (not supporting) so a job
+            # with e.g. "mysql" + "backup restore" routes to
+            # mixed_core_signals -> Gemini instead of blind auto-notify —
+            # NOT an outright reject, since a job that's genuinely both
+            # (rare, but possible) still deserves a human/LLM look.
+            "database recovery": 6,
+            "restore backup": 6,
+            "backup restore": 6,
+            "corrupted database": 6,
+            "database dump": 5,
+            "access control": 6,
+            "audit logging": 6,
+            "role-based access": 6,
+            "encryption": 6,
         },
         "supporting": {
             "flask": 3,
@@ -356,6 +421,31 @@ NEGATIVE_KEYWORDS = {
             "واجهة خلفية": 4,
             "تسجيل دخول": 2,
             "المصادقة": 2,
+            # Supporting (not core) deliberately: "user registration" /
+            # "authentication" flows are common enough that a lone mention
+            # shouldn't force a Gemini review by itself, only add to the
+            # weight of evidence. Exact phrases below came verbatim from
+            # "PHP E-commerce User Registration" ("fully-functioning user
+            # registration module") and "Flask Web App With Auth" ("user
+            # authentication (login, registration, session management...)").
+            "user registration": 3,
+            "registration module": 4,
+            "user authentication": 3,
+            "نظام تسجيل": 3,
+            "تسجيل مستخدمين": 3,
+            "إنشاء حساب": 3,
+            # Arabic mirrors of the DB-recovery / access-control core
+            # terms above. Same caveat as the enterprise-category Arabic
+            # additions: analogous translations, not directly observed in
+            # an Arabic posting in this batch, so kept at supporting
+            # weight rather than core.
+            "استعادة نسخة احتياطية": 4,
+            "استرجاع قاعدة البيانات": 4,
+            "نسخ احتياطي": 3,
+            "التحكم بالصلاحيات": 4,
+            "التشفير": 4,
+            "الامتثال": 3,
+            "سجل التدقيق": 4,
         },
     },
 
@@ -425,8 +515,15 @@ NEGATIVE_KEYWORDS = {
             "syllabus": 4,
             "lesson": 3,
             "lessons": 3,
-            "learning": 3,
-            "learn": 3,
+            # Weight audit: "learning" fired as a false alarm half the
+            # time (4/8 were still genuinely good jobs, 50%) and "learn"
+            # similarly (2/3, thin but consistent) -- almost certainly
+            # matching inside "machine learning" / "deep learning" on
+            # real ML/data-science postings, not education gigs. Lowered
+            # rather than removed, since the education-tutoring reading
+            # is still sometimes correct.
+            "learning": 1,
+            "learn": 1,
             "student": 3,
             "students": 3,
             "assignment": 2,
@@ -449,6 +546,25 @@ NEGATIVE_KEYWORDS = {
             "crm": 8,
             "wms": 8,
             "saas": 6,
+            # "Recruitment ORCLE NetSuite techno-functional" and "Oracle
+            # Integration Cloud (OIC) Engineer" both matched only on the
+            # sql-category "oracle" core-positive keyword; these are ERP
+            # engineering roles, not database/analysis work. Core-tier so
+            # "oracle" + "netsuite" routes to mixed_core_signals -> Gemini
+            # rather than blind auto-notify.
+            "netsuite": 7,
+            "suitescript": 7,
+            "suiteflow": 7,
+            "erp integration": 6,
+            # "Web Payroll & Android Tracker" ("end-to-end payroll
+            # platform... automated salary calculation, tax filing") and
+            # "Motorcycle Touring Billing Software Development" ("tour
+            # billing and data entry software... replace my Excel
+            # sheets") both matched only on a lone "excel" core-positive.
+            "payroll platform": 6,
+            "payroll system": 6,
+            "billing software": 6,
+            "billing system": 6,
         },
         "supporting": {
             "mvp": 3,
@@ -459,7 +575,13 @@ NEGATIVE_KEYWORDS = {
             "user management": 4,
             "hrm": 5,
             "pos": 4,
-            "inventory": 3,
+            # Weight audit: bare "inventory" false-alarmed 43% of the
+            # time (3/7) -- "inventory analysis"/"inventory forecasting"
+            # dashboards are a genuinely common, legitimate BI topic, so
+            # the word alone isn't strong evidence of inventory-*software*
+            # being built. "inventory management" (the fuller phrase)
+            # wasn't shown to have the same problem and is left as-is.
+            "inventory": 1,
             "inventory management": 5,
             "checkout": 3,
             "payment gateway": 4,
@@ -480,6 +602,18 @@ NEGATIVE_KEYWORDS = {
             "لوحة الأدمن": 4,
             "لوحة المدير": 3,
             "إدارة المستخدمين": 4,
+            # Arabic mirrors of the netsuite/billing/payroll terms above.
+            # Flagged distinctly in the writeup: unlike the English
+            # entries, these weren't observed verbatim in an Arabic
+            # posting in this batch (the 5 false positives that motivated
+            # this whole group were all English-source jobs) — they're
+            # analogous translations, added at a lower supporting weight
+            # rather than core to reflect that lower confidence.
+            "تكامل الأنظمة": 4,
+            "نظام رواتب": 4,
+            "منصة رواتب": 4,
+            "برنامج فوترة": 4,
+            "نظام فوترة": 4,
         },
     },
 
