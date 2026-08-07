@@ -256,8 +256,10 @@ POSITIVE_KEYWORDS = {
             "تنسيق البيانات": 2,
             "ترتيب البيانات": 2,
             "استخراج البيانات": 3,
-            "ادخال بيانات": 2,
-            "إدخال بيانات": 2,
+            # "data entry" (Arabic equivalents) moved to the negative
+            # "automation" category - six production data-entry jobs
+            # auto-notified on a bare excel/dashboard mention; data
+            # entry is clerical, not analysis (see NEGATIVE_KEYWORDS).
             "تنظيف الداتا": 4,
             "تجهيز الداتا": 3,
             "تنظيف": 2,
@@ -658,6 +660,61 @@ NEGATIVE_KEYWORDS = {
             "سيرفر": 2,
             "استضافة": 2,
             "رفع الموقع": 2,
+        },
+    },
+
+    "automation": {
+        # Software-automation / app-build vocabulary. Repeated
+        # production false positives were auto-notifying on a lone
+        # "excel"/"power bi" mention inside an otherwise
+        # software-build posting: Capstone 40626489, Web Form
+        # Auto-Filler 40626655, Digital Twin 40629830, Facebook
+        # tool 40630010, Emergent Data-Entry 40630975. These words
+        # route them to Gemini (heavy-supporting-negative) instead
+        # of a blind notification.
+        "core": {
+            # "data entry" is clerical, not analysis. Six distinct
+            # production jobs auto-notified on bare excel/dashboard
+            # wording: Mixed Data Entry & Email Support 40630261,
+            # Excel Data Entry from Online 40630761, Accurate
+            # Numerical Data Entry Task 40631312, Weekly Inventory
+            # Lockbox Data Entry 40627538, Emergent Data-Entry App
+            # Build 40630975, Web Form Auto-Filler 40626655. Core so
+            # "excel" + "data entry" -> mixed_core_signals -> Gemini.
+            # Arabic equivalents moved here from the positive
+            # data_analysis list where they were wrongly scored +2.
+            "data entry": 6,
+            "ادخال بيانات": 6,
+            "إدخال بيانات": 6,
+        },
+        "supporting": {
+            # web-form / browser automation: verbatim in Web Form
+            # Auto-Filler 40626655 and the Facebook tool 40630010.
+            "browser automation": 4,
+            "automation tool": 3,
+            "desktop application": 4,
+            "playwright": 4,
+            "selenium": 4,
+            "electron": 3,
+            # digital-twin / building-engineering terms: verbatim in
+            # Digital Twin Energy Optimization 40629830.
+            "digital twin": 4,
+            "revit": 3,
+            "bim": 3,
+            "hvac": 3,
+            "energyplus": 4,
+            # generative-AI RAG system vocabulary: verbatim in
+            # Capstone Web Design Project 40626489.
+            "generative ai": 4,
+            "semantic search": 4,
+            "document ingestion": 4,
+            "vector database": 4,
+            "retrieval augmented generation": 5,
+            "ai agent": 4,
+            "ai agents": 4,
+            # no-code app platform in Emergent Data-Entry App Build
+            # 40630975.
+            "emergent": 4,
         },
     },
 }

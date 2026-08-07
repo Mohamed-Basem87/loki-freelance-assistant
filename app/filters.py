@@ -44,7 +44,16 @@ SUPPORTING_NEGATIVE_DOWNGRADE_THRESHOLD = 14
 # core-positive hits are exempt from this check — they already
 # corroborate each other, which is a stronger position than one core
 # hit plus some supporting words.
-MIN_SUPPORTING_POSITIVE_FOR_LONE_CORE = 4
+#
+# Raised 4 -> 5 (daily audit 2026-08-07): "Cross-Platform Production
+# Scheduler App" (40631599, a desktop scheduling-app build) and
+# "Patient report program." (40628458, a report-generation program for
+# an optometry office) both auto-notified on a lone "excel" core hit
+# with supporting-positive weight exactly 4 - software-build FPs at
+# the boundary. Under the FP>FN rule, a lone core hit backed by only
+# ~4 supporting weight goes to Gemini for review rather than a blind
+# notification.
+MIN_SUPPORTING_POSITIVE_FOR_LONE_CORE = 5
 
 
 # ------------------------------------------------------------------

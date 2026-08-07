@@ -231,4 +231,68 @@ assert _unpaid_result["hard_reject"] is True, (
 )
 assert _unpaid_result["decision"] == "reject"
 
+# ------------------------------------------------------------------
+# Regression checks for the automation / data-entry vocabulary patch
+# (daily audit 2026-08-07). All of these previously auto-notified
+# (`notify_directly` / core_positive_clean); they must now route to
+# Gemini, never to a blind notification.
+# ------------------------------------------------------------------
+_auto_cases = [
+    {
+        "name": "Data entry job (mixed core)",
+        "title": "Excel Data Entry from Online",
+        "text": (
+            "I need someone to do data entry from online sources into an "
+            "Excel file. Accuracy matters."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Browser automation tool",
+        "title": "Web Form Auto-Filler Tool",
+        "text": (
+            "I need a browser automation tool using Playwright or Selenium "
+            "that reads an Excel file (xlsx) and fills web forms."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Digital twin energy build",
+        "title": "Building Digital Twin Energy Optimization",
+        "text": (
+            "I need a digital twin connected to BIM (Revit) files, running "
+            "EnergyPlus simulations, with a Power BI dashboard of KPIs."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Generative AI RAG build",
+        "title": "Capstone Web Design Project",
+        "text": (
+            "Build a Generative AI system with semantic search over a vector "
+            "database and document ingestion from Excel files."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Lone-core scheduler app (threshold 4 -> 5)",
+        "title": "Cross-Platform Production Scheduler App",
+        "text": (
+            "I run a production business and I need a dedicated desktop "
+            "application in MS Excel that lets us schedule production. "
+            "Produce simple status reports and a dashboard that I can "
+            "export to PDF or Excel."
+        ),
+        "expected": "needs_gemini",
+    },
+]
+
+for _case in _auto_cases:
+    _res = keyword_filter(_case["text"], title=_case["title"])
+    assert _res["decision"] == _case["expected"], (
+        f"{_case['name']}: expected {_case['expected']}, "
+        f"got {_res['decision']} ({_res['reason']})"
+    )
+
+print("All automation/data-entry regression checks passed.")
 print("All keyword_filter regression checks passed.")
