@@ -400,6 +400,19 @@ NEGATIVE_KEYWORDS = {
             "audit logging": 6,
             "role-based access": 6,
             "encryption": 6,
+            # Software bug-fixing / maintenance work. Both phrases verbatim
+            # in مستقل job 46233 ("إصلاح أخطاء لوحة تحكم نظام تدريبي
+            # (ربط إكسل وصلاحيات)" — an admin-panel bug-fix gig for a
+            # training system) which auto-notified on a lone title "اكسل"
+            # hit (title_core_positive) because no core-negative fired.
+            # Deliberately core (not supporting): the title-positive rule
+            # ignores supporting negatives entirely, so only a core
+            # negative flips it to needs_gemini. A genuine DA job that
+            # happens to mention the same words still carries its own core
+            # positive, so it routes to mixed_core_signals -> Gemini rather
+            # than an outright reject.
+            "إصلاح أخطاء": 6,
+            "مبرمج محترف": 7,
         },
         "supporting": {
             "flask": 3,

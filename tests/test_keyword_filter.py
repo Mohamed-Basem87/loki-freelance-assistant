@@ -294,5 +294,49 @@ for _case in _auto_cases:
         f"got {_res['decision']} ({_res['reason']})"
     )
 
+# ------------------------------------------------------------------
+# Regression checks for the Arabic software bug-fixing / maintenance
+# patch (daily audit 2026-08-07). مستقل job 46233 ("إصلاح أخطاء لوحة
+# تحكم نظام تدريبي (ربط إكسل وصلاحيات)") auto-notified on a lone title
+# "اكسل" hit (title_core_positive) even though the gig is an
+# admin-panel bug-fix for a training system. Core negatives
+# "إصلاح أخطاء" / "مبرمج محترف" now route it to Gemini.
+# ------------------------------------------------------------------
+_arabic_maintenance_cases = [
+    {
+        "name": "Arabic admin-panel bug fix (real job 46233)",
+        "title": "إصلاح أخطاء لوحة تحكم نظام تدريبي (ربط إكسل وصلاحيات)",
+        "text": (
+            # Mirrors production filter_text: title is repeated at the top
+            # of the body, so has_core_positive stays True (اكسل) and the
+            # mixed core signals route to Gemini instead of a bare reject.
+            "إصلاح أخطاء لوحة تحكم نظام تدريبي (ربط إكسل وصلاحيات). "
+            "لدي نظام إلكتروني قائم ومبني لإدارة البرامج التدريبية، وأحتاج إلى "
+            "مبرمج محترف لعمل جلسة أونلاين (معاينة شاشة) وحل بعض المشاكل التقنية. "
+            "وسأزودك بملف الكود الأخير لتبدأ منه مباشرة وتصلح الأخطاء مع "
+            "الحفاظ على استقرار البيانات."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Genuine Arabic Excel job must not be lost",
+        "title": "محلل بيانات اكسل وباور بي",
+        "text": (
+            "محلل بيانات اكسل وباور بي. "
+            "مطلوب محلل بيانات محترف لتنظيف البيانات وإنشاء داشبورد باور بي "
+            "وتقارير مبيعات من ملفات اكسل."
+        ),
+        "expected": "notify_directly",
+    },
+]
+
+for _case in _arabic_maintenance_cases:
+    _res = keyword_filter(_case["text"], title=_case["title"])
+    assert _res["decision"] == _case["expected"], (
+        f"{_case['name']}: expected {_case['expected']}, "
+        f"got {_res['decision']} ({_res['reason']})"
+    )
+
+print("All Arabic maintenance regression checks passed.")
 print("All automation/data-entry regression checks passed.")
 print("All keyword_filter regression checks passed.")
