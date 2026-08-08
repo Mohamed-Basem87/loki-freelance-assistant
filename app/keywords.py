@@ -702,6 +702,29 @@ NEGATIVE_KEYWORDS = {
             "data entry": 6,
             "ادخال بيانات": 6,
             "إدخال بيانات": 6,
+            # PDF / text transcription into Excel: repeated production
+            # false positives auto-notified on a lone "excel" mention
+            # inside what is actually manual data-entry / transcription
+            # work. All six observed postings describe copying text or
+            # numbers from PDFs into a spreadsheet "exactly as it
+            # appears" (manual entry, transcription error rate < 1%,
+            # "no macros or automation are required"): "Organized PDF
+            # Data Transfer to Excel" (40633590), "PDF Table Data
+            # Extraction" (40633712), "PDF-to-Excel Text Transfer"
+            # (40634627) and three distinct "Extract PDF Text into
+            # Excel" postings (40628260, 40634186, 40634618). Core (not
+            # supporting) so a core-positive hit alongside them routes
+            # to mixed_core_signals -> Gemini instead of a blind
+            # notification, mirroring the "data entry" treatment above.
+            # Arabic "نقل البيانات" / "نقل بيانات" (data transfer) is
+            # the verbatim equivalent observed in مستقل 6796 ("نقل
+            # البيانات"); no Arabic "text transfer" or "extract PDF
+            # text" wording was observed in the audited Arabic postings.
+            "data transfer": 6,
+            "text transfer": 6,
+            "extract pdf text": 6,
+            "نقل البيانات": 6,
+            "نقل بيانات": 6,
             # web scraping / scraper vocabulary. In production every
             # scraping posting was a web-automation job, not analysis:
             # "Weekly Daft.ie MyHome Scraper" (40627138) and "Las Vegas

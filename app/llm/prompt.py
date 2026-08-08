@@ -134,6 +134,202 @@ If the client's primary goal is:
 ACCEPT.
 
 ==================================================
+DATA ENTRY / TRANSCRIPTION EXCLUSION
+==================================================
+
+Excel, CSV, Google Sheets, Power BI, or a dashboard deliverable does NOT
+automatically make a project Data Analysis.
+
+Carefully distinguish ANALYSIS from DATA ENTRY.
+
+REJECT projects whose PRIMARY DELIVERABLE is:
+
+- Manual data entry
+- Copying information into Excel
+- Copying information into CSV
+- Copying information into Google Sheets
+- PDF-to-Excel transcription
+- PDF text transcription
+- PDF table transcription
+- Extracting text from PDFs and placing it into spreadsheets
+- Transferring data from one file/system into another without meaningful analysis
+- Spreadsheet population
+- Spreadsheet formatting when no analytical work is required
+- Form filling
+- Clerical spreadsheet work
+- Data collection without subsequent analysis
+- Building a database/list of people, companies, influencers, products, leads, or contacts
+- Collecting records into Excel/CSV without analytical processing
+- Converting documents into spreadsheets
+- OCR-to-Excel transcription
+- Image-to-Excel transcription
+- Copying tables into spreadsheets
+- "Exactly as it appears" transcription or extraction
+- Data migration where the primary task is copying records rather than transforming/analyzing them
+
+IMPORTANT:
+
+The presence of Excel, Power BI, SQL, Python, dashboards, formulas,
+pivot tables, or reporting language does NOT override this rule.
+
+For example:
+
+"Extract tables from 500 PDFs and put them into Excel."
+
+REJECT.
+
+"Copy financial tables from PDFs into an Excel workbook exactly as shown."
+
+REJECT.
+
+"Enter 5,000 records into an Excel spreadsheet."
+
+REJECT.
+
+"Collect 500 influencer profiles and deliver them in Excel."
+
+REJECT.
+
+"Transfer customer records from one spreadsheet to another."
+
+REJECT.
+
+"Build a Power BI dashboard analyzing the extracted sales data."
+
+ACCEPT, if the primary work is genuinely the analysis/dashboard rather
+than manual data collection or transcription.
+
+The key question is:
+
+"Is the client paying for ANALYSIS of data, or merely for MOVING/ENTERING
+data?"
+
+If the primary work is moving, copying, entering, transcribing,
+collecting, or formatting data, REJECT even if the final deliverable is
+an Excel workbook.
+
+==================================================
+ANALYSIS VS TRANSCRIPTION
+==================================================
+
+A project should only be considered Data Analysis when it requires
+meaningful analytical work such as:
+
+- Finding trends
+- Calculating meaningful metrics
+- Statistical analysis
+- Business analysis
+- KPI development
+- Aggregation and interpretation
+- Data cleaning as preparation for analysis
+- Data transformation as part of an analytical workflow
+- Building analytical dashboards
+- Creating reports that interpret the underlying data
+- Financial, sales, marketing, customer, or operational analysis
+- SQL analysis that answers analytical questions
+- Python analysis using pandas/numpy or similar analytical workflows
+
+Data cleaning by itself can still be acceptable when it is clearly part
+of an analytical deliverable.
+
+However, simple clerical cleanup such as correcting, copying, renaming,
+formatting, or entering records without analytical purpose should be
+REJECTED.
+
+==================================================
+EXCEL DELIVERABLE RULE
+==================================================
+
+Never treat "Excel" as evidence of Data Analysis by itself.
+
+Determine WHY Excel is being requested.
+
+Excel used for:
+
+- Analysis
+- Calculations
+- KPIs
+- Pivot analysis
+- Data modeling
+- Reporting
+- Dashboarding
+- Analytical automation
+
+may support ACCEPT.
+
+Excel used merely as:
+
+- A destination for copied data
+- A transcription target
+- A record list
+- A contact database
+- A form
+- A storage container
+- A manually populated spreadsheet
+
+must NOT support ACCEPT.
+
+If the project contains both analytical and clerical work, determine
+which is the PRIMARY DELIVERABLE.
+
+If clerical/data-entry work is the dominant requirement and analysis is
+only incidental, REJECT.
+
+==================================================
+GEMINI DECISION PRIORITY
+==================================================
+
+When a project contains both Data Analysis signals and strong
+data-entry/transcription signals, do NOT allow the Data Analysis signals
+to automatically override the clerical signals.
+
+Examples:
+
+"Extract PDF tables into Excel and create a simple summary."
+
+If the majority of the work is PDF extraction/transcription, REJECT.
+
+"Clean an existing dataset, analyze trends, calculate KPIs, and build a
+Power BI dashboard."
+
+ACCEPT.
+
+"Collect 1,000 records from websites and deliver them in Excel."
+
+REJECT.
+
+"Scrape sales data, clean it, analyze trends, calculate KPIs, and build a
+Power BI dashboard."
+
+ACCEPT, because scraping is supporting data collection and the primary
+deliverable is analysis.
+
+The distinction is the PURPOSE of the data collection, not the presence
+of Python or scraping.
+
+==================================================
+FORM-FILLING EXCLUSION
+==================================================
+
+Form filling is NOT Data Analysis.
+
+Reject projects whose primary task is:
+
+- Filling forms
+- Completing applications
+- Entering information into forms
+- Creating drafts by populating forms
+- Moving information between forms and spreadsheets
+- Filling accommodation, registration, application, survey, or
+  administrative forms
+
+even if Excel, digital signatures, or spreadsheets are involved.
+
+Only accept form-related projects when the primary deliverable is a
+genuine analytical system, reporting workflow, or data-analysis
+deliverable rather than clerical completion of forms.
+
+==================================================
 EXAMPLES
 ==================================================
 
