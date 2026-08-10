@@ -739,6 +739,42 @@ NEGATIVE_KEYWORDS = {
             "scraping": 6,
             "scraper": 6,
             "scrapers": 6,
+            # PDF-table / spreadsheet transcription into Excel. A recurring
+            # false-positive class: postings asking to copy tables or data
+            # verbatim into Excel ("reproduce them faithfully", "no
+            # calculations or interpretation") auto-notified on a lone
+            # "excel"/"power query" mention via title_core_positive because
+            # no core-negative fired. Verified across 2086 workbook jobs:
+            # "Convert PDF Tables to Excel" (40627821, 40629954, 40630095),
+            # "Batch Extract PDF Tables to Excel" (40631754), "PDF Tables to
+            # Excel" (40632337), "Extract PDF Tables to Excel" (40635795),
+            # "PDF Tables to Styled Excel" (40636342) all auto-notified and
+            # all describe clerical extraction ("copy the text exactly as it
+            # appears", "Mirrors all values exactly", "spot-checked against
+            # the original PDFs"). "data to excel" (verbatim in "Etihad PNR
+            # Data to Excel" 40635768) is the manual-entry variant. Core so
+            # "excel" + these route to mixed_core_signals -> Gemini (which
+            # has rejected every transcription job it has seen: 40636313,
+            # 40635970, 40636103, 40636173) instead of a blind notification.
+            "extract pdf tables": 6,
+            "pdf tables": 5,
+            "tabular data": 5,
+            "data to excel": 6,
+            # Browser-extension / browser-automation development. Arabic
+            # مستقل 46320 ("بناء إضافة متصفح ... تُخرج تقارير Excel و PDF")
+            # auto-notified on a lone title "excel" hit — the job is a
+            # Chrome-extension build (Manifest V3, content scripts, JS/DOM),
+            # not data analysis. English equivalents cover the recurring
+            # English extension-dev postings (all previously rejected on
+            # other grounds: "Fix Chrome Extension Error" 40628693,
+            # "Government Slot Booking Chrome Extension" 40628205, "Chrome
+            # Extension Tester" 40636397, etc.). Core so a positive hit
+            # alongside them routes to Gemini rather than a blind
+            # notification.
+            "browser extension": 7,
+            "chrome extension": 7,
+            "إضافة متصفح": 7,
+            "إضافات كروم": 7,
         },
         "supporting": {
             # web-form / browser automation: verbatim in Web Form
