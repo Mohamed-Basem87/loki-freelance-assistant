@@ -469,5 +469,106 @@ for _case in _data_extraction_cases:
     )
 
 print("All data-extraction transcription regression checks passed.")
+
+# ------------------------------------------------------------------
+# Regression checks for the 2026-08-11 daily window (OCR / generic
+# transcription / PDF-table-singular / test-automation / Power Apps
+# vocabulary). Five production false positives auto-notified in the
+# window; the new automation/nocode core negatives route each to Gemini
+# (mixed core signals or title_positive_but_body_core_negative) instead
+# of a blind notification. Genuine DA jobs are protected from overreach.
+# ------------------------------------------------------------------
+_win_2026_08_11_cases = [
+    {
+        "name": "OCR-to-Excel app build (real job 40637697)",
+        "title": "Automated JPEG to Excel Converter",
+        "text": (
+            "Automated JPEG to Excel Converter. "
+            "I need a lightweight desktop app (Python + Tesseract OCR, "
+            "OpenCV) that watches a directory, extracts the visible text "
+            "and numbers from each JPEG, and writes them to an .xlsx file "
+            "in real time with a live trend chart."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Paper forms transcription (real job 40638054)",
+        "title": "Convert Paper Forms to Spreadsheet",
+        "text": (
+            "Convert Paper Forms to Spreadsheet. "
+            "I have 50 to 200 paper forms that must be transcribed into a "
+            "clean, well-structured Excel spreadsheet, one row per form."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "PDF table extraction singular (real job 40638101)",
+        "title": "Accurate PDF Table Extraction",
+        "text": (
+            "Accurate PDF Table Extraction. "
+            "I have PDFs filled with mixed text-and-number tables that I "
+            "need moved into Excel. Every heading, font style and merged "
+            "cell must look the same as the source; nothing can be lost "
+            "or rearranged."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Test-automation framework (real job 40638944)",
+        "title": "Cloud VM Pricing Validation Platform",
+        "text": (
+            "Cloud Pricing Validation & Test Automation Framework. "
+            "End-to-end Python automation framework to scrape and validate "
+            "cloud pricing data. Selenium UI automation (POM, PyTest), API "
+            "validation, SQL-based checks, CSV/Excel summaries and "
+            "dashboards to monitor pricing changes and regression results."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Power Apps / Power Automate low-code dev (real job 40639220)",
+        "title": "Microsoft Power Platform Developer Needed",
+        "text": (
+            "Microsoft Power Platform Developer Needed. "
+            "I need an experienced developer to turn manual business "
+            "processes into streamlined low-code solutions -- Power Apps, "
+            "Power Automate, Power BI, or any blend -- building and "
+            "deploying the apps and flows end-to-end."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Genuine Power BI dashboard must still notify",
+        "title": "Power BI Attrition Dashboard Automation",
+        "text": (
+            "I have a single Excel/CSV master file of every employee "
+            "movement and I need a dynamic Power BI dashboard around it. "
+            "PBIX with a tidy data model, DAX measures for headcount, "
+            "attrition rate and hires/exits, automated refresh from a "
+            "fixed folder path."
+        ),
+        "expected": "notify_directly",
+    },
+    {
+        "name": "Genuine Excel cleanup job must still notify",
+        "title": "Excel Expert Needed for Bulk Data Processing, Formatting, and Cleanup",
+        "text": (
+            "I have several very large spreadsheets that need to be "
+            "audited, cleaned and uniformly formatted. Thousands of rows, "
+            "using VLOOKUP and XLOOKUP to reconcile records, highlight "
+            "mismatches and verify totals."
+        ),
+        "expected": "notify_directly",
+    },
+]
+
+for _case in _win_2026_08_11_cases:
+    _res = keyword_filter(_case["text"], title=_case["title"])
+    assert _res["decision"] == _case["expected"], (
+        f"{_case['name']}: expected {_case['expected']}, "
+        f"got {_res['decision']} ({_res['reason']})"
+    )
+
+print("All 2026-08-11 daily-window regression checks passed.")
 print("All automation/data-entry regression checks passed.")
 print("All keyword_filter regression checks passed.")

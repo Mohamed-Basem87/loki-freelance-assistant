@@ -640,6 +640,26 @@ NEGATIVE_KEYWORDS = {
             "base44": 8,
             "bubble.io": 7,
             "bubble": 6,
+            # "power apps" / "power automate" -- Microsoft's low-code app /
+            # workflow-automation platforms (part of the Power Platform).
+            # "Microsoft Power Platform Developer Needed"
+            # (freelancer:40639220, daily audit 2026-08-11) auto-notified via
+            # core_positive_clean on "power bi" + "excel" body hits, but the
+            # job is turning business processes into low-code Power Apps /
+            # Power Automate solutions ("create the working app(s), flow(s)").
+            # The only pre-existing negative ("low-code", supporting weight 4)
+            # was far below the downgrade threshold. Core (not supporting) so
+            # any positive hit alongside them routes to mixed_core_signals ->
+            # Gemini instead of a blind notification. Deliberately NOT
+            # adding "power platform": it is genuinely ambiguous (Power BI is
+            # part of the Power Platform and legitimate BI work legitimately
+            # uses that name); "power apps"/"power automate" are unambiguous
+            # app/flow development signals. No Arabic equivalent is added: no
+            # Arabic production posting used "باور ابس"/"باور اوتومات";
+            # the Arabic low-code class is already covered by the supporting
+            # negatives "بدون كود"/"لو كود"/"نوكود".
+            "power apps": 7,
+            "power automate": 7,
         },
         "supporting": {
             "no-code": 4,
@@ -758,6 +778,17 @@ NEGATIVE_KEYWORDS = {
             # 40635970, 40636103, 40636173) instead of a blind notification.
             "extract pdf tables": 6,
             "pdf tables": 5,
+            # "pdf table" (singular) -- fills the word-order gap in the
+            # transcription class. "Accurate PDF Table Extraction"
+            # (freelancer:40638101, daily audit 2026-08-11) auto-notified on
+            # a lone "excel" core hit because every existing transcription
+            # negative requires the plural ("pdf tables") or a different word
+            # order ("extract pdf tables"); the job is format-preserving
+            # PDF->Excel transcription ("nothing can be lost or rearranged",
+            # "must match exactly"), the same class Gemini has rejected
+            # repeatedly. Core so "excel" + "pdf table" routes to
+            # mixed_core_signals -> Gemini instead of a blind notification.
+            "pdf table": 5,
             "tabular data": 5,
             "data to excel": 6,
             # Browser-extension / browser-automation development. Arabic
@@ -775,6 +806,16 @@ NEGATIVE_KEYWORDS = {
             "chrome extension": 7,
             "إضافة متصفح": 7,
             "إضافات كروم": 7,
+            # OCR / image-to-text extraction. "Automated JPEG to Excel
+            # Converter" (freelancer:40637697, daily audit 2026-08-11)
+            # auto-notified on a lone "excel" core hit via title_core_positive;
+            # the job is building a desktop OCR app (Tesseract, OpenCV) that
+            # watches a folder, extracts text/numbers from JPEGs into xlsx and
+            # keeps a live trend chart -- an automation-tool build, not data
+            # analysis. OCR work is never analysis (it is capture/transcription
+            # infrastructure), so it is deliberately core: "excel" + "ocr"
+            # routes to Gemini rather than a blind notification.
+            "ocr": 6,
             # PDF->Excel / CSV->spreadsheet CONVERSION phrases. This is the
             # remaining gap in the transcription class above ("data to excel",
             # "extract pdf tables", "pdf tables"): postings whose title/body
@@ -820,6 +861,37 @@ NEGATIVE_KEYWORDS = {
             # البيانات"/"نقل بيانات" (مستقل 6796) and "ادخال بيانات"/
             # "إدخال بيانات".
             "data extraction": 6,
+            # "transcribe" / "transcription" / "transcribed" -- the generic
+            # wording of the manual-transcription class, which the classifier
+            # had only ever caught through specific verbatim phrases ("data to
+            # excel", "extract pdf tables", ...). "Convert Paper Forms to
+            # Spreadsheet" (freelancer:40638054, daily audit 2026-08-11)
+            # auto-notified on a lone "excel file"/"excel" core hit; the job
+            # is transcribing 50-200 handwritten paper forms into an Excel
+            # spreadsheet -- clerical data entry, not analysis. Core so a
+            # positive hit alongside these routes to mixed_core_signals ->
+            # Gemini (which has rejected every transcription job it has seen).
+            # No Arabic equivalent is added: the observed Arabic
+            # transcription/data-entry class is already covered verbatim by
+            # the core negatives "نقل البيانات"/"نقل بيانات" and
+            # "ادخال بيانات"/"إدخال بيانات".
+            "transcribe": 6,
+            "transcription": 6,
+            "transcribed": 6,
+            # "test automation" -- QA/test-automation engineering, never data
+            # analysis. "Cloud VM Pricing Validation Platform"
+            # (freelancer:40638944, daily audit 2026-08-11) auto-notified on a
+            # lone "excel" core hit (body "CSV/Excel summaries"); the deliverable
+            # is an end-to-end Python test-automation framework (Selenium +
+            # PyTest POM, API validation, CI/CD) where the CSV/Excel reports and
+            # dashboards are test outputs. The only pre-existing negative
+            # ("selenium", supporting weight 4) was far below the downgrade
+            # threshold, so no review fired. Core so "excel" + "test automation"
+            # routes to Gemini instead of a blind notification. No Arabic
+            # equivalent is added: no Arabic production posting used
+            # "اختبارات آلية"/"أتمتة الاختبارات"; the observed Arabic testing
+            # work is app-testing gigs already caught by mobile/backend words.
+            "test automation": 6,
         },
         "supporting": {
             # web-form / browser automation: verbatim in Web Form
