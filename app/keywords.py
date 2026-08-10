@@ -775,6 +775,33 @@ NEGATIVE_KEYWORDS = {
             "chrome extension": 7,
             "إضافة متصفح": 7,
             "إضافات كروم": 7,
+            # PDF->Excel / CSV->spreadsheet CONVERSION phrases. This is the
+            # remaining gap in the transcription class above ("data to excel",
+            # "extract pdf tables", "pdf tables"): postings whose title/body
+            # literally says "PDF to Excel" / "PDF-to-Excel" (hyphen folds to
+            # a space) or "CSV to spreadsheet" still auto-notified because
+            # none of the existing negatives matched the verbatim phrase.
+            # Verified in the 996-job full production replay, all still
+            # notify_directly: "Mixed PDF to Excel Conversion" (40627137,
+            # "extract every value, label, and note exactly as written ...
+            # solid manual entry skills are fine"), "Accurate PDF-to-Excel
+            # Conversion" (40629071, "faithful layout replication rather than
+            # analysis or reporting"), "Software Developer ... convert PDF
+            # Bank Statements to Excel" (40630408, a one-click PDF-to-Excel
+            # converter tool), "Accurate PDF Table Conversion" (40630113,
+            # "must match the original documents exactly") and "CSV to
+            # Spreadsheet Automation" (40630203, "transferring data from a
+            # CSV file to a spreadsheet"). Core so "excel" + these route to
+            # mixed_core_signals -> Gemini (never a blind notification).
+            # Arabic equivalents are already covered: the verbatim Arabic
+            # transcription wording "نقل البيانات"/"نقل بيانات" (data
+            # transfer) is a core negative above; no Arabic "PDF to Excel"
+            # wording was observed in any audited Arabic posting.
+            "pdf to excel": 6,
+            "pdf to excel conversion": 6,
+            "pdf table conversion": 5,
+            "extract tables": 5,
+            "csv to spreadsheet": 6,
         },
         "supporting": {
             # web-form / browser automation: verbatim in Web Form
@@ -805,6 +832,45 @@ NEGATIVE_KEYWORDS = {
             # 40630975.
             "emergent": 4,
         },
+    },
+
+    "cad": {
+        # Mechanical / CAD / 3D-modelling engineering work. A recurring
+        # production class where the deliverable is an Inventor/SolidWorks/
+        # AutoCAD model or CNC shop drawing, not data analysis. The most
+        # damaging case: "Lump Crusher Inventor 3D Modelling" (40637153,
+        # daily audit 2026-08-10) auto-notified on a lone "excel" core hit
+        # because "Structured BOM exported to Excel" was just a delivery
+        # format; the rest of the body is "Autodesk Inventor entirely from
+        # scratch ... native Inventor format ... Inventor assembly".
+        # Every term below is verified against the 996-job production
+        # replay: jobs containing them were NEVER notified (e.g. 19
+        # solidworks jobs, 23 autocad jobs, 41 "3d" jobs, 12 fusion 360
+        # jobs, 6 inventor jobs, 5 cnc jobs, 3 shop-drawings jobs — all
+        # reject or needs_gemini). Core (not supporting) so "excel" +
+        # any of these routes to mixed_core_signals -> Gemini instead of
+        # a blind notification, mirroring the building-engineering terms
+        # in the automation category. No Arabic equivalents are added: the
+        # 111 Arabic postings in the audited dataset contain no CAD/3D
+        # vocabulary (zero matches for ثلاثي الأبعاد / أوتوكاد /
+        # سوليدوركس / ميكانيكي / نمذجة etc.) — Arabic production jobs
+        # observed are web/mobile/ERP/marketing, so no production-supported
+        # Arabic terminology exists to mirror these.
+        "core": {
+            "3d modelling": 7,
+            "3d modeling": 7,
+            "3d model": 6,
+            "3d models": 6,
+            "autodesk inventor": 8,
+            "inventor assembly": 8,
+            "inventor format": 8,
+            "solidworks": 8,
+            "autocad": 8,
+            "fusion 360": 8,
+            "cnc": 6,
+            "shop drawings": 7,
+        },
+        "supporting": {},
     },
 
     "marketing": {
