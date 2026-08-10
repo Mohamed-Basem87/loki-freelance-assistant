@@ -405,5 +405,69 @@ for _case in _arabic_maintenance_cases:
     )
 
 print("All Arabic maintenance regression checks passed.")
+
+# ------------------------------------------------------------------
+# Regression checks for the "data extraction" transcription patch
+# (daily audit 2026-08-10). "PDF Numerical Data Extraction"
+# (freelancer:40637391) and "PDF Table Data Extraction"
+# (freelancer:40633712) both auto-notified on a lone "excel" core hit
+# because the existing verbatim phrases ("extract pdf tables",
+# "pdf tables", "extract tables", "extract pdf text", "data to excel")
+# never matched the generic "data extraction" wording. The automation-
+# core "data extraction" keyword now routes them to Gemini (mixed core
+# signals) instead of a blind notification. No Arabic equivalent was
+# added: the observed Arabic transcription class is already covered by
+# the core negatives "نقل البيانات"/"نقل بيانات" (مستقل 6796) and
+# "ادخال بيانات"/"إدخال بيانات".
+# ------------------------------------------------------------------
+_data_extraction_cases = [
+    {
+        "name": "PDF Numerical Data Extraction (real job 40637391)",
+        "title": "PDF Numerical Data Extraction",
+        "text": (
+            # Mirrors production filter_text: title repeated at the top of
+            # the body, so the "data extraction" core negative is visible to
+            # the body-level match and flips the lone "excel" core positive
+            # into mixed_core_signals.
+            "PDF Numerical Data Extraction. "
+            "I have a collection of PDF documents that contain numbers "
+            "scattered across tables, embedded charts, and interactive form "
+            "fields. I need every one of those figures captured accurately "
+            "and transferred into a structured spreadsheet or database of "
+            "your choice, Excel or Google Sheets is fine."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "PDF Table Data Extraction (real job 40633712)",
+        "title": "PDF Table Data Extraction",
+        "text": (
+            "PDF Table Data Extraction. "
+            "I need the tables inside a set of PDFs extracted into a clean "
+            "Excel spreadsheet, matching the original layout exactly."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Genuine analysis job without data-extraction wording must still notify",
+        "title": "Sales Data Dashboard & Tutorial",
+        "text": (
+            "Raw sales data in CSV and Excel files. Consolidate every source "
+            "in Excel with Power Query, publish the cleaned table to Power BI "
+            "and build an interactive dashboard with DAX measures and "
+            "customer segmentation."
+        ),
+        "expected": "notify_directly",
+    },
+]
+
+for _case in _data_extraction_cases:
+    _res = keyword_filter(_case["text"], title=_case["title"])
+    assert _res["decision"] == _case["expected"], (
+        f"{_case['name']}: expected {_case['expected']}, "
+        f"got {_res['decision']} ({_res['reason']})"
+    )
+
+print("All data-extraction transcription regression checks passed.")
 print("All automation/data-entry regression checks passed.")
 print("All keyword_filter regression checks passed.")

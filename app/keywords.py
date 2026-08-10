@@ -802,6 +802,24 @@ NEGATIVE_KEYWORDS = {
             "pdf table conversion": 5,
             "extract tables": 5,
             "csv to spreadsheet": 6,
+            # "data extraction" phrasing — the remaining gap in the
+            # transcription class above. "PDF Table Data Extraction"
+            # (40633712) and the daily-audit false positive "PDF Numerical
+            # Data Extraction" (40637391) both auto-notified on a lone
+            # "excel" core hit because none of the verbatim phrases above
+            # ("extract pdf tables", "pdf tables", "extract tables",
+            # "extract pdf text", "data to excel") match the generic
+            # "data extraction" wording — the jobs are clerical
+            # PDF/spreadsheet transcription, not analysis. Core so
+            # "excel" + "data extraction" routes to mixed_core_signals ->
+            # Gemini (which has rejected every transcription job it has
+            # seen) instead of a blind notification. No Arabic equivalent
+            # is added: no Arabic production posting used "استخراج
+            # بيانات"; the observed Arabic transcription class is
+            # covered verbatim by the existing core negatives "نقل
+            # البيانات"/"نقل بيانات" (مستقل 6796) and "ادخال بيانات"/
+            # "إدخال بيانات".
+            "data extraction": 6,
         },
         "supporting": {
             # web-form / browser automation: verbatim in Web Form
