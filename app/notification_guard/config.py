@@ -34,12 +34,7 @@ NOTIFICATION_GUARD_API_KEY = os.getenv(
 ).strip()
 
 
-NOTIFICATION_GUARD_MODEL = os.getenv(
-    "GROQ_NOTIFICATION_GUARD_MODEL",
-    "openai/gpt-oss-120b",
-).strip()
-
-
+# Same rotation strategy as the main Groq LLM subsystem.
 NOTIFICATION_GUARD_MODELS = [
     "openai/gpt-oss-120b",
     "llama-3.3-70b-versatile",
