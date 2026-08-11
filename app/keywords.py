@@ -892,6 +892,23 @@ NEGATIVE_KEYWORDS = {
             # "اختبارات آلية"/"أتمتة الاختبارات"; the observed Arabic testing
             # work is app-testing gigs already caught by mobile/backend words.
             "test automation": 6,
+            # Arabic "invoice template" creation is Excel document work, not
+            # data analysis. مستقل job "إنشاء نموذج فاتورة على برنامج إكسل"
+            # (daily audit 2026-08-11) auto-notified on a lone title "اكسل"
+            # core hit (title_core_positive); the gig is building a $25-50
+            # one-day Excel invoice template with a few extra formulas. The
+            # independent NotificationGuard LLM review returned do_not_notify
+            # for the same job. Core so "اكسل"/"excel" + "نموذج فاتورة"
+            # routes to mixed_core_signals -> Gemini (which has rejected
+            # every template/transcription job it has seen) instead of a
+            # blind notification. No English equivalent is added: no audited
+            # English posting asked to build an Excel invoice template (the
+            # English invoice/billing jobs observed are covered verbatim by
+            # the existing "billing software"/"billing system" and PDF->Excel
+            # conversion negatives), and genuine Arabic analysis jobs
+            # self-describe with "تحليل الفواتير" (invoice analysis), which
+            # does not match this phrase.
+            "نموذج فاتورة": 6,
         },
         "supporting": {
             # web-form / browser automation: verbatim in Web Form

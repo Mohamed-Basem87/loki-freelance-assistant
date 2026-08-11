@@ -608,6 +608,52 @@ for _case in _win_2026_08_11_cases:
         f"got {_res['decision']} ({_res['reason']})"
     )
 
+# ------------------------------------------------------------------
+# Regression checks for the Arabic invoice-template patch (daily audit
+# 2026-08-11). مستقل job "إنشاء نموذج فاتورة على برنامج إكسل" auto-
+# notified on a lone title "اكسل" hit (title_core_positive) even though
+# the gig is building a $25-50 Excel invoice template with a few extra
+# formulas -- Excel document/form work, not data analysis or BI. The
+# independent NotificationGuard LLM review also returned do_not_notify
+# for the same job. The automation-core "نموذج فاتورة" now routes it to
+# Gemini (title_positive_but_body_core_negative) instead of a blind
+# notification. No English equivalent is added: no audited English
+# posting asked to build an Excel invoice template, and genuine Arabic
+# analysis jobs self-describe with "تحليل الفواتير" (invoice analysis),
+# which does not match this phrase.
+# ------------------------------------------------------------------
+_arabic_invoice_template_cases = [
+    {
+        "name": "Arabic Excel invoice template (real job)",
+        "title": "🎯 إنشاء نموذج فاتورة على برنامج إكسل",
+        "text": (
+            "🎯 إنشاء نموذج فاتورة على برنامج إكسل. "
+            "اريد انشاء نموذج فاتورة على برنامج اكسل مع اضافة بعض "
+            "الدالات الخارجية"
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Genuine Arabic Excel analysis job must not be lost",
+        "title": "محلل بيانات اكسل وباور بي",
+        "text": (
+            "محلل بيانات اكسل وباور بي. "
+            "مطلوب محلل بيانات محترف لتنظيف البيانات وإنشاء داشبورد باور بي "
+            "وتحليل الفواتير وتقارير مبيعات من ملفات اكسل."
+        ),
+        "expected": "notify_directly",
+    },
+]
+
+for _case in _arabic_invoice_template_cases:
+    _res = keyword_filter(_case["text"], title=_case["title"])
+    assert _res["decision"] == _case["expected"], (
+        f"{_case['name']}: expected {_case['expected']}, "
+        f"got {_res['decision']} ({_res['reason']})"
+    )
+
+print("All Arabic invoice-template regression checks passed.")
+
 print("All QA/test-role regression checks passed.")
 print("All 2026-08-11 daily-window regression checks passed.")
 print("All automation/data-entry regression checks passed.")
