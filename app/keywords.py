@@ -901,6 +901,27 @@ NEGATIVE_KEYWORDS = {
             "desktop application": 4,
             "playwright": 4,
             "selenium": 4,
+            # QA / software-testing role vocabulary. "QA Specialist for
+            # Android E-commerce App" (freelancer:40639807, daily audit
+            # 2026-08-11) auto-notified on a lone "excel" core hit -- the
+            # deliverable was "Complete QA report in Excel/Google Sheets",
+            # but the job is manual QA testing of a mobile e-commerce app,
+            # not data analysis. The independent NotificationGuard LLM
+            # review also returned do_not_notify for that job. The only
+            # pre-existing negative ("selenium", 4) left the supporting-
+            # negative total at 11, just below the 14 downgrade threshold,
+            # so no review fired. Supporting (not core) so a lone "qa"
+            # mention in a genuine data job (e.g. data-quality checks)
+            # only adds weight toward a Gemini review instead of forcing
+            # one; "tester"/"qa" pushed the offending job to 18 >= 14 ->
+            # core_positive_but_heavy_supporting_negative -> Gemini.
+            # No Arabic equivalent is added: no audited Arabic production
+            # posting used QA/testing vocabulary (the Arabic jobs in this
+            # and prior audited batches are web/mobile/ERP/marketing /
+            # customer-service gigs), so no production-supported Arabic
+            # terminology exists to mirror these.
+            "qa": 4,
+            "tester": 3,
             "electron": 3,
             # digital-twin / building-engineering terms: verbatim in
             # Digital Twin Energy Optimization 40629830.

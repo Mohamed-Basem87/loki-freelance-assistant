@@ -562,6 +562,45 @@ _win_2026_08_11_cases = [
     },
 ]
 
+# ------------------------------------------------------------------
+# QA / test-role regression checks (daily audit 2026-08-11).
+# ------------------------------------------------------------------
+_qa_2026_08_11_cases = [
+    {
+        "name": "Manual QA tester job misusing 'excel' deliverable (real job 40639807)",
+        "title": "QA Specialist for Android E-commerce App",
+        "text": (
+            "We are looking for an experienced individual QA Tester to "
+            "comprehensively test our Android e-commerce application. "
+            "Functional testing, UI/UX testing, navigation and user flow "
+            "testing, Login/Signup & OTP testing, Checkout & Payment flow "
+            "testing. Deliverables: Complete QA report in Excel/Google "
+            "Sheets. Automation testing experience with Appium, Espresso, "
+            "Selenium, or similar tools is a plus."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Genuine data pipeline mentioning QA must still notify",
+        "title": "Sports Data Pipeline Extension - NFL, MLB & College Football",
+        "text": (
+            "Extend an existing sports-data pipeline for NFL, MLB and "
+            "College Football. Existing validation, source-ledger, "
+            "grading and packaging logic. Validation / QA scripts. "
+            "Output updated Excel and CSV files. Python-based data "
+            "pipelines, historical datasets and reproducible datasets."
+        ),
+        "expected": "notify_directly",
+    },
+]
+
+for _case in _qa_2026_08_11_cases:
+    _res = keyword_filter(_case["text"], title=_case["title"])
+    assert _res["decision"] == _case["expected"], (
+        f"{_case['name']}: expected {_case['expected']}, "
+        f"got {_res['decision']} ({_res['reason']})"
+    )
+
 for _case in _win_2026_08_11_cases:
     _res = keyword_filter(_case["text"], title=_case["title"])
     assert _res["decision"] == _case["expected"], (
@@ -569,6 +608,7 @@ for _case in _win_2026_08_11_cases:
         f"got {_res['decision']} ({_res['reason']})"
     )
 
+print("All QA/test-role regression checks passed.")
 print("All 2026-08-11 daily-window regression checks passed.")
 print("All automation/data-entry regression checks passed.")
 print("All keyword_filter regression checks passed.")
