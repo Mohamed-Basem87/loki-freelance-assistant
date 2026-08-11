@@ -40,6 +40,13 @@ NOTIFICATION_GUARD_MODEL = os.getenv(
 ).strip()
 
 
+NOTIFICATION_GUARD_MODELS = [
+    "openai/gpt-oss-120b",
+    "llama-3.3-70b-versatile",
+    "qwen/qwen3.6-27b",
+]
+
+
 NOTIFICATION_GUARD_MAX_RETRIES = int(
     os.getenv(
         "GROQ_NOTIFICATION_GUARD_MAX_RETRIES",
