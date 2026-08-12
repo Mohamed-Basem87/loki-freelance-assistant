@@ -107,7 +107,23 @@ def parse_job(source: str, text: str) -> dict[str, str]:
     # Mostaql & Generic channels
     # -----------------------------
     job["title"] = _fallback_title(text)
-    job["description"] = _normalize_description(text)
+
+    # The first meaningful line is the title. Do not feed that same
+    # line into description as well: job_processor combines title and
+    # description for classification, so keeping the title here would
+    # count title keywords twice and distort supporting weights.
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    title_index = next(
+        (index for index, line in enumerate(lines) if line.strip()),
+        None,
+    )
+    description_text = (
+        "\n".join(lines[title_index + 1:])
+        if title_index is not None
+        else ""
+    )
+
+    job["description"] = _normalize_description(description_text)
     job["url"] = _extract_url(text)
 
     return job

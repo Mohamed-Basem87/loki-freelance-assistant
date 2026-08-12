@@ -2,13 +2,16 @@ import aiohttp
 from collections import deque
 
 from app.config import (
+    FREEHUB_BASE_URL,
     FREEHUB_USER_ID,
     FREEHUB_PAGE_SIZE,
 )
 from app.state import state
 
 
-BASE_URL = "http://ec2-51-21-119-160.eu-north-1.compute.amazonaws.com/v1/users"
+# Configurable so deployments can switch to the TLS endpoint when
+# the backend provides HTTPS without changing application code.
+BASE_URL = FREEHUB_BASE_URL
 
 SOURCES = (
     "kafiil",

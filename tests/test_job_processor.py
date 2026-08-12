@@ -341,3 +341,125 @@ def test_unrelated_jobs_with_different_sources_are_not_falsely_deduplicated(
         "Two different channels/sources reusing the same job_id must "
         "both be logged as distinct jobs."
     )
+
+def test_concurrent_duplicate_processing_creates_only_one_row(isolated_workbook):
+    """
+    The logger's atomic create-if-absent operation must close the
+    check-then-act race: two concurrent process_job() calls for the
+    same canonical identity may both reach the logger, but exactly
+    one may create the durable Jobs row.
+    """
+    log = isolated_workbook
+
+    job = _build_job(
+        source="Concurrent Channel",
+        title=REJECT_TEXT,
+    )
+
+    async def run_both():
+        await asyncio.gather(
+            process_job(
+                job=job,
+                job_id="concurrent-1",
+                identity_source="-100777",
+            ),
+            process_job(
+                job=job,
+                job_id="concurrent-1",
+                identity_source="-100777",
+            ),
+        )
+
+    asyncio.run(run_both())
+
+    canonical_uuid = _make_job_uuid("-100777", "concurrent-1")
+    assert log.has_job(canonical_uuid)
+    assert _jobs_sheet(log).max_row == 2
+
+
+def test_pending_notification_is_resumed_without_reprocessing(
+    isolated_workbook, monkeypatch
+):
+    """
+    A durable Pending notification state must be resumable after a
+    restart. This simulates the crash window after the job row was
+    persisted but before notification delivery completed.
+    """
+    log = isolated_workbook
+
+    job = {
+        "title": "Power BI Dashboard Needed",
+        "description": "Need a Power BI dashboard built from sales data.",
+        "raw_text": (
+            "Power BI Dashboard Needed\n\n"
+            "Need a Power BI dashboard built from sales data."
+        ),
+        "source": "Test Channel",
+        "url": "https://example.invalid/job",
+        "budget": "$100",
+    }
+
+    from app.job_processor import _make_job_uuid
+
+    job_uuid = _make_job_uuid("-100888", "pending-1")
+
+    from app.filters import keyword_filter
+
+    result = keyword_filter(
+        f"{job['title']}\n{job['description']}",
+        title=job["title"],
+    )
+    assert result["notify_directly"] is True
+
+    log.create_job(
+        job_uuid=job_uuid,
+        job_id="pending-1",
+        source=job["source"],
+        title=job["title"],
+        description=job["description"],
+        raw_message=job["raw_text"],
+        filter_text=f"{job['title']}\n{job['description']}",
+        company="",
+        url=job["url"],
+        filter_result=result,
+        filter_time_ms=0,
+        save=True,
+    )
+    log.update_job(
+        job_uuid,
+        final_decision="Accepted",
+        decision_reason=result["reason"],
+        notification_status="Pending",
+        save=True,
+    )
+
+    sends = {"private": 0, "channel": 0}
+
+    async def fake_private(**kwargs):
+        sends["private"] += 1
+        return True
+
+    async def fake_channel(**kwargs):
+        sends["channel"] += 1
+        return True
+
+    monkeypatch.setattr(
+        "app.job_processor.send_notification",
+        fake_private,
+    )
+    monkeypatch.setattr(
+        "app.job_processor.send_channel_notification",
+        fake_channel,
+    )
+
+    asyncio.run(
+        process_job(
+            job=job,
+            job_id="pending-1",
+            identity_source="-100888",
+        )
+    )
+
+    assert sends == {"private": 1, "channel": 1}
+    row = log.get_job(job_uuid)
+    assert row["Notification Status"] == "Complete"

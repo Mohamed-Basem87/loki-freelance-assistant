@@ -192,6 +192,7 @@ immediately on startup.
 | `BOT_CHANNEL_ID` | No | string | Optional channel ID for broadcasting accepted jobs publicly. If unset, `app/channel_notifier.py` skips channel notifications entirely (returns success without sending). |
 | `TARGET_CHANNEL_IDS` | Yes | comma-separated integers | Telegram channel/supergroup IDs Loki listens to, parsed into a `set[int]`. |
 | `FREEHUB_USER_ID` | Yes | string | FreeHub account/user identifier used to build the polling URL. |
+| `FREEHUB_BASE_URL` | No | string | FreeHub API base URL. Defaults to the legacy HTTP endpoint; set this to the HTTPS API endpoint when TLS is available. |
 | `FREEHUB_POLL_INTERVAL` | No (default `60`) | integer | Seconds between FreeHub polls. |
 | `FREEHUB_PAGE_SIZE` | No (default `30`) | integer | Page size requested from the FreeHub API. |
 | `NOTIFICATION_GUARD_ENABLED` | No (default `false`) | boolean-like string (`1`/`true`/`yes`/`on`) | Enables the Notification Guard. Read independently by `app/notification_guard/config.py`, which loads `.env` itself. |
@@ -274,13 +275,13 @@ ingestion and parsing stages differ.
 | `app/config.py` | Loads and validates all core environment variables. |
 | `app/handlers/telegram.py` | Owns the Telethon client: logs in, performs per-channel startup recovery, registers the `NewMessage` handler, dispatches to `process_message`. |
 | `app/message_processor.py` | Telegram-specific entry point: extracts text/source/URL(via buttons) from a Telethon event, calls `parse_job`, then `process_job`; catches and logs any exception with a safety-net save. |
-| `app/parser.py` | Converts raw message text into a structured job dict (title, description, budget, url, source, raw_text). Source-specific logic for Nafezly; generic fallback otherwise. |
+| `app/parser.py` | Converts raw message text into a structured job dict (title, description, budget, url, source, raw_text). Source-specific logic for Nafezly; generic fallback otherwise. The generic path keeps the title out of description so classifier input does not count title keywords twice. |
 | `app/freehub.py` | Polls the FreeHub API for two sources (`kafiil`, `freelancer`), deduplicates against a persisted "seen" set, and returns only new projects (with bounded multi-page backfill). |
 | `app/freehub_worker.py` | Runs `poll_once()` in a loop (`FREEHUB_POLL_INTERVAL` seconds), builds a job dict per new project, and calls `process_job` directly (FreeHub projects don't go through `parser.py` — they're already structured). |
 | `app/normalize.py` | Text normalization (Arabic character unification, diacritic/tatweel stripping, punctuation/separator handling, lowercasing) used before keyword matching. |
 | `app/keywords.py` | The classifier's data: `POSITIVE_KEYWORDS`, `NEGATIVE_KEYWORDS`, `HARD_REJECT_KEYWORDS`, each keyword tagged with a category, tier (`core`/`supporting`), and weight. |
 | `app/filters.py` | The classifier logic: `keyword_filter(text, title)`, a rule-based decision table (not additive scoring) built from `keywords.py` + `normalize.py`. |
-| `app/job_processor.py` | The shared orchestrator for both ingestion paths: dedup check, runs the classifier, routes to Gemini/Groq if needed, sends notifications, logs everything. |
+| `app/job_processor.py` | The shared orchestrator for both ingestion paths: atomic dedup/create, classifier/LLM routing, durable notification-state recovery, notifications, and logging. |
 | `app/llm/manager.py` | `evaluate_job()` — tries Gemini first, falls back to Groq only if Gemini raises. |
 | `app/llm/gemini.py` | Gemini client(s), one per configured API key; per-key retry on transient errors, then tries the next key. |
 | `app/llm/groq.py` | Groq client; rotates through a fixed model list on failure. |
@@ -318,6 +319,12 @@ ingestion and parsing stages differ.
   is routed through `ExcelLogger.run()` onto the same single worker
   thread, so no two workbook operations — across either ingestion
   path — can ever race.
+
+- **Durable notification workflow.** Jobs that require notification are
+  persisted as `Pending` before delivery, and each notification result
+  is persisted immediately afterward. If Loki restarts during a
+  notification workflow, the durable row is used to resume only the
+  incomplete portion rather than treating the job as brand new.
 
 ---
 
@@ -461,11 +468,13 @@ itself at import time in `app/filters.py`):
 orchestrator for both ingestion paths.
 
 1. **Deterministic dedup.** A `job_uuid` is derived via `uuid5` from
-   `(source, job_id)` — the *same* underlying message/project always
-   maps to the same UUID, so if it's reprocessed (state reset, cache
-   reset on restart) it's recognized as a duplicate rather than
-   logged/notified twice. If `logger.has_job(job_uuid)` is already
-   true, processing stops immediately.
+   `(identity_source, job_id)` and the logger performs an atomic
+   check-and-create on its single worker thread. The same underlying
+   message/project therefore cannot create two canonical rows even
+   when two coroutines reach the logger concurrently. Historical
+   pre-stable-identity UUIDs remain a lookup-only compatibility path.
+   A durable notification workflow is resumed when a previously-created
+   row is still pending.
 2. **Classify.** `keyword_filter(f"{title}\n{description}", title=title)`
    runs (see [Deterministic Classifier](#10-deterministic-classifier)).
 3. **Log the initial row** (`logger.create_job`, unsaved) with the
@@ -486,15 +495,16 @@ orchestrator for both ingestion paths.
      defensive fallback if that reason is unexpectedly empty; normal
      classifier results provide a specific reason.
 5. **Update the row** with the final decision/reason.
-6. **If `should_notify`**, calls `send_notification` and
-   `send_channel_notification` (both awaited in sequence; each is
-   independently the Notification Guard's wrap point when
-   `run_guarded.py` is used — see
-   [Notification Guard](#12-notification-guard)), then logs each
-   attempt's `Sent`/`Failed` status.
-7. **One `logger.save()`** at the end, on the same logger thread every
-   other write in this job used — replacing what used to be a save
-   per intermediate step.
+6. **If `should_notify`**, persist `Notification Status = Pending`
+   before any external send. Then call `send_notification` and
+   `send_channel_notification` in sequence; after each attempt, log
+   its `Sent`/`Failed` result and persist that platform's durable
+   status immediately. On restart, an incomplete notification
+   workflow is resumed from the durable row.
+7. **One final `logger.save()`** is used for non-notifying jobs. A
+   notifying job persists its notification state around each external
+   side effect instead of batching the entire workflow into one
+   end-of-job save.
 
 ---
 

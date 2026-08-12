@@ -332,6 +332,57 @@ class ExcelLogger:
         if save:
             self.save()
 
+    def create_job_if_absent(
+        self,
+        *,
+        legacy_job_uuid=None,
+        save=False,
+        **kwargs,
+    ):
+        """
+        Atomically check the canonical and optional legacy UUIDs and
+        create the canonical row only when neither identity already
+        exists.
+
+        This check-and-create runs entirely on the dedicated logger
+        worker thread through ExcelLogger.run(), so concurrent
+        process_job() calls cannot both pass a separate has_job()
+        check and then append duplicate rows.
+        """
+        job_uuid = kwargs["job_uuid"]
+
+        if job_uuid in self._row_index:
+            return False
+
+        if (
+            legacy_job_uuid
+            and legacy_job_uuid != job_uuid
+            and legacy_job_uuid in self._row_index
+        ):
+            return False
+
+        self.create_job(save=save, **kwargs)
+        return True
+
+    def get_job(self, job_uuid):
+        """
+        Return the durable Jobs-sheet fields for one job, or None.
+
+        This is intentionally a read-only operation and must be invoked
+        through ExcelLogger.run() like every other workbook access.
+        """
+        row = self._row_index.get(job_uuid)
+
+        if row is None:
+            return None
+
+        ws = self.workbook["Jobs"]
+
+        return {
+            header: ws.cell(row=row, column=index).value
+            for index, header in enumerate(JOB_HEADERS, start=1)
+        }
+
     def update_job(self, job_uuid, save=True, **fields):
 
         row = self._row_index.get(job_uuid)

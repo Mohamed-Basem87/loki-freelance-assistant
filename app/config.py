@@ -88,6 +88,10 @@ TARGET_CHANNELS = _require_channel_ids("TARGET_CHANNEL_IDS")
 # ----------------------------
 
 FREEHUB_USER_ID = _require_env("FREEHUB_USER_ID")
+FREEHUB_BASE_URL = os.getenv(
+    "FREEHUB_BASE_URL",
+    "http://ec2-51-21-119-160.eu-north-1.compute.amazonaws.com/v1/users",
+).rstrip("/")
 FREEHUB_POLL_INTERVAL = int(
     os.getenv("FREEHUB_POLL_INTERVAL", "60")
 )

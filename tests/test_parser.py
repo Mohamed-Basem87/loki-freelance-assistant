@@ -82,6 +82,7 @@ def test_generic_message_falls_back_to_first_line_and_normalized_body():
         "Requirements include DAX measures and KPIs."
         in job["description"]
     )
+    assert job["title"] not in job["description"]
 
 
 def test_message_without_url_leaves_url_empty():
