@@ -55,6 +55,7 @@ def _generate_response(client: genai.Client, contents: str, system_instruction: 
         contents=contents,
         config=genai.types.GenerateContentConfig(
             system_instruction=system_instruction,
+            response_mime_type="application/json",
         ),
     )
 

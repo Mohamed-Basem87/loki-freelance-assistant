@@ -7,6 +7,7 @@ from app.config import (
 )
 from app.state import state
 
+
 BASE_URL = "http://ec2-51-21-119-160.eu-north-1.compute.amazonaws.com/v1/users"
 
 SOURCES = (
@@ -72,8 +73,11 @@ async def _persist_seen(source: str):
     await state.async_set_freehub_seen(source, list(_seen[source]))
 
 
-async def fetch_projects(session: aiohttp.ClientSession, source: str, page: int = 1):
-
+async def fetch_projects(
+    session: aiohttp.ClientSession,
+    source: str,
+    page: int = 1,
+):
     url = (
         f"{BASE_URL}/{FREEHUB_USER_ID}/projects"
         f"?page={page}"
@@ -90,6 +94,7 @@ async def fetch_projects(session: aiohttp.ClientSession, source: str, page: int 
 async def poll_once():
     """
     Returns only new projects since the previous poll.
+
     The first-ever poll (no persisted state for this source) seeds
     the cache and returns nothing; every poll after that -- including
     the first one after a restart, since the cache is now persisted
@@ -99,6 +104,7 @@ async def poll_once():
     projects were posted since the last poll than fit on one page),
     walk additional pages -- oldest direction -- until a page contains
     a project we've already seen, or `_MAX_BACKFILL_PAGES` is reached.
+
     Without this, a slow/errored poll cycle or downtime longer than
     one page's worth of new activity would silently drop the backlog
     past page 1, the same gap the Telegram side already closed with
@@ -154,7 +160,11 @@ async def poll_once():
 
                 page_num += 1
 
-                next_page = await fetch_projects(session, source, page=page_num)
+                next_page = await fetch_projects(
+                    session,
+                    source,
+                    page=page_num,
+                )
                 next_projects = next_page.get("items", [])
 
                 if not next_projects:
@@ -175,7 +185,17 @@ async def poll_once():
 
             # Oldest -> newest, across every page fetched this cycle
             # (fetched_pages[0] is the newest page, so walk it last).
-            changed = False
+            #
+            # IMPORTANT:
+            # Newly discovered UIDs are intentionally NOT added to the
+            # persisted/in-memory seen cache here. A project becomes
+            # seen only after the downstream worker successfully
+            # completes process_job() and calls mark_project_seen().
+            #
+            # Keep a local discovery set so the same UID cannot be
+            # returned twice during this poll cycle when it appears
+            # across fetched pages.
+            discovered_this_poll = set()
 
             for page_projects in reversed(fetched_pages):
 
@@ -183,10 +203,11 @@ async def poll_once():
 
                     uid = project["uid"]
 
-                    if uid in seen:
+                    if uid in seen or uid in discovered_this_poll:
                         continue
 
-                    seen.append(uid)
+                    discovered_this_poll.add(uid)
+
                     # Tag with the fixed poll-source ("kafiil"/
                     # "freelancer", the same value this function's own
                     # seen-cache dedup is keyed by) so downstream
@@ -197,10 +218,29 @@ async def poll_once():
                     # project across polls. "_poll_source" is an
                     # underscore-prefixed key to avoid colliding with
                     # any real field the FreeHub API returns.
-                    new_projects.append({**project, "_poll_source": source})
-                    changed = True
-
-            if changed:
-                await _persist_seen(source)
+                    new_projects.append(
+                        {
+                            **project,
+                            "_poll_source": source,
+                        }
+                    )
 
     return new_projects
+
+
+async def mark_project_seen(project: dict):
+    """
+    Persist a FreeHub project as seen only after downstream processing
+    completes successfully.
+
+    poll_once() does not mark newly discovered projects as seen because
+    doing so before process_job() succeeds can permanently discard a
+    project after a processing failure.
+    """
+
+    source = project["_poll_source"]
+    uid = project["uid"]
+
+    if uid not in _seen[source]:
+        _seen[source].append(uid)
+        await _persist_seen(source)

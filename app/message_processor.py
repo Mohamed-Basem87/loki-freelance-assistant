@@ -58,6 +58,11 @@ async def process_message(event):
             identity_source=str(chat_id) if chat_id is not None else source,
         )
 
+        # Callers use this explicit result to decide whether source
+        # state may advance. A caught processing error must never look
+        # like a successful message.
+        return True
+
     except Exception as e:
 
         failed = True
@@ -91,3 +96,5 @@ async def process_message(event):
                     "Logger",
                     e,
                 )
+
+    return False

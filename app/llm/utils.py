@@ -66,7 +66,32 @@ def parse_response(raw: str) -> dict:
 
     result = json.loads(raw)
 
+    if not isinstance(result, dict):
+        raise ValueError("LLM response must be a JSON object")
+
     if not REQUIRED_KEYS.issubset(result):
         raise ValueError("Incomplete LLM response")
+
+    decision = result["decision"]
+    if decision not in {"accept", "reject"}:
+        raise ValueError("Invalid LLM decision")
+
+    confidence = result["confidence"]
+    if (
+        isinstance(confidence, bool)
+        or not isinstance(confidence, (int, float))
+        or not 0 <= confidence <= 100
+    ):
+        raise ValueError("Invalid LLM confidence")
+
+    for key in ("project_type", "primary_deliverable", "reason"):
+        if not isinstance(result[key], str):
+            raise ValueError(f"Invalid LLM field: {key}")
+
+    skills = result["skills_detected"]
+    if not isinstance(skills, list) or not all(
+        isinstance(skill, str) for skill in skills
+    ):
+        raise ValueError("Invalid LLM skills_detected")
 
     return result

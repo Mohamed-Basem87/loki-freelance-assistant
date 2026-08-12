@@ -332,15 +332,18 @@ registers:
 @client.on(events.NewMessage(chats=list(TARGET_CHANNELS)))
 async def handler(event):
     ...
-    await process_message(event)
-    state.set_last_message_id(event.chat_id, event.id)
+    processed = await process_message(event)
+    if processed:
+        await state.async_set_last_message_id(event.chat_id, event.id)
 ```
 
 Telethon filters at the transport level — messages from chats outside
-`TARGET_CHANNELS` never reach the handler. Any exception from
-`process_message` is caught, logged to the Errors sheet as
-`"MessageHandler"`, and printed; it does not kill the client's
-`run_until_disconnected()` loop.
+`TARGET_CHANNELS` never reach the handler. `process_message()` returns
+`True` only when processing completes without an exception; failures are
+logged and return `False`, so the watermark is not advanced past a
+failed message. This gives Telegram at-least-once processing while the
+deterministic job UUID/legacy lookup prevents duplicate rows or
+notifications if a successfully processed message is encountered again.
 
 `app/message_processor.py` (`process_message`) is the actual entry
 point called by the handler above:
@@ -400,10 +403,13 @@ job = {
 }
 ```
 
-and calls `process_job(job=job, job_id=project["uid"])`. Both a
-per-project exception (logged as `"FreeHub Project"`) and a
-poll-cycle-level exception (logged as `"FreeHub Worker"`) are caught
-so one bad project or one failed poll never kills the loop.
+and calls `process_job(job=job, job_id=project["uid"])`. Only after
+`process_job()` completes successfully does the worker persist the
+project UID as seen. If processing fails, the UID remains unseen and
+the next poll can retry it. Both a per-project exception (logged as
+`"FreeHub Project"`) and a poll-cycle-level exception (logged as
+`"FreeHub Worker"`) are caught so one bad project or one failed poll
+never kills the loop.
 
 ---
 
@@ -475,22 +481,10 @@ orchestrator for both ingestion paths.
      sheet. On exception (both Gemini and Groq exhausted — see
      [LLM Subsystem](#11-llm-subsystem)): `Rejected`, reason
      `"LLM Error"`, logged to the Errors sheet as `"LLM"`.
-   - none of the above → `Rejected`, reason `"Below Gemini Threshold"`.
-
-   > **Verified quirk:** this catch-all branch fires for every
-   > `filters.py` rejection reason other than `hard_reject_keyword`
-   > and the no-match case above — including `insufficient_signal`,
-   > `core_negative_no_core_positive`, and
-   > `title_core_negative_no_body_positive` — any of which can still
-   > have `matched=True` (e.g. via supporting-positive hits alongside
-   > a core-negative or below-threshold core-positive signal) and so
-   > skip the `"No Matching Keywords"` branch too. In those cases the
-   > Jobs sheet's `Decision Reason` column shows the generic
-   > `"Below Gemini Threshold"` label rather than the classifier's own
-   > more specific `reason` string. This is current, verified
-   > behavior of `app/job_processor.py` — flagged here for anyone
-   > tuning keywords off the Jobs sheet, and reported separately as a
-   > candidate code fix outside the scope of this documentation pass.
+   - none of the above → `Rejected`, using the classifier's own
+     `reason` string. `"Below Gemini Threshold"` is retained only as a
+     defensive fallback if that reason is unexpectedly empty; normal
+     classifier results provide a specific reason.
 5. **Update the row** with the final decision/reason.
 6. **If `should_notify`**, calls `send_notification` and
    `send_channel_notification` (both awaited in sequence; each is
@@ -647,6 +641,9 @@ provider-specific, since by this point both providers failed).
   `genai.Client` is constructed per key at import time.
 - Model: **`gemini-3.5-flash`**, called via
   `client.models.generate_content()`.
+- The request uses Gemini's API-level
+  `response_mime_type="application/json"` constraint, in addition to
+  the prompt's JSON-only instruction.
 - Per-key retry: `@retry(retry_if_exception(_is_transient),
   stop_after_attempt(2), wait_fixed(1), reraise=True)` — only retries
   errors matching transient markers (`429`, `503`,
@@ -684,13 +681,16 @@ is attacker-controllable public input.
 
 `parse_response()`:
 1. Strips a leading/trailing ` ```json `/` ``` ` fence if present.
-2. Parses as JSON.
-3. Validates all six required keys are present (`decision`,
-   `confidence`, `project_type`, `primary_deliverable`, `reason`,
-   `skills_detected`) — raises `ValueError` if any are missing. This
-   is what makes a malformed response count as a provider failure and
-   trigger key/model/provider rotation rather than silently returning
-   a default.
+2. Parses as JSON and requires a JSON object.
+3. Validates all six required keys are present
+   (`decision`, `confidence`, `project_type`, `primary_deliverable`,
+   `reason`, `skills_detected`).
+4. Validates `decision` is exactly `accept` or `reject`, `confidence`
+   is numeric and within 0–100, the textual fields are strings, and
+   `skills_detected` is a list of strings. Invalid values raise
+   `ValueError`, so malformed responses count as provider failures and
+   trigger the existing key/model/provider rotation rather than being
+   accepted accidentally.
 
 ### The System Prompt (`app/llm/prompt.py`)
 
@@ -946,11 +946,12 @@ every monitored channel:
   cap of `MAX_RECOVERY_MESSAGES` (2000) per channel. If the cap is
   hit, a `[RECOVERY WARNING]` is printed — a subsequent restart will
   continue recovering from where this run left off, since the
-  watermark still only advances as far as messages actually got
-  processed.
-- Each recovered message's processing failure is caught individually
-  (logged to Errors as `"StartupRecovery"`) so one bad message doesn't
-  abort recovery for the rest of the channel.
+  watermark advances only after successful processing.
+- If a recovered message fails, the failure is logged to Errors as
+  `"StartupRecovery"` and recovery stops at that message. Later
+  messages are not processed in that run, because advancing the
+  watermark past the failed message would make it permanently
+  unrecoverable.
 
 ### FreeHub
 

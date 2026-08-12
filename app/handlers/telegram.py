@@ -64,7 +64,18 @@ async def _recover_channel(client, channel):
 
         try:
 
-            await process_message(message)
+            processed = await process_message(message)
+
+            if not processed:
+                # Recovery is oldest -> newest. Never advance past a
+                # failed message or a later message could make the
+                # failed one permanently unrecoverable.
+                print(
+                    f"[RECOVERY ERROR] "
+                    f"Message {message.id} failed; "
+                    f"stopping recovery at this watermark."
+                )
+                break
 
             await state.async_set_last_message_id(
                 message.chat_id,
@@ -85,6 +96,10 @@ async def _recover_channel(client, channel):
                 f"[RECOVERY ERROR] "
                 f"Message {message.id}: {e}"
             )
+
+            # Leave the watermark before the failed message and retry
+            # it on the next recovery run.
+            break
 
     if len(messages) >= MAX_RECOVERY_MESSAGES:
         print(
@@ -135,12 +150,18 @@ async def start():
 
         try:
 
-            await process_message(event)
+            processed = await process_message(event)
 
-            await state.async_set_last_message_id(
-                event.chat_id,
-                event.id,
-            )
+            if processed:
+                await state.async_set_last_message_id(
+                    event.chat_id,
+                    event.id,
+                )
+            else:
+                print(
+                    f"[ERROR] Message {event.id} failed; "
+                    f"watermark not advanced."
+                )
 
         except Exception as e:
 

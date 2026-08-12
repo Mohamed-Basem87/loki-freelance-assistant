@@ -1,7 +1,7 @@
 import asyncio
 
 from app.config import FREEHUB_POLL_INTERVAL
-from app.freehub import poll_once
+from app.freehub import mark_project_seen, poll_once
 from app.job_processor import process_job
 from app.logger import logger
 
@@ -57,6 +57,10 @@ async def freehub_worker():
                             "_poll_source", job["source"]
                         ),
                     )
+
+                    # Only mark the project as seen after the shared
+                    # processing pipeline completes without raising.
+                    await mark_project_seen(project)
 
                 except Exception as e:
 

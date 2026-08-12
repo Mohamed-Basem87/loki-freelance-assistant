@@ -91,6 +91,7 @@ def test_gemini_uses_system_instruction_not_string_concatenation(monkeypatch):
 
     assert call["config"] is not None
     assert call["config"].system_instruction == gemini.SYSTEM_PROMPT
+    assert call["config"].response_mime_type == "application/json"
 
     # The system prompt must NOT be concatenated into contents.
     assert gemini.SYSTEM_PROMPT not in call["contents"]

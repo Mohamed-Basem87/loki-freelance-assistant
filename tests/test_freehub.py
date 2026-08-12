@@ -186,3 +186,63 @@ def test_backfill_walks_additional_pages_when_first_page_fully_unseen(
 
     uids = {p["uid"] for p in new_projects}
     assert uids == {"k2", "k3", "k4"}
+
+
+def test_new_project_is_not_marked_seen_until_processing_succeeds(
+    isolated_freehub_state, monkeypatch
+):
+    _install_fake_pages(
+        monkeypatch,
+        {
+            "kafiil": [[_fake_project("k0", "kafiil")]],
+            "freelancer": [[]],
+        },
+    )
+    asyncio.run(freehub_module.poll_once())
+
+    _install_fake_pages(
+        monkeypatch,
+        {
+            "kafiil": [[_fake_project("k9", "kafiil")]],
+            "freelancer": [[]],
+        },
+    )
+
+    new_projects = asyncio.run(freehub_module.poll_once())
+
+    assert [p["uid"] for p in new_projects] == ["k9"]
+    assert "k9" not in freehub_module._seen["kafiil"]
+    assert "k9" not in isolated_freehub_state.get_freehub_seen("kafiil")
+
+    asyncio.run(freehub_module.mark_project_seen(new_projects[0]))
+
+    assert "k9" in freehub_module._seen["kafiil"]
+    assert "k9" in isolated_freehub_state.get_freehub_seen("kafiil")
+
+
+def test_failed_freehub_processing_leaves_project_eligible_for_retry(
+    isolated_freehub_state, monkeypatch
+):
+    _install_fake_pages(
+        monkeypatch,
+        {
+            "kafiil": [[_fake_project("k0", "kafiil")]],
+            "freelancer": [[]],
+        },
+    )
+    asyncio.run(freehub_module.poll_once())
+
+    _install_fake_pages(
+        monkeypatch,
+        {
+            "kafiil": [[_fake_project("k9", "kafiil")]],
+            "freelancer": [[]],
+        },
+    )
+
+    first = asyncio.run(freehub_module.poll_once())
+    assert [p["uid"] for p in first] == ["k9"]
+    assert "k9" not in freehub_module._seen["kafiil"]
+
+    second = asyncio.run(freehub_module.poll_once())
+    assert [p["uid"] for p in second] == ["k9"]
