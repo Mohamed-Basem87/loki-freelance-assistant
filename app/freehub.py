@@ -63,8 +63,13 @@ def _ensure_seeded_from_state():
     _seeded_from_state = True
 
 
-def _persist_seen(source: str):
-    state.set_freehub_seen(source, list(_seen[source]))
+async def _persist_seen(source: str):
+    # Goes through state.async_set_freehub_seen (a dedicated
+    # single-worker executor thread, mirroring app.logger.ExcelLogger)
+    # rather than calling state.set_freehub_seen directly, since this
+    # performs blocking file I/O and poll_once() runs concurrently
+    # with the Telegram side under asyncio.gather -- see app.state.
+    await state.async_set_freehub_seen(source, list(_seen[source]))
 
 
 async def fetch_projects(session: aiohttp.ClientSession, source: str, page: int = 1):
@@ -123,7 +128,7 @@ async def poll_once():
                 for project in projects:
                     seen.append(project["uid"])
 
-                _persist_seen(source)
+                await _persist_seen(source)
 
                 print(
                     f"[FREEHUB] Seeded {source} cache ({len(projects)} jobs)"
@@ -182,10 +187,20 @@ async def poll_once():
                         continue
 
                     seen.append(uid)
-                    new_projects.append(project)
+                    # Tag with the fixed poll-source ("kafiil"/
+                    # "freelancer", the same value this function's own
+                    # seen-cache dedup is keyed by) so downstream
+                    # consumers (see app.freehub_worker) can derive job
+                    # identity from it instead of the API's own
+                    # "platform" field, which is live response data
+                    # and not guaranteed to stay constant for the same
+                    # project across polls. "_poll_source" is an
+                    # underscore-prefixed key to avoid colliding with
+                    # any real field the FreeHub API returns.
+                    new_projects.append({**project, "_poll_source": source})
                     changed = True
 
             if changed:
-                _persist_seen(source)
+                await _persist_seen(source)
 
     return new_projects

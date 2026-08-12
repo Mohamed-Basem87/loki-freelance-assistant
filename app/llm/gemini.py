@@ -39,10 +39,23 @@ def _is_transient(exception: Exception) -> bool:
     wait=wait_fixed(1),
     reraise=True,
 )
-def _generate_response(client: genai.Client, contents: str):
+def _generate_response(client: genai.Client, contents: str, system_instruction: str):
+    # system_instruction is passed via GenerateContentConfig rather
+    # than concatenated into `contents` -- Gemini's supported
+    # mechanism for the same evaluator/data separation the Groq path
+    # already gets for free from its system/user message roles (see
+    # app.llm.groq). Previously both were joined into a single
+    # undifferentiated string here, giving the primary LLM path a
+    # weaker instruction/data boundary than its own fallback despite
+    # identical semantic content; `contents` still carries only the
+    # untrusted-job-containing user prompt, matching Groq's "user"
+    # message exactly.
     return client.models.generate_content(
         model="gemini-3.5-flash",
         contents=contents,
+        config=genai.types.GenerateContentConfig(
+            system_instruction=system_instruction,
+        ),
     )
 
 
@@ -60,7 +73,8 @@ def evaluate_job(text: str, filter_result: dict):
 
             response = _generate_response(
                 client,
-                SYSTEM_PROMPT + "\n\n" + prompt,
+                prompt,
+                SYSTEM_PROMPT,
             )
 
             return parse_response(response.text)

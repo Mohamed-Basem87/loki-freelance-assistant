@@ -24,18 +24,78 @@ def _make_job_uuid(source: str, job_id: str) -> str:
     )
 
 
-async def process_job(job: dict, job_id: str):
+async def process_job(job: dict, job_id: str, identity_source: str = None):
+    """
+    `identity_source`, together with `job_id`, is what job_uuid is
+    derived from -- it must be a value that stays constant for "the
+    same underlying message/project" across restarts, retries, and
+    metadata edits, which `job["source"]` is not guaranteed to be
+    (see app.message_processor and app.freehub_worker: it can be a
+    Telegram channel *title*, or a FreeHub project's *live* "platform"
+    field, either of which can change independently of the
+    message/project actually being the same one). Callers that have a
+    genuinely stable identity value pass it explicitly; if omitted,
+    this falls back to `job.get("source", "")` for backward
+    compatibility with any caller that doesn't have a better option.
+
+    Legacy-identity dedup compatibility: before identity_source
+    existed, job_uuid was always derived from job["source"] directly
+    (the mutable/display value) -- so every job logged prior to this
+    change has a job_uuid computed that way, not via the new stable
+    identity_source. job["source"] is still passed by every caller
+    (it's still needed for display/logging -- see message_processor.py
+    and freehub_worker.py), so it doubles as exactly the legacy
+    identity value without callers needing to pass anything new. See
+    the legacy-lookup block below for how this is used -- it is a
+    dedup *lookup* only: new jobs are always logged under the new
+    canonical job_uuid, never under the legacy one.
+    """
 
     start = time.perf_counter()
 
-    job_uuid = _make_job_uuid(job.get("source", ""), job_id)
+    if identity_source is None:
+        identity_source = job.get("source", "")
+
+    job_uuid = _make_job_uuid(identity_source, job_id)
+
+    legacy_identity_source = job.get("source", "")
+    # Only worth a second lookup when the legacy identity would
+    # actually produce a *different* UUID than the canonical one --
+    # i.e. only when a caller passed a genuinely different
+    # identity_source (Telegram's chat_id, FreeHub's _poll_source).
+    # When they're equal (identity_source wasn't overridden, or a
+    # FreeHub project's "platform" field happens to already match its
+    # _poll_source), the legacy and canonical UUIDs are identical and
+    # checking twice would be redundant.
+    legacy_job_uuid = (
+        _make_job_uuid(legacy_identity_source, job_id)
+        if legacy_identity_source != identity_source
+        else None
+    )
 
     if await logger.run(logger.has_job, job_uuid):
-        # Already logged (and, if should_notify fired, already
-        # notified) -- this is a reprocessing of the same source
-        # message/project, not a new job. Skip it rather than
-        # creating a duplicate row and sending a duplicate
-        # notification.
+        # Already logged under the current, canonical identity --
+        # this is a reprocessing of the same source message/project,
+        # not a new job. Skip it rather than creating a duplicate row
+        # and sending a duplicate notification.
+        return
+
+    if legacy_job_uuid is not None and await logger.run(
+        logger.has_job, legacy_job_uuid
+    ):
+        # Found under the *pre-stable-identity* UUID scheme instead --
+        # this is a historical job that was logged before job_uuid
+        # derivation switched from job["source"] (title / live
+        # "platform" field) to a stable identity_source. Recognize it
+        # as the same job rather than reprocessing/re-notifying it
+        # under a brand new UUID. The existing row is left exactly as
+        # it is -- this is a lookup-only compatibility check, never a
+        # rewrite of stored data, and every newly-logged job still
+        # only ever uses the canonical job_uuid above.
+        print(
+            f"[DEDUP] Recognized job {job_id!r} via legacy identity "
+            f"(pre-stable-identity UUID) -- skipping reprocessing."
+        )
         return
 
     filter_text = f"{job['title']}\n{job['description']}"
@@ -151,7 +211,25 @@ async def process_job(job: dict, job_id: str):
 
     else:
 
-        decision_reason = "Below Gemini Threshold"
+        # This branch is reached whenever the classifier rejected the
+        # job (hard_reject is False, notify_directly is False, and
+        # needs_gemini is False) but `matched` was still True -- e.g.
+        # a core-negative in the body alongside some supporting-
+        # positive hits, or supporting-positive evidence that fell
+        # below SUPPORTING_POSITIVE_MIN_FOR_GEMINI. `matched` only
+        # asks "was there any positive evidence at all", not "did
+        # positive evidence win the decision", so it does not imply
+        # the job was actually a borderline Gemini case. The
+        # classifier already computed the real reason (e.g.
+        # "core_negative_no_core_positive", "insufficient_signal",
+        # "title_core_negative_no_body_positive") -- preserve it
+        # instead of collapsing every such reject into the same
+        # generic, misleading label, since the Jobs sheet's Decision
+        # Reason column is what the classifier's own tuning workflow
+        # (see app/keywords.py comments) relies on to diagnose reject
+        # rows. This does not change `decision`/`should_notify`/
+        # whether Gemini is called -- only the logged reason string.
+        decision_reason = result["reason"] or "Below Gemini Threshold"
 
     await logger.run(
         logger.update_job,

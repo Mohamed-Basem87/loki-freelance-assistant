@@ -43,7 +43,7 @@ async def _recover_channel(client, channel):
         newest = await client.get_messages(channel, limit=1)
 
         if newest:
-            state.set_last_message_id(channel, newest[0].id)
+            await state.async_set_last_message_id(channel, newest[0].id)
 
         print(f"[RECOVERY] {channel}: first run, seeded (no backfill)")
         return
@@ -66,7 +66,7 @@ async def _recover_channel(client, channel):
 
             await process_message(message)
 
-            state.set_last_message_id(
+            await state.async_set_last_message_id(
                 message.chat_id,
                 message.id,
             )
@@ -137,7 +137,7 @@ async def start():
 
             await process_message(event)
 
-            state.set_last_message_id(
+            await state.async_set_last_message_id(
                 event.chat_id,
                 event.id,
             )

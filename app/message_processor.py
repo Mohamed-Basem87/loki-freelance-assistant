@@ -12,6 +12,12 @@ async def process_message(event):
         text = event.raw_text or ""
         source = event.chat.title if event.chat else ""
 
+        # Telethon exposes chat_id on both a live NewMessage event and
+        # a plain Message object returned by iter_messages() (used
+        # during startup recovery -- see app.handlers.telegram), so
+        # this works identically on both call paths.
+        chat_id = getattr(event, "chat_id", None)
+
         job = parse_job(source, text)
 
         buttons = getattr(event, "buttons", None)
@@ -40,6 +46,16 @@ async def process_message(event):
         await process_job(
             job=job,
             job_id=str(event.id),
+            # job["source"] (the channel *title*) stays as display/
+            # logging metadata and, in app.parser.parse_job, as the
+            # actual dispatch signal for Nafezly-specific parsing --
+            # it must not be repurposed as identity. The channel's
+            # numeric chat_id is stable across renames, so use that
+            # for job_uuid derivation instead; job_id (the message id)
+            # is unaffected. Falls back to the title only in the
+            # unlikely case chat_id is unavailable, matching the
+            # previous behavior exactly in that edge case.
+            identity_source=str(chat_id) if chat_id is not None else source,
         )
 
     except Exception as e:

@@ -42,6 +42,20 @@ async def freehub_worker():
                     await process_job(
                         job=job,
                         job_id=project["uid"],
+                        # job["source"] (the "platform" field, used
+                        # for display) is live API response data and
+                        # not guaranteed stable for the same project
+                        # across polls. app.freehub tags every
+                        # returned project with "_poll_source", the
+                        # fixed kafiil/freelancer value its own
+                        # seen-cache dedup already keys on -- use that
+                        # for job identity instead, so the two dedup
+                        # mechanisms (FreeHub's seen-cache and
+                        # job_processor's job_uuid) can't disagree
+                        # about whether this is the same project.
+                        identity_source=project.get(
+                            "_poll_source", job["source"]
+                        ),
                     )
 
                 except Exception as e:

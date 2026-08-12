@@ -1,5 +1,7 @@
+import asyncio
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 
@@ -10,6 +12,21 @@ STATE_FILE = Path(__file__).resolve().parent.parent / "database" / "state.json"
 # as bare top-level keys, e.g. "-1001234": 5678) so the two schemas
 # don't collide.
 _FREEHUB_KEY = "_freehub_seen"
+
+# Single dedicated worker thread for all state-file persistence, same
+# pattern as app.logger.ExcelLogger's _EXECUTOR. StateManager.save()
+# does blocking filesystem I/O (temp-file write + os.replace); calling
+# it directly from a coroutine (as set_last_message_id/
+# set_freehub_seen used to) blocks the single shared event loop for
+# the duration of that write, and since Telegram (app.handlers.
+# telegram) and FreeHub (app.freehub) both persist state concurrently
+# under asyncio.gather, two saves could also race on the same
+# STATE_FILE/temp_path if simply offloaded to the default
+# asyncio.to_thread pool (which allows more than one thread at once).
+# Funneling every state write through one dedicated thread makes
+# writes strictly serial -- exactly the same guarantee the Excel
+# logger already relies on -- without blocking the event loop.
+_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="state-persist")
 
 
 class StateManager:
@@ -51,12 +68,35 @@ class StateManager:
 
         os.replace(temp_path, STATE_FILE)
 
+    async def run(self, func, *args, **kwargs):
+        """
+        Run a bound StateManager method (currently only the mutating
+        setters need this -- load()/save() called directly are fine
+        since they only happen at startup, before any concurrent
+        Telegram/FreeHub tasks exist) on the single dedicated
+        state-persistence thread and await its result.
+
+        Async callers (app.handlers.telegram, app.freehub) must use
+        the async_set_last_message_id/async_set_freehub_seen wrappers
+        below instead of calling set_last_message_id/
+        set_freehub_seen directly, for the same reason job_processor
+        etc. must go through ExcelLogger.run() instead of calling
+        logger methods directly: it keeps every write strictly
+        serialized on one thread and off the event loop.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(_EXECUTOR, lambda: func(*args, **kwargs))
+
     def get_last_message_id(self, channel_id):
         return int(self.data.get(str(channel_id), 0))
 
     def set_last_message_id(self, channel_id, message_id):
         self.data[str(channel_id)] = message_id
         self.save()
+
+    async def async_set_last_message_id(self, channel_id, message_id):
+        """Async-safe wrapper around set_last_message_id -- see run()."""
+        await self.run(self.set_last_message_id, channel_id, message_id)
 
     # ------------------------------------------------------------
     # FreeHub dedup persistence.
@@ -77,6 +117,10 @@ class StateManager:
         bucket = self.data.setdefault(_FREEHUB_KEY, {})
         bucket[source] = list(seen_ids)
         self.save()
+
+    async def async_set_freehub_seen(self, source: str, seen_ids: list):
+        """Async-safe wrapper around set_freehub_seen -- see run()."""
+        await self.run(self.set_freehub_seen, source, seen_ids)
 
 
 state = StateManager()

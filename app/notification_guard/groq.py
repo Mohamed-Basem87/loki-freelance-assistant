@@ -12,7 +12,7 @@ from app.notification_guard.config import (
     NOTIFICATION_GUARD_MODELS,
     NOTIFICATION_GUARD_MAX_RETRIES,
 )
-from app.notification_guard.prompt import SYSTEM_PROMPT
+from app.notification_guard.prompt import SYSTEM_PROMPT, build_prompt
 
 
 CLIENT = Groq(
@@ -60,10 +60,10 @@ def _generate_response(
             },
             {
                 "role": "user",
-                "content": (
-                    f"TITLE:\n{title}\n\n"
-                    f"DESCRIPTION:\n{description}"
-                ),
+                # Single source of truth for the guard's user-turn
+                # prompt structure (including the untrusted-content
+                # framing) -- see app.notification_guard.prompt.
+                "content": build_prompt(title, description),
             },
         ],
         response_format={
