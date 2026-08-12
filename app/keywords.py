@@ -583,6 +583,23 @@ NEGATIVE_KEYWORDS = {
             "payroll system": 6,
             "billing software": 6,
             "billing system": 6,
+            # Microsoft Dynamics 365 Business Central ERP customisation.
+            # "Business Central Custom Reports & UI"
+            # (freelancer:40642473, daily audit 2026-08-12) auto-notified on
+            # a lone "power bi" core hit via core_positive_clean; the job is
+            # Dynamics 365 Business Central consulting (compiled AL
+            # extensions for custom RDLC/Power BI reports plus UI/UX page
+            # tweaks), not data analysis. The independent NotificationGuard
+            # LLM review returned do_not_notify for the same job. Core (not
+            # supporting) so "power bi"/"excel" + these route to
+            # mixed_core_signals -> Gemini instead of a blind notification,
+            # mirroring the existing "erp"/"netsuite"/"crm" treatment. No
+            # Arabic equivalent is added: no Arabic production posting in
+            # this or prior audited batches used "بيزنس سنترال"/"داينمكس"
+            # (zero matches), so no production-supported Arabic terminology
+            # exists to mirror these.
+            "business central": 7,
+            "dynamics 365": 7,
         },
         "supporting": {
             "mvp": 3,
@@ -909,6 +926,47 @@ NEGATIVE_KEYWORDS = {
             # self-describe with "تحليل الفواتير" (invoice analysis), which
             # does not match this phrase.
             "نموذج فاتورة": 6,
+            # Quantitative / algorithmic trading-system builds. "AI-Driven
+            # Automated Trading System Development"
+            # (freelancer:40641402, daily audit 2026-08-12) auto-notified on
+            # a lone "data analysis" core hit via core_positive_clean; the
+            # job is building a production automated-trading system (broker
+            # APIs, cloud infrastructure, backtesting, AI/LLM-assisted
+            # development), not data analysis. The independent
+            # NotificationGuard LLM review returned do_not_notify for the
+            # same job. Core (not supporting) so a positive hit alongside
+            # these routes to mixed_core_signals -> Gemini instead of a
+            # blind notification. The three sibling trading jobs in the same
+            # window were already correctly rejected (Multi-Strategy Trading
+            # App 40642754, Enhance & Integrate Trading App 40642803, Stock
+            # Trading Web App Upgrade 40642845) and are unaffected by this
+            # addition. No Arabic equivalent is added: zero Arabic postings
+            # in the audited production data contain trading vocabulary
+            # ("تداول"/"تداول آلي"/"خوارزمي"), so no production-supported
+            # Arabic terminology exists to mirror these.
+            "automated trading": 6,
+            "algorithmic trading": 6,
+            "quantitative trading": 6,
+            # "selenium" -- promoted from supporting (weight 4) to core
+            # (daily audit 2026-08-12). Selenium is unambiguous web-
+            # automation/test vocabulary: in production it appears only on
+            # QA/test-automation/scraping jobs (Azure Pricing Validation
+            # Automation 40641595, Remote Web App QA Tester 40641615, AI
+            # Agent for FMX Backup 40641659, Erase Amazon Order History
+            # 40641411), never on a genuine DA/BI posting. 40641595
+            # auto-notified on a lone "excel" core hit (CSV/Excel summary
+            # deliverable) via core_positive_clean -- Selenium UI automation
+            # (POM), API validation, PyTest, HTML/CSV/Excel test reports;
+            # the pre-existing supporting weight 4 was far below the 14
+            # downgrade threshold. The independent NotificationGuard LLM
+            # review returned do_not_notify for the same job. Core so
+            # "excel"/"sql" + "selenium" route to mixed_core_signals ->
+            # Gemini instead of a blind notification, matching the "test
+            # automation" core already added for the sibling class (Cloud VM
+            # Pricing Validation Platform 40638944). No Arabic equivalent is
+            # added: no audited Arabic posting used "سيلينيوم", so no
+            # production-supported Arabic terminology exists to mirror it.
+            "selenium": 6,
         },
         "supporting": {
             # web-form / browser automation: verbatim in Web Form
@@ -917,7 +975,6 @@ NEGATIVE_KEYWORDS = {
             "automation tool": 3,
             "desktop application": 4,
             "playwright": 4,
-            "selenium": 4,
             # QA / software-testing role vocabulary. "QA Specialist for
             # Android E-commerce App" (freelancer:40639807, daily audit
             # 2026-08-11) auto-notified on a lone "excel" core hit -- the
@@ -1026,6 +1083,38 @@ NEGATIVE_KEYWORDS = {
             "متابعين": 6,
         },
         "supporting": {},
+    },
+
+    "writing": {
+        # Academic / scientific manuscript writing. A separate domain from
+        # analysis: these postings ask for a finished article/paper, not for
+        # data work. "Scientific Article: Essential-Oil Insecticides"
+        # (freelancer:40640761, daily audit 2026-08-12) auto-notified on a
+        # lone "data analysis" core hit (the phrase appears in the body
+        # describing how to present the results) via core_positive_clean; the
+        # deliverable is a submission-ready peer-reviewed scientific
+        # manuscript (abstract, methods, results, discussion) written up from
+        # research notes. The independent NotificationGuard LLM review
+        # returned do_not_notify for the same job. Core (not supporting) so a
+        # positive hit alongside these routes to mixed_core_signals -> Gemini
+        # (which rejected the job) instead of a blind notification. "research
+        # paper"/"academic paper" are deliberately supporting: they are less
+        # unambiguous (a genuine data-analysis-for-research gig could mention
+        # them), so a lone mention only adds weight toward a Gemini review.
+        # No Arabic equivalent is added: no audited Arabic posting used
+        # "كتابة أكاديمية"/"مقالة علمية" (zero matches; the only Arabic
+        # "مقالة" posting was a logo-design article, already hard-rejected),
+        # so no production-supported Arabic terminology exists to mirror these.
+        "core": {
+            "scientific article": 7,
+            "academic writing": 7,
+            "manuscript": 6,
+            "peer reviewed": 6,
+        },
+        "supporting": {
+            "research paper": 4,
+            "academic paper": 4,
+        },
     },
 }
 

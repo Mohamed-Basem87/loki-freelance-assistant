@@ -531,6 +531,100 @@ QA_2026_08_11_CASES = [
 ]
 
 
+# ------------------------------------------------------------------
+# Regression checks for the 2026-08-12 daily window (trading-system
+# builds / academic-scientific writing / Selenium test automation /
+# Dynamics 365 Business Central ERP). Four production false positives
+# auto-notified in the window, each independently confirmed by the
+# NotificationGuard LLM (do_not_notify); the new core negatives route
+# each to Gemini (mixed core signals) instead of a blind notification.
+# Genuine DA jobs are protected from overreach.
+# ------------------------------------------------------------------
+WINDOW_2026_08_12_CASES = [
+    {
+        "name": "Automated trading system build (real job 40641402)",
+        "title": "AI-Driven Automated Trading System Development",
+        "text": (
+            # Mirrors production filter_text: title repeated at the top of
+            # the body, so the trading core negatives are visible to the
+            # body-level match and flip the lone "data analysis" core
+            # positive into mixed_core_signals.
+            "AI-Driven Automated Trading System Development. "
+            "AI Trading Engineer / Algorithmic Trading Developer for "
+            "Automated Financial Markets System. Build and continuously "
+            "improve an AI-powered automated trading system for financial "
+            "markets. Algorithmic and quantitative trading, risk and money "
+            "management, Python and software development, APIs and broker "
+            "integrations, AI/LLMs, backtesting and strategy optimization, "
+            "cloud infrastructure. Perform data analysis on market data "
+            "and identify potential opportunities."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Scientific manuscript writing (real job 40640761)",
+        "title": "Scientific Article: Essential-Oil Insecticides",
+        "text": (
+            # "data analysis" (core positive) appears alongside the new
+            # writing-core negatives (scientific article / manuscript /
+            # peer reviewed) -> mixed_core_signals -> Gemini.
+            "Scientific Article: Essential-Oil Insecticides. "
+            "I have completed a study and now need it shaped into a "
+            "publishable scientific article. Craft a full manuscript and "
+            "deliver the finished work as a clean, submission-ready PDF. "
+            "The article must read like a peer-reviewed paper: abstract, "
+            "introduction, methods, results and discussion. Methodology, "
+            "experimental results and data analysis developed in depth so "
+            "reviewers can replicate and critique the work."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Selenium test-automation framework (real job 40641595)",
+        "title": "Azure Pricing Validation Automation",
+        "text": (
+            # Selenium promoted to core: "excel" core positive + selenium
+            # core negative -> mixed_core_signals -> Gemini.
+            "Azure Pricing Validation Automation. "
+            "Self-contained Python framework that automatically scrapes, "
+            "validates, and continuously monitors Azure pricing. Selenium "
+            "(Page Object Model) drives the browser, REST pricing endpoint "
+            "comparisons, SQLite storage, tests run under PyTest, finish "
+            "with an HTML report and a CSV/Excel summary for finance."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Dynamics 365 Business Central ERP (real job 40642473)",
+        "title": "Business Central Custom Reports & UI",
+        "text": (
+            # "power bi" core positive + business central / dynamics 365
+            # core negatives -> mixed_core_signals -> Gemini.
+            "Business Central Custom Reports & UI. "
+            "Microsoft Dynamics 365 Business Central technical consultant. "
+            "Custom reporting layouts (AL/RDLC or Power BI) plus UI "
+            "enhancements, compiled and signed AL extensions, deployment "
+            "notes and rollback instructions."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Genuine Power BI dashboard must still notify",
+        "title": "Uber Ride Booking & Revenue Analysis – Power BI",
+        "text": (
+            # No core negative present; title-level Power BI/DAX hits keep
+            # this as an automatic notification (real job 40641589).
+            "Interactive Power BI dashboard analyzing ride-booking "
+            "performance, customer behavior and revenue trends. Power Query "
+            "data cleaning, DAX measures and KPIs, slicers, an overview "
+            "page of completed bookings and revenue, business intelligence "
+            "visualizations and comparative analysis."
+        ),
+        "expected": "notify_directly",
+    },
+]
+
+
 ALL_REGRESSION_CASES = (
     AUTOMATION_CASES
     + SCRAPE_LEADGEN_CASES
@@ -538,6 +632,7 @@ ALL_REGRESSION_CASES = (
     + DATA_EXTRACTION_CASES
     + WINDOW_2026_08_11_CASES
     + QA_2026_08_11_CASES
+    + WINDOW_2026_08_12_CASES
 )
 
 
