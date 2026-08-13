@@ -997,6 +997,85 @@ NEGATIVE_KEYWORDS = {
             # self-describe with "تحليل الفواتير" (invoice analysis), which
             # does not match this phrase.
             "نموذج فاتورة": 6,
+            # Microsoft Word document work (formatting / automation /
+            # transcription) that merely mentions Excel. A recurring false-
+            # positive class observed across three production windows; every
+            # posting auto-notified on a lone "excel"/"excel sheet" core hit
+            # via title_core_positive or core_positive_clean because no
+            # core-negative fired, while the actual deliverable is a Word
+            # document, not analysis:
+            #   - "Letter Formatting with Mail Merge" (freelancer:40644542,
+            #     daily audit 2026-08-13): formatting a Word letter that
+            #     pulls data from an Excel sheet via mail merge; the
+            #     independent NotificationGuard LLM review returned
+            #     do_not_notify.
+            #   - "Automated Word & Excel Data Feed" (freelancer:40643062,
+            #     prior-window guard review): builds a Word/Excel data-feed
+            #     template set (VBA macros, linked tables, form fields) so
+            #     Word reports and Excel sheets populate; guard returned
+            #     do_not_notify.
+            #   - "Word Paragraphs to Excel Rows" (freelancer:40637597):
+            #     transcribes standalone paragraphs out of Word documents
+            #     into an Excel workbook, one per row (VBA / Power Query /
+            #     python-docx + openpyxl) -- transcription, not analysis.
+            # Core (not supporting) so "excel" + these route to
+            # mixed_core_signals -> Gemini instead of a blind notification.
+            # Full 3605-job replay: "mail merge" matches 2 jobs (the single
+            # notify_directly hit is 40644542), "microsoft word" matches 6
+            # (the only notify_directly hits are 40644542/40637597),
+            # "word documents" matches 3 (the only notify_directly hits are
+            # 40637597/40643062) -- zero genuine DA/BI postings affected.
+            # No Arabic equivalent is added: the observed Arabic Word-
+            # document gig ("تنسيق احترافي لملفات Microsoft Word", مستقل
+            # 6784) spells the tool as the Latin phrase "Microsoft Word",
+            # already matched above; no audited Arabic posting used
+            # "وورد"/"مستندات وورد".
+            "mail merge": 6,
+            "microsoft word": 6,
+            "word documents": 6,
+            # Online-survey building/deployment -- market-research operations
+            # work, not data analysis. "Online Survey Creation & Deployment"
+            # (freelancer:40644573, daily audit 2026-08-13) auto-notified on
+            # a lone "excel" body core hit via core_positive_clean; the job
+            # is building and deploying a survey on Google Forms / SurveyMonkey
+            # / Typeform (configuring logic, required fields, branding,
+            # generating the public link, monitoring response quality) and
+            # only exporting the results to Excel at the end. The independent
+            # NotificationGuard LLM review returned do_not_notify for the same
+            # job. Core so "excel" + these route to mixed_core_signals ->
+            # Gemini instead of a blind notification. Full 3605-job replay:
+            # "online survey"/"survey creation" match only 40644573,
+            # "typeform"/"google forms" each match 4 jobs of which the only
+            # notify_directly hit is 40644573 (the rest already reject) --
+            # zero genuine DA/BI postings affected. No Arabic equivalent is
+            # added: the only Arabic survey postings observed are already
+            # rejected and are not the survey-creation class ("برنامج تسجيل
+            # بيانات استبيان ونموذج للطباعة" 46209 is an app build,
+            # "توزيع استبيان علمي" 46274 is questionnaire distribution);
+            # no audited Arabic posting described building an online survey.
+            "online survey": 6,
+            "survey creation": 6,
+            "typeform": 6,
+            "google forms": 6,
+            # "excel troubleshooting" -- Excel software support requests, not
+            # data analysis. "Excel 365 Cell Color Issue" (freelancer:38666479,
+            # daily audit 2026-08-13) auto-notified via title_core_positive
+            # on a lone title "excel" core hit; the job is a one-off tech-
+            # support ticket ("I cannot get it to fill-in a cell with a
+            # different color using the Fill Color tool ... someone who is
+            # skilled in Excel troubleshooting"). The independent
+            # NotificationGuard LLM review returned do_not_notify for the same
+            # job. Deliberately the specific phrase "excel troubleshooting"
+            # rather than bare "troubleshooting", which appears on 65 jobs
+            # including genuine DA/BI work (e.g. "E-Commerce Sales Data
+            # Collection" 40644481). Core so the title "excel" hit + this
+            # body phrase route to title_positive_but_body_core_negative ->
+            # Gemini instead of a blind notification. Full 3605-job replay:
+            # "excel troubleshooting" matches exactly one job, 38666479.
+            # No Arabic equivalent is added: no audited Arabic posting used
+            # Excel-support wording ("دعم اكسل"/"مشكلة في اكسل"/"إصلاح
+            # اكسل" all have zero production occurrences).
+            "excel troubleshooting": 6,
             # Quantitative / algorithmic trading-system builds. "AI-Driven
             # Automated Trading System Development"
             # (freelancer:40641402, daily audit 2026-08-12) auto-notified on

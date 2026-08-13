@@ -790,6 +790,138 @@ WINDOW_2026_08_13_B_CASES = [
 ]
 
 
+# ------------------------------------------------------------------
+# Regression checks for the 2026-08-13 C daily window (Microsoft Word
+# document work / online-survey deployment / Excel software support).
+# Five production false positives auto-notified, each independently
+# confirmed by the NotificationGuard LLM (do_not_notify); the new core
+# negatives ("mail merge"/"microsoft word"/"word documents" automation,
+# "online survey"/"survey creation"/"typeform"/"google forms" automation,
+# "excel troubleshooting" automation) route each to Gemini (mixed core
+# signals or title_positive_but_body_core_negative) instead of a blind
+# notification. Genuine Excel DA/BI jobs are protected from overreach.
+# ------------------------------------------------------------------
+WINDOW_2026_08_13_C_CASES = [
+    {
+        "name": "Word mail-merge letter formatting (real job 40644542)",
+        "title": "Letter Formatting with Mail Merge",
+        "text": (
+            # Title "mail merge" core negative + body "excel sheet"/"excel"
+            # core positives -> mixed_core_signals -> Gemini.
+            "Letter Formatting with Mail Merge. "
+            "I have a Word document that pulls data from an Excel sheet and I "
+            "need it professionally formatted. The letter uses a mail merge to "
+            "pull client details from the Excel sheet into a Word template. I "
+            "need the layout, fonts and spacing fixed before the final print."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Word & Excel data feed automation (real job 40643062)",
+        "title": "Automated Word & Excel Data Feed",
+        "text": (
+            # Title "excel" core positive + body "word documents" core negative
+            # -> title_positive_but_body_core_negative -> Gemini.
+            "Automated Word & Excel Data Feed. "
+            "I need a simple data-feed or template set so I can enter data once "
+            "and have it flow automatically into Word documents and Excel "
+            "workbooks. VBA macros, linked tables, or form fields are welcome. "
+            "Word reports and Excel sheets should populate instantly."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Word paragraphs to Excel rows (real job 40637597)",
+        "title": "Word Paragraphs to Excel Rows",
+        "text": (
+            # Title "excel workbook"/"excel" core positives + body
+            # "word documents" core negative -> Gemini (transcription, not
+            # analysis).
+            "Word Paragraphs to Excel Rows. "
+            "I have Microsoft Word documents and need every standalone "
+            "paragraph placed into an Excel workbook, one paragraph per row. "
+            "Plain text only. You may use VBA, Power Query, or a small Python "
+            "script with python-docx and openpyxl."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Online survey creation & deployment (real job 40644573)",
+        "title": "Online Survey Creation & Deployment",
+        "text": (
+            # Body "excel" core positive + "online survey"/"survey creation"/
+            # "typeform"/"google forms" core negatives -> mixed_core_signals
+            # -> Gemini.
+            "Online Survey Creation & Deployment. "
+            "I have a survey that needs to be taken fully online. Build the "
+            "survey in Google Forms, SurveyMonkey, or Typeform, configure logic "
+            "and branding, generate the public link, monitor response quality, "
+            "and export the results to Excel or Google Sheets."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Excel software support ticket (real job 38666479)",
+        "title": "Excel 365 Cell Color Issue",
+        "text": (
+            # Title "excel" core positive + body "excel troubleshooting" core
+            # negative -> title_positive_but_body_core_negative -> Gemini.
+            "Excel 365 Cell Color Issue. "
+            "I'm having trouble with my Excel 365. I cannot get it to fill-in a "
+            "cell with a different color using the Fill Color tool. I need "
+            "someone who is skilled in Excel troubleshooting and can help me "
+            "resolve this issue."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Genuine Excel data analysis support still notifies (40640051)",
+        "title": "Excel Data Analysis Support",
+        "text": (
+            # No new core negative present; title/body data-analysis core hits
+            # keep this as an automatic notification (real job 40640051).
+            "Excel Data Analysis Support. "
+            "Several operational datasets must be turned into decision-ready "
+            "insights. Data processing with strong command of formulas, pivot "
+            "tables, charts, Power Query, or macros. Import and merge CSV/XLSX "
+            "files, remove duplicates, validate entries, build dynamic pivot "
+            "tables and a refreshable dashboard."
+        ),
+        "expected": "notify_directly",
+    },
+    {
+        "name": "Genuine Excel data cleanup still notifies (40644216)",
+        "title": "Excel Data Cleanup & Organization",
+        "text": (
+            # Title "excel" core positive with no new negative -> still a
+            # direct notification (real job 40644216).
+            "Excel Data Cleanup & Organization. "
+            "I need an experienced data analyst to clean and organize my Excel "
+            "datasets: remove duplicate rows, standardize dates and formats, "
+            "fix inconsistencies, and prepare the data for reporting and "
+            "analysis."
+        ),
+        "expected": "notify_directly",
+    },
+    {
+        "name": "Genuine e-commerce sales data collection still notifies (40644481)",
+        "title": "E-Commerce Sales Data Collection",
+        "text": (
+            # Contains bare "troubleshooting" wording but NOT the precise
+            # "excel troubleshooting" core negative, so the job still
+            # notifies directly (real job 40644481).
+            "E-Commerce Sales Data Collection. "
+            "I need to collect and organize sales data from multiple "
+            "e-commerce platforms into a single Excel workbook. Compile sales "
+            "reports, join order exports, handle discrepancies, and prepare "
+            "the dataset for sales analysis and forecasting. Some "
+            "troubleshooting of the data pipeline is expected."
+        ),
+        "expected": "notify_directly",
+    },
+]
+
+
 ALL_REGRESSION_CASES = (
     AUTOMATION_CASES
     + SCRAPE_LEADGEN_CASES
@@ -800,6 +932,7 @@ ALL_REGRESSION_CASES = (
     + WINDOW_2026_08_12_CASES
     + WINDOW_2026_08_13_CASES
     + WINDOW_2026_08_13_B_CASES
+    + WINDOW_2026_08_13_C_CASES
 )
 
 
