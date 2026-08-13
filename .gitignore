@@ -11,6 +11,10 @@ sessions/
 # Runtime state
 database/state.json
 
+# Runtime logs
+logs/
+*.log
+
 # Python cache
 __pycache__/
 *.py[cod]
@@ -20,13 +24,7 @@ __pycache__/
 .vscode/
 .idea/
 
-# Logs
-*.log
-
-# Generated Excel logs
-logs/freelance_bot_logs.xlsx
-
-# SQLite databases
+# Databases
 *.db
 *.sqlite
 *.sqlite3
