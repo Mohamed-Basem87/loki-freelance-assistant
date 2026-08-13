@@ -600,6 +600,21 @@ NEGATIVE_KEYWORDS = {
             # exists to mirror these.
             "business central": 7,
             "dynamics 365": 7,
+            # Dolibarr -- an open-source ERP product name, mirroring the
+            # existing "netsuite"/"business central" ERP-name treatment.
+            # "Dolibarr Product Entry (50)" (freelancer:40643125, daily
+            # audit 2026-08-13) auto-notified on a lone "excel" core hit
+            # via core_positive_clean; the job is importing product name/
+            # description records into a Dolibarr ERP instance ("copying
+            # the right fields into the right places"), i.e. ERP data
+            # entry, not data analysis. The independent NotificationGuard
+            # LLM review returned do_not_notify for the same job. Core so
+            # "excel" + "dolibarr" routes to mixed_core_signals -> Gemini
+            # instead of a blind notification. No Arabic equivalent is
+            # added: no Arabic production posting used "دوليبار" (zero
+            # matches in the audited batches), so no production-supported
+            # Arabic terminology exists to mirror it.
+            "dolibarr": 7,
         },
         "supporting": {
             "mvp": 3,
@@ -693,7 +708,29 @@ NEGATIVE_KEYWORDS = {
     },
 
     "ai_apps": {
-        "core": {},
+        # Messaging-platform bot development. Repeated production evidence:
+        # every job in the audited batches that mentions WhatsApp is a
+        # chatbot / automation / integration gig, never data analysis --
+        # "Bot IA WhatsApp reservas con Sheets" (freelancer:40643442,
+        # daily audit 2026-08-13) auto-notified via core_positive_clean on
+        # a lone "excel" body hit ("llevar la información ... a Google
+        # Sheets o Excel online") when the deliverable is a WhatsApp
+        # Business booking bot (Dialogflow/NLP, webhooks, Apps Script) --
+        # the independent NotificationGuard LLM review returned
+        # do_not_notify for the same job. Also in the same window (all
+        # non-DA, all currently rejected on other grounds):
+        # "Integración y Duplicación de Bots API" (40643193), "Recuperar
+        # Mensajes WhatsApp iOS" (40643676), "Urgente GoHighLevel,
+        # WhatsApp, Reservo" (40643994), "Reconectar agente IA WhatsApp
+        # Business" (40644011), and مستقل 46413 (legal-services store that
+        # delivers contracts "عبر الواتساب"). Core so a positive hit
+        # alongside "whatsapp" routes to mixed_core_signals -> Gemini
+        # instead of a blind notification. "واتساب" is the verbatim
+        # Arabic spelling observed in مستقل 46413.
+        "core": {
+            "whatsapp": 7,
+            "واتساب": 7,
+        },
         "supporting": {
             "llm": 2,
             "chatbot": 3,
@@ -739,6 +776,22 @@ NEGATIVE_KEYWORDS = {
             "data entry": 6,
             "ادخال بيانات": 6,
             "إدخال بيانات": 6,
+            # "address entry" -- the title-wording variant of the data-entry
+            # class. "Excel Names & Address Entry" (freelancer:40643386,
+            # daily audit 2026-08-13) auto-notified on title core hits
+            # ("excel workbook"/"excel") via title_core_positive; the job
+            # is manually transferring name/address records into an Excel
+            # workbook "exactly as shown in the source documents, keep the
+            # spelling and line breaks intact ... ready for mail-merge",
+            # i.e. clerical data entry, not analysis. The independent
+            # NotificationGuard LLM review returned do_not_notify for the
+            # same job. Core so "excel" + "address entry" routes to
+            # mixed_core_signals -> Gemini instead of a blind notification,
+            # mirroring the "data entry" treatment. No Arabic equivalent is
+            # added: no audited Arabic posting used "إدخال عناوين" (the
+            # Arabic data-entry class is already covered verbatim by the
+            # core negatives "ادخال بيانات"/"إدخال بيانات").
+            "address entry": 6,
             # PDF / text transcription into Excel: repeated production
             # false positives auto-notified on a lone "excel" mention
             # inside what is actually manual data-entry / transcription

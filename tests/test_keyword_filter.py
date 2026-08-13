@@ -625,6 +625,103 @@ WINDOW_2026_08_12_CASES = [
 ]
 
 
+# ------------------------------------------------------------------
+# Regression checks for the 2026-08-13 daily window (ERP data-entry /
+# address-entry / WhatsApp-bot vocabulary). Three production false
+# positives auto-notified in the window, each independently confirmed
+# by the NotificationGuard LLM (do_not_notify); the new core negatives
+# ("dolibarr" enterprise, "address entry" automation, "whatsapp"/
+# "واتساب" ai_apps) route each to Gemini (mixed core signals) instead
+# of a blind notification. A WhatsApp-bot job with no core positive now
+# rejects directly (previously wasted a Gemini call only to be
+# rejected). Genuine DA jobs are protected from overreach.
+# ------------------------------------------------------------------
+WINDOW_2026_08_13_CASES = [
+    {
+        "name": "Dolibarr ERP product entry (real job 40643125)",
+        "title": "Dolibarr Product Entry (50)",
+        "text": (
+            # Mirrors production filter_text: title repeated at the top of
+            # the body, so the "dolibarr" enterprise core negative is visible
+            # to the body-level match and flips the lone "excel" core
+            # positive into mixed_core_signals.
+            "Dolibarr Product Entry (50). "
+            "I need a detail-oriented freelancer to import between one and "
+            "fifty new products into my Dolibarr instance. All product "
+            "data--names and descriptive text only--are ready in tidy "
+            "Excel/CSV files, so the task is mainly about copying the right "
+            "fields into the right places and double-checking that each "
+            "entry looks clean inside Dolibarr."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Excel Names & Address Entry (real job 40643386)",
+        "title": "Excel Names & Address Entry",
+        "text": (
+            # Title core hits ("excel workbook"/"excel") + the "address
+            # entry" automation core negative -> mixed_core_signals -> Gemini.
+            "Excel Names & Address Entry. "
+            "I need a tidy Microsoft Excel workbook with up to five "
+            "separate sheets, each populated with text records that I will "
+            "supply--every record includes a person or company name and a "
+            "full mailing address. Transfer the information exactly as "
+            "shown in the source documents, keep the spelling and line "
+            "breaks intact, and place each field in its proper column so "
+            "the file is instantly searchable and ready for mail-merge use."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "WhatsApp booking bot (real job 40643442)",
+        "title": "Bot IA WhatsApp reservas con Sheets",
+        "text": (
+            # Lone "excel" body core positive + "whatsapp" ai_apps core
+            # negative -> mixed_core_signals -> Gemini.
+            "Bot IA WhatsApp reservas con Sheets. "
+            "Busco implementar un flujo inteligente que permita tomar "
+            "reservas via WhatsApp Business y llevar la informacion "
+            "directamente a una hoja de calculo (Google Sheets o Excel "
+            "online) en tiempo real. El bot debe reconocer la intencion del "
+            "usuario, hacer las preguntas necesarias y registrar "
+            "automaticamente nombre, fecha y numero de personas."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "WhatsApp info bot, no core positive (real job 40636356)",
+        "title": "WhatsApp Food & Beverage Info Bot",
+        "text": (
+            # "whatsapp" core negative with no core positive ->
+            # core_negative_no_core_positive -> reject. Production outcome
+            # was already Rejected (Gemini rejected it); now no wasted LLM
+            # call.
+            "WhatsApp Food & Beverage Info Bot. "
+            "I run a food-and-beverage store and want customers to receive "
+            "instant answers on WhatsApp, day or night. 24/7 WhatsApp "
+            "Business (or Twilio API) chatbot. Product data should flow in "
+            "from my existing database. MySQL or PostgreSQL preferred."
+        ),
+        "expected": "reject",
+    },
+    {
+        "name": "Genuine WhatsApp-adjacent analysis must not be lost",
+        "title": "WhatsApp Marketing Data Analysis",
+        "text": (
+            # Core positive ("data analysis"/"excel"/"pivot table") +
+            # "whatsapp" core negative -> mixed_core_signals -> Gemini, never
+            # an outright reject.
+            "WhatsApp Marketing Data Analysis. "
+            "Export our WhatsApp Business chat history and build an Excel "
+            "dashboard with pivot tables and DAX measures to analyze "
+            "customer response times, conversion trends and sales analysis "
+            "by region."
+        ),
+        "expected": "needs_gemini",
+    },
+]
+
+
 ALL_REGRESSION_CASES = (
     AUTOMATION_CASES
     + SCRAPE_LEADGEN_CASES
@@ -633,6 +730,7 @@ ALL_REGRESSION_CASES = (
     + WINDOW_2026_08_11_CASES
     + QA_2026_08_11_CASES
     + WINDOW_2026_08_12_CASES
+    + WINDOW_2026_08_13_CASES
 )
 
 
