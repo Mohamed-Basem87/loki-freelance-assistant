@@ -1,3 +1,6 @@
+import asyncio
+from collections import defaultdict
+
 from telethon import TelegramClient, events
 
 from app.config import (
@@ -115,38 +118,25 @@ async def _recover_channel(client, channel):
     )
 
 
-async def start():
-    client = TelegramClient(
-        SESSION_NAME,
-        API_ID,
-        API_HASH,
-    )
+async def _handle_live_message(event, channel_locks):
+    """
+    Process one live NewMessage event, serialized per-channel via
+    `channel_locks`.
 
-    await client.start()
+    H-1 fix: Telethon dispatches each NewMessage as its own task, so
+    without serialization a fast message (e.g. an instant
+    hard_reject) can finish -- and advance the watermark -- before a
+    slower earlier message (e.g. one awaiting a Gemini call) does.
+    That permanently drops the earlier message from the recovery
+    window if it later fails or the process crashes before it
+    finishes. Locking per channel forces messages from the same
+    channel to be processed, and their watermarks advanced, strictly
+    in arrival order -- matching the guarantee `_recover_channel`
+    already provides on startup. Different channels still run fully
+    concurrently; only same-channel messages are serialized.
+    """
 
-    me = await client.get_me()
-
-    print("=" * 70)
-    print(f"Logged in as: {me.first_name}")
-    print("=" * 70)
-
-    print("Recovering missed messages...\n")
-
-    for channel in TARGET_CHANNELS:
-        await _recover_channel(client, channel)
-
-    print("Recovery complete.")
-    print("Listening for new jobs...\n")
-
-    @client.on(events.NewMessage(chats=list(TARGET_CHANNELS)))
-    async def handler(event):
-
-        chat = await event.get_chat()
-
-        print(
-            f"[TARGET] {chat.title} | "
-            f"Message ID: {event.id}"
-        )
+    async with channel_locks[event.chat_id]:
 
         try:
 
@@ -175,5 +165,45 @@ async def start():
                 f"[ERROR] Failed to process "
                 f"message {event.id}: {e}"
             )
+
+
+async def start():
+    client = TelegramClient(
+        SESSION_NAME,
+        API_ID,
+        API_HASH,
+    )
+
+    await client.start()
+
+    me = await client.get_me()
+
+    print("=" * 70)
+    print(f"Logged in as: {me.first_name}")
+    print("=" * 70)
+
+    print("Recovering missed messages...\n")
+
+    for channel in TARGET_CHANNELS:
+        await _recover_channel(client, channel)
+
+    print("Recovery complete.")
+    print("Listening for new jobs...\n")
+
+    # See _handle_live_message for why this needs to be per-channel
+    # locked (H-1).
+    channel_locks = defaultdict(asyncio.Lock)
+
+    @client.on(events.NewMessage(chats=list(TARGET_CHANNELS)))
+    async def handler(event):
+
+        chat = await event.get_chat()
+
+        print(
+            f"[TARGET] {chat.title} | "
+            f"Message ID: {event.id}"
+        )
+
+        await _handle_live_message(event, channel_locks)
 
     await client.run_until_disconnected()
