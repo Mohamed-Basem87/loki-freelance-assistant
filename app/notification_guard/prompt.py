@@ -13,7 +13,8 @@ NOT DATA SCIENCE, MACHINE LEARNING, AI MODEL DEVELOPMENT, or general
 software development.
 
 Approve only when the actual work requested is primarily analytical,
-reporting, BI, or data-processing work such as:
+reporting, BI, data-processing, data-cleaning, or data-preparation work
+relevant to this freelancer, such as:
 
 - Data analysis / analytics
 - Business intelligence
@@ -21,19 +22,72 @@ reporting, BI, or data-processing work such as:
 - Excel analysis, advanced Excel, Power Query, PivotTables, reporting
 - SQL analysis and reporting queries
 - Python data analysis
-- Data cleaning/preparation when it is part of an analytical workflow
+- Data cleaning / preparation
+- Data normalization, standardization, deduplication, or consolidation
+  when the purpose is to produce a clean, structured, analysis-ready
+  dataset or workbook
 - Exploratory Data Analysis (EDA) when analysis itself is the primary
   deliverable
 - Data visualization
 - KPI/reporting/analytics
-- ETL/data transformation when clearly part of analytics/BI
+- ETL/data transformation when clearly part of analytics/BI or data
+  preparation
 - Descriptive or business-focused statistical analysis
 - Trend, performance, sales, financial, operational, or customer analysis
 
-DO NOT confuse supporting analytical activities with the overall job
-category. A job can contain data cleaning, EDA, visualization, Python,
-SQL, Excel, or statistics and STILL be a Data Science / Machine Learning
-job.
+IMPORTANT DATA-CLEANING DISTINCTION:
+
+Standalone data-cleaning or data-preparation work CAN be a valid
+Data Analysis / BI job even when the client does not explicitly request
+downstream analysis, dashboards, or reports.
+
+Approve when the PRIMARY DELIVERABLE is a cleaned, standardized,
+deduplicated, consolidated, or analysis-ready dataset/workbook.
+
+Examples of acceptable data-cleaning / preparation work include:
+- Removing exact or near-duplicate records
+- Standardizing dates, numbers, formats, or column names
+- Handling missing or inconsistent data
+- Consolidating multiple sheets or source files
+- Normalizing a dataset or workbook structure
+- Detecting and resolving data-quality issues
+- Preparing a raw dataset for later reporting or analysis
+- Delivering a documented, analysis-ready Excel workbook or dataset
+
+For example:
+
+ACCEPT:
+"Clean a multi-sheet Excel workbook by removing duplicates,
+standardizing dates and numeric formats, handling missing values,
+standardizing column headers, consolidating the sheets, and delivering
+one clean workbook ready for analysis."
+
+ACCEPT:
+"Clean and prepare a raw sales dataset, normalize the columns, resolve
+missing values and duplicates, and deliver the analysis-ready dataset."
+
+Do NOT confuse this with manual data entry or transcription.
+
+REJECT:
+"Copy names and addresses from source documents into Excel exactly as
+shown, preserving spelling and line breaks, and prepare the file for
+mail merge."
+
+REJECT:
+"Enter product names and descriptions from a provided file into our ERP."
+
+REJECT:
+"Create an Excel invoice template/form with formulas and formatting."
+
+The distinction is the PRIMARY DELIVERABLE:
+- Transforming and improving the quality/structure of an existing dataset
+  so it is clean and analysis-ready = ACCEPT.
+- Manually copying or transcribing information without meaningful
+  analytical data transformation = REJECT.
+- Creating a document, form, template, or software workflow = REJECT.
+
+A job does NOT need to include downstream analysis to qualify as
+data-cleaning/data-preparation work.
 
 REJECT when the PRIMARY DELIVERABLE is Data Science, Machine Learning,
 AI, predictive modeling, or model development, including:
@@ -58,21 +112,14 @@ AI, predictive modeling, or model development, including:
 - AI/ML prediction systems
 - Data Science projects whose main outcome is a trained or evaluated model
 
-A job does NOT become acceptable merely because it also includes:
-- Data cleaning
-- Missing-value handling
-- Duplicate removal
-- EDA
-- Correlation analysis
-- Data visualization
-- Python
-- Pandas
-- NumPy
-- Statistics
-- Jupyter Notebook
+A job does NOT become acceptable merely because it mentions or includes
+these activities when the PRIMARY DELIVERABLE is a Data Science /
+Machine Learning project.
 
-These are often supporting steps inside a Data Science / Machine Learning
-project.
+Data cleaning, duplicate removal, EDA, visualization, Python, Pandas,
+NumPy, and statistics can be valid Data Analysis / BI work when the
+primary deliverable is the cleaned/prepared dataset, analysis, report,
+dashboard, or other analytical output.
 
 For example:
 
@@ -92,14 +139,14 @@ rejected.
 Another important distinction:
 
 ACCEPT jobs where machine learning is merely mentioned as context or
-future use, provided the requested deliverable itself is Data Analysis or
-BI.
+future use, provided the requested deliverable itself is Data Analysis,
+BI, data cleaning, or data preparation.
 
 Example:
-"Analyze and visualize this dataset. The client will later use the
-results for a machine-learning project."
+"Clean and analyze this dataset. The client will later use the prepared
+data for a machine-learning project."
 
-This is still Data Analysis and should be approved.
+This is still Data Analysis / data preparation and should be approved.
 
 REJECT jobs where machine learning is part of the requested deliverable,
 even if the job also requires EDA, cleaning, visualization, or reporting.
@@ -109,7 +156,8 @@ Also reject when the PRIMARY DELIVERABLE is:
 - Data entry or manual copying
 - Transcription
 - OCR or manual document extraction
-- PDF/image to Excel conversion when the work is extraction rather than analysis
+- PDF/image to Excel conversion when the work is extraction rather than
+  analysis or meaningful data transformation
 - Virtual assistance or administrative work
 - Web research without meaningful analysis
 - Web scraping when analysis is not the primary deliverable
@@ -131,12 +179,13 @@ Ask yourself:
 "What will the freelancer ultimately deliver to the client?"
 
 If the answer is a dashboard, report, analysis, business insights,
-cleaned analytical dataset, BI solution, or similar analytical output,
+cleaned analytical dataset, standardized dataset, analysis-ready
+workbook, BI solution, or similar analytical/data-preparation output,
 the job can be approved.
 
 If the answer is a trained predictive model, machine-learning system,
-AI model, software application, or another non-analytical deliverable,
-reject it.
+AI model, software application, manual transcription/data-entry output,
+document/form/template, or another non-analytical deliverable, reject it.
 
 Tools and technologies mentioned as secondary requirements do not
 determine the category. Judge the actual work and final deliverable.

@@ -722,6 +722,74 @@ WINDOW_2026_08_13_CASES = [
 ]
 
 
+WINDOW_2026_08_13_B_CASES = [
+    {
+        "name": "Custom Cash Flow & Budget Tool (real job 40628982)",
+        "title": "Custom Cash Flow and Budget Tool",
+        "text": (
+            # supporting_positive_only: "cash flow"(4) + "budgets"(3) +
+            # "forecasting"(3) + "dashboard"(2) => 12 >=
+            # SUPPORTING_POSITIVE_MIN_FOR_GEMINI. Before the audit only 5
+            # ("forecasting"+"dashboard") -> reject/insufficient_signal.
+            "Custom Cash Flow and Budget Tool\n"
+            "I'm seeking an experienced developer to create a comprehensive "
+            "cash flow and budget tool tailored for both household and business "
+            "use. I would like a dashboard/cover sheet that shows everything in "
+            "a snapshot. Then separate tabs for each of our business entities "
+            "and our household. \n\nEssential Features:\nHousehold:\n- Expense "
+            "Tracking: Monitor and categorize household expenses.\n- Budget "
+            "Planning: Set and manage budgets for various household "
+            "categories.\n\nBusiness:\n- Expense Tracking: Record and categorize "
+            "all business expenses.\n- Income Tracking: Monitor all business "
+            "income sources.\n- Budget Forecasting: Predict future budgets based "
+            "on income and expenses.\n\nIdeal Skills:\n- Proficiency in financial "
+            "software development\n- Strong background in budgeting and financial "
+            "planning\n- Experience with user-friendly interface design\n- "
+            "Excellent problem-solving skills\n\nLooking for a professional who "
+            "can deliver a reliable, intuitive, and efficient tool within budget. "
+            "Please provide examples of similar work done."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "AI Business & Finance Automation (real job 40644207)",
+        "title": "AI Business & Finance Automation",
+        "text": (
+            # supporting_positive_only: "budgets"(3) + "dashboard"(2) +
+            # "reports"(1) + "python"(3) + "kpis"(3) => 12 >=
+            # SUPPORTING_POSITIVE_MIN_FOR_GEMINI. Before the audit only 9 ->
+            # reject/insufficient_signal.
+            "AI Business & Finance Automation\n"
+            "I need a single, robust AI solution that can step in as an "
+            "all-round operator—running routine business management, enforcing "
+            "solid financial control, and keeping my inbox under control. The "
+            "most urgent pressure is on the business and finance side, so "
+            "accurate numbers and smart insights have to come first, but the "
+            "same system should also clear, sort, and respond to email with "
+            "minimal oversight from me. \n\nYour job is to map my current "
+            "workflows, suggest (or build) the right stack—whether that's "
+            "OpenAI, LangChain, custom Python pipelines, Zapier integrations, "
+            "or another toolset—and then deliver an integrated assistant able "
+            "to: \n\u2022 Maintain rolling budgets and forecasts, updating them "
+            "automatically as new data arrives\n\u2022 Track expenses in real time, "
+            "spot variances, and feed reliable numbers straight into my "
+            "books\n\u2022 Generate clear monthly and ad-hoc financial reports ready "
+            "for investors and tax filing\n\u2022 Monitor the inbox, classify "
+            "messages, draft replies in my tone of voice, and surface only the "
+            "items that truly need my approval\n\u2022 Display the core business "
+            "KPIs on one live dashboard and proactively recommend operational "
+            "tweaks when trends shift \n\nThe solution is complete when I can "
+            "open a single interface, see up-to-date KPIs, download an accurate "
+            "P&L, and watch at least 80 % of incoming mail handled without "
+            "manual edits. If you have shipped comparable autonomous agents "
+            "before, outline the models, frameworks, and roll-out plan you'd "
+            "use to get us from prototype to production."
+        ),
+        "expected": "needs_gemini",
+    },
+]
+
+
 ALL_REGRESSION_CASES = (
     AUTOMATION_CASES
     + SCRAPE_LEADGEN_CASES
@@ -731,6 +799,7 @@ ALL_REGRESSION_CASES = (
     + QA_2026_08_11_CASES
     + WINDOW_2026_08_12_CASES
     + WINDOW_2026_08_13_CASES
+    + WINDOW_2026_08_13_B_CASES
 )
 
 

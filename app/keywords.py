@@ -195,6 +195,24 @@ POSITIVE_KEYWORDS = {
             "hr analysis": 4,
             "forecast": 3,
             "forecasting": 3,
+            "budgets": 3,
+            # Financial-reporting vocabulary. Repeated production evidence:
+            # two genuine DA/BI-adjacent jobs ("AI Business & Finance
+            # Automation" freelancer:40644207, daily audit 2026-08-13, and
+            # "Custom Cash Flow and Budget Tool" freelancer:40628982) were
+            # rejected at insufficient_signal with supporting-positive weight
+            # 9, just under the 12 Gemini threshold, despite real budget/
+            # forecast/reporting/KPI content. These phrases route such jobs
+            # to Gemini for review. Full 3,506-job replay: only those two
+            # decisions change (reject -> needs_gemini), no notification
+            # changes, no regressions. Bare "budget"/"expenses" are NOT added
+            # (too generic; "expenses" reintroduced the "Cross-Platform
+            # Production Scheduler App" FP, and "budget" alone matched 172
+            # non-DA jobs). No Arabic equivalent is added: no audited Arabic
+            # posting used "الميزانيات"/"التدفق النقدي" in a data-analysis
+            # context, so no production-supported Arabic terminology exists
+            # to mirror these.
+            "cash flow": 4,
             "budget analysis": 4,
             "kpi": 3,
             "kpis": 3,
