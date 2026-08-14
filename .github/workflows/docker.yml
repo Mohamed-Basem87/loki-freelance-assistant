@@ -73,6 +73,18 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
+      - name: Check required secrets and variables
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
+        run: |
+          test -n "$SSH_PRIVATE_KEY" || { echo "::error::SSH_PRIVATE_KEY secret is not set. Add it in repo Settings > Secrets and variables > Actions."; exit 1; }
+          test -n "$DEPLOY_HOST" || { echo "::error::DEPLOY_HOST variable is not set. Add it in repo Settings > Secrets and variables > Actions > Variables."; exit 1; }
+          test -n "$DEPLOY_USER" || { echo "::error::DEPLOY_USER variable is not set."; exit 1; }
+          test -n "$DEPLOY_DIR" || { echo "::error::DEPLOY_DIR variable is not set."; exit 1; }
+
       - name: Connect to Tailscale
         uses: tailscale/github-action@v3
         with:
