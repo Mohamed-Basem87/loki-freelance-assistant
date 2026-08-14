@@ -1,0 +1,20 @@
+services:
+  loki:
+    image: mohamedbasem2/loki-freelance-assistant:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Reuse the locally-created user session and dedup state instead
+      # of creating fresh ones inside the container
+      # (sessions/telegram.session -> /app/sessions,
+      #  database/state.json -> /app/database).
+      - ./sessions:/app/sessions
+      - ./database:/app/database
+      - loki-logs:/app/logs
+    # Standard entry point (no Notification Guard). To deploy the
+    # guarded entry point instead, uncomment:
+    # command: python run_guarded.py
+
+volumes:
+  loki-logs:

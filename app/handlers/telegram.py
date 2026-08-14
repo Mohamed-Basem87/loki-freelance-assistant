@@ -6,6 +6,7 @@ from telethon import TelegramClient, events
 from app.config import (
     API_HASH,
     API_ID,
+    PHONE_NUMBER,
     SESSION_NAME,
     TARGET_CHANNELS,
 )
@@ -20,6 +21,45 @@ from app.state import state
 # *entire* history. This is still ~50x the previous hardcoded window
 # and is explicitly a fallback bound, not the expected case.
 MAX_RECOVERY_MESSAGES = 2000
+
+
+async def _warm_entity_cache(client):
+    """
+    Fresh sessions (e.g. a container's first boot) carry no cached
+    entities, so Telethon cannot resolve a numeric channel ID on its
+    own -- it needs the channel's access_hash, which is only obtained
+    from a previous fetch. messages.GetDialogs returns every chat the
+    account is in; that caches each monitored channel's hash in memory
+    and persists it to the session file, so recovery's
+    client.get_messages() can resolve. Locally this was always a no-op
+    because the long-lived session file already had the channels
+    cached.
+    """
+
+    await client.get_dialogs()
+
+    missing = []
+
+    for channel in TARGET_CHANNELS:
+        try:
+            await client.get_entity(channel)
+        except ValueError as e:
+            missing.append((channel, str(e)))
+
+    if missing:
+        for channel, error in missing:
+            print(f"[ERROR] Cannot resolve monitored channel {channel}: {error}")
+
+        print(
+            "Is the Loki account a member of every channel in "
+            "TARGET_CHANNEL_IDS? A private channel can only be resolved "
+            "by numeric ID when the account is in it."
+        )
+
+        raise RuntimeError(
+            "Unresolvable target channel(s): "
+            f"{', '.join(str(channel) for channel, _ in missing)}"
+        )
 
 
 async def _recover_channel(client, channel):
@@ -174,13 +214,21 @@ async def start():
         API_HASH,
     )
 
-    await client.start()
+    # Explicitly log in as the phone-number userbot, never a bot token.
+    # Passing the phone up front also removes the ambiguous interactive
+    # prompt that previously let a bot token silently create a bot
+    # session -- which cannot enumerate dialogs (get_dialogs) or resolve
+    # the monitored channels by numeric ID (see _warm_entity_cache).
+    await client.start(phone=PHONE_NUMBER)
 
     me = await client.get_me()
 
     print("=" * 70)
     print(f"Logged in as: {me.first_name}")
     print("=" * 70)
+
+    # See _warm_entity_cache for why this must run before recovery.
+    await _warm_entity_cache(client)
 
     print("Recovering missed messages...\n")
 

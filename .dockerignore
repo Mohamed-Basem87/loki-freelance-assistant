@@ -1,0 +1,26 @@
+.git
+.gitignore
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Secrets — never baked into the image. Mount .env at runtime instead.
+.env
+.env.*
+
+# Runtime data (persisted via volumes)
+sessions/
+logs/
+database/
+*.session
+*.sqlite
+*.xlsx
+*.log
+
+# Keep the build context minimal
+Dockerfile
+.dockerignore
+docker-compose.yml
