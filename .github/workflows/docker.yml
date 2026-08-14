@@ -118,4 +118,15 @@ jobs:
               "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.yml" \
               -o docker-compose.yml
 
+            # The SQLite audit log is bind-mounted as a single file.
+            # Docker turns a missing bind source into a *directory*,
+            # which sqlite3 cannot open -- so make sure the path is a
+            # real, writable file owned by the container user (UID 1000).
+            if [ -e loki_freelance_bot.db ] && [ ! -f loki_freelance_bot.db ]; then
+              echo "Removing directory at loki_freelance_bot.db (created by an earlier Docker run)"
+              rm -rf loki_freelance_bot.db
+            fi
+            touch loki_freelance_bot.db
+            chown 1000:1000 loki_freelance_bot.db || chmod 666 loki_freelance_bot.db
+
             docker compose up -d --pull always

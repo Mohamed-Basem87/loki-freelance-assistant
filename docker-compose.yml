@@ -19,7 +19,9 @@ services:
       #
       # NOTE: the file must exist on the host before the first
       # `docker compose up` -- Docker turns a missing bind-mount file
-      # path into a directory. Create it once with e.g.
+      # path into a directory, which sqlite3 cannot open. The deploy
+      # workflow in .github/workflows/docker.yml creates it
+      # automatically; for a manual run, create it once with e.g.
       #   New-Item loki_freelance_bot.db    (Windows)
       #   touch loki_freelance_bot.db       (Linux/macOS)
       - ./loki_freelance_bot.db:/app/loki_freelance_bot.db

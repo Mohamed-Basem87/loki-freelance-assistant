@@ -196,6 +196,15 @@ class DBLogger:
         run()), so a shared connection is safe."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
+        if self.path.exists() and not self.path.is_file():
+            raise RuntimeError(
+                f"Audit log path is not a file: {self.path}. "
+                "When Docker bind-mounts a database file whose host "
+                "path does not exist, it creates a directory instead. "
+                "Create the file on the host first, e.g. "
+                "`touch loki_freelance_bot.db`, then restart the container."
+            )
+
         self._conn = sqlite3.connect(
             self.path,
             check_same_thread=False,
@@ -203,6 +212,14 @@ class DBLogger:
         # Autocommit: every statement is its own transaction. Explicit
         # BEGIN IMMEDIATE/COMMIT is still used where atomicity across
         # multiple statements matters (create_job_if_absent).
+        #
+        # The default rollback journal (NOT WAL) is used deliberately:
+        # the database file is bind-mounted into the container as a
+        # single file, so WAL's -wal/-shm sidecar files would live in
+        # the container's writable layer and be discarded on container
+        # recreate -- losing any commits not yet checkpointed. The
+        # rollback journal writes every committed transaction straight
+        # into the bind-mounted file itself.
         self._conn.isolation_level = None
 
         for ddl in _CREATE_TABLES:
