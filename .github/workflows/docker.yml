@@ -118,15 +118,18 @@ jobs:
               "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.yml" \
               -o docker-compose.yml
 
-            # The SQLite audit log is bind-mounted as a single file.
-            # Docker turns a missing bind source into a *directory*,
-            # which sqlite3 cannot open -- so make sure the path is a
-            # real, writable file owned by the container user (UID 1000).
-            if [ -e loki_freelance_bot.db ] && [ ! -f loki_freelance_bot.db ]; then
-              echo "Removing directory at loki_freelance_bot.db (created by an earlier Docker run)"
-              rm -rf loki_freelance_bot.db
+            # The SQLite audit log is bind-mounted as a single file, so
+            # it must be a real file on the host -- Docker turns a
+            # missing bind source into a *directory*, which sqlite3
+            # cannot open. Nothing is ever deleted: if a directory
+            # exists here (e.g. created by an earlier Docker run), it is
+            # moved aside intact before creating the real file.
+            if [ -d loki_freelance_bot.db ]; then
+              mv "loki_freelance_bot.db" "loki_freelance_bot.db.bak-$(date +%s)"
             fi
-            touch loki_freelance_bot.db
-            chown 1000:1000 loki_freelance_bot.db || chmod 666 loki_freelance_bot.db
+            [ -f loki_freelance_bot.db ] || touch loki_freelance_bot.db
+            chown 1000:1000 loki_freelance_bot.db 2>/dev/null \
+              || chmod 666 loki_freelance_bot.db 2>/dev/null \
+              || echo "WARNING: could not make loki_freelance_bot.db writable by the container (UID 1000)"
 
             docker compose up -d --pull always
