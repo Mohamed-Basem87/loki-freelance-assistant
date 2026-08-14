@@ -1117,6 +1117,67 @@ NEGATIVE_KEYWORDS = {
             # added: no audited Arabic posting used "سيلينيوم", so no
             # production-supported Arabic terminology exists to mirror it.
             "selenium": 6,
+            # "image to excel" -- the verbatim gap in the PDF->Excel
+            # transcription class. "PDF/Image to Excel Conversion"
+            # (freelancer:40645760, daily audit 2026-08-14) auto-notified
+            # via title_core_positive on a lone title "excel" hit; the job
+            # is transcribing PDFs and scanned images into a clean Excel
+            # workbook ("every element--headings, paragraphs, and rows--
+            # captured with 99-100% accuracy", "no custom templates
+            # required"). None of the existing transcription negatives
+            # matched: "pdf to excel" cannot fire because the title reads
+            # "pdf/image to excel" (the "/" folds to a space), the body
+            # says "scanned images" rather than "ocr", and there is no
+            # "data to excel"/"pdf tables" wording. The independent
+            # NotificationGuard LLM review returned do_not_notify for the
+            # same job. Core so "excel" + "image to excel" routes to
+            # mixed_core_signals -> Gemini instead of a blind notification,
+            # mirroring the "pdf to excel"/"data to excel" treatment.
+            # Full 3,889-job replay: matches exactly one job, 40645760,
+            # notify_directly -> needs_gemini, zero collateral. No Arabic
+            # equivalent is added: no audited Arabic posting used "صورة إلى
+            # إكسل"/"تحويل صورة" (zero matches); the observed Arabic
+            # transcription class is covered verbatim by the core negatives
+            # "نقل البيانات"/"نقل بيانات" and "ادخال بيانات"/"إدخال بيانات".
+            "image to excel": 6,
+            # "skills assessment" -- employee skill-test creation, not data
+            # analysis. "Excel Skills Assessment Test" (freelancer:40645850,
+            # daily audit 2026-08-14) auto-notified via title_core_positive
+            # on a lone title "excel" hit; the job is writing a 10-minute
+            # multiple-choice test to evaluate basic Excel proficiency, not
+            # analyzing data. The independent NotificationGuard LLM review
+            # returned do_not_notify for the same job. Core so "excel" +
+            # "skills assessment" routes to title_positive_but_body_core_
+            # negative -> Gemini instead of a blind notification. Full
+            # 3,889-job replay: matches exactly one job, 40645850,
+            # notify_directly -> needs_gemini, zero collateral. No Arabic
+            # equivalent is added: no audited Arabic posting used "تقييم
+            # المهارات"/"اختبار مهارات" (zero matches), so no
+            # production-supported Arabic terminology exists to mirror it.
+            "skills assessment": 6,
+            # "copy and paste" -- the verbatim wording of manual copy-paste
+            # data-transfer work, the clerical class distinct from analysis.
+            # "Map PIM Data to Specific Excel Files Fields"
+            # (freelancer:40646120, daily audit 2026-08-14) auto-notified
+            # via title_core_positive on a lone title "excel" hit; the job
+            # is copying SKU/product fields from PIM CSV/XLS exports into
+            # customer Excel templates ("a pure copy-and-paste exercise
+            # rather than creative writing or rewriting"). None of the
+            # existing negatives matched ("data entry", "data transfer",
+            # "data to excel"). The independent NotificationGuard LLM
+            # review returned do_not_notify for the same job. Core so
+            # "excel" + "copy and paste" routes to mixed_core_signals ->
+            # Gemini instead of a blind notification. Full 3,889-job replay:
+            # matches 6 jobs, of which the only notify_directly hit is
+            # 40646120 (the rest already reject or need Gemini); zero
+            # genuine DA/BI postings affected. The broad "copy paste"
+            # spelling is deliberately NOT used -- it would also hit "Excel
+            # Data Analysis Support" 40640051, a guard-confirmed genuine DA
+            # job. No Arabic equivalent is added: no audited Arabic posting
+            # used "نسخ ولصق" (zero matches); the observed Arabic data-entry
+            # class is covered verbatim by the core negatives "ادخال بيانات"/
+            # "إدخال بيانات".
+            "copy and paste": 6,
         },
         "supporting": {
             # web-form / browser automation: verbatim in Web Form
@@ -1204,6 +1265,24 @@ NEGATIVE_KEYWORDS = {
             "fusion 360": 8,
             "cnc": 6,
             "shop drawings": 7,
+            # Tekla (Structures) -- structural steel detailing software, in
+            # the same unambiguous class as solidworks/autocad. "Senior
+            # Tekla Detailer Needed Monthly" (freelancer:40646275, daily
+            # audit 2026-08-14) auto-notified via core_positive_clean on a
+            # lone body "excel" core hit ("BOM and bolt lists in Excel",
+            # "single-part sheets", "cash flow") when the deliverable is
+            # Tekla steel detailing (GA drawings, NC/DSTV files, bolt and
+            # material lists). The independent NotificationGuard LLM review
+            # returned do_not_notify for the same job. Core so "excel" +
+            # "tekla" routes to mixed_core_signals -> Gemini instead of a
+            # blind notification, mirroring the rest of the cad category.
+            # Full 3,889-job replay: "tekla" matches 8 jobs; the only
+            # notify_directly hit is 40646275 (the other steel-plan jobs
+            # already route to Gemini), zero genuine DA/BI postings
+            # affected. No Arabic equivalent is added: no audited Arabic
+            # posting used "تيكلا" (zero matches), so no production-supported
+            # Arabic terminology exists to mirror it.
+            "tekla": 8,
         },
         "supporting": {},
     },

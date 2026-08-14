@@ -922,6 +922,95 @@ WINDOW_2026_08_13_C_CASES = [
 ]
 
 
+WINDOW_2026_08_14_CASES = [
+    {
+        "name": "PDF/Image to Excel conversion (real job 40645760)",
+        "title": "PDF/Image to Excel Conversion",
+        "text": (
+            # Title "excel" core positive + body "image to excel" core
+            # negative -> mixed_core_signals -> Gemini (transcription, not
+            # analysis). "pdf to excel" alone cannot fire because the title
+            # reads "pdf/image to excel" -- the "/" folds to a space.
+            "PDF/Image to Excel Conversion. "
+            "I need the contents of several PDFs and scanned images "
+            "transferred into a clean Excel workbook. Each source contains a "
+            "mix of narrative text and structured tables, and I want every "
+            "element--headings, paragraphs, and rows--captured with 99-100% "
+            "accuracy. No custom templates are required."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Excel skills assessment test creation (real job 40645850)",
+        "title": "Excel Skills Assessment Test",
+        "text": (
+            # Title "excel" core positive + body "skills assessment" core
+            # negative -> title_positive_but_body_core_negative -> Gemini
+            # (test-writing gig, not analysis).
+            "Excel Skills Assessment Test. "
+            "I'm looking for a 10-minute Excel test to evaluate basic Excel "
+            "proficiency for work. The test should consist solely of "
+            "multiple-choice questions, focusing on basic formulas and "
+            "functions. Ideal skills: proficiency in Microsoft Excel, "
+            "knowledge of basic formulas and functions."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Map PIM data to Excel fields copy-paste (real job 40646120)",
+        "title": "Map PIM Data to Specific Excel Files Fields",
+        "text": (
+            # Title "excel" core positive + body "copy and paste" core
+            # negative -> title_positive_but_body_core_negative -> Gemini
+            # (manual data transfer, not analysis).
+            "Map PIM Data to Specific Excel Files Fields. "
+            "I have a set of customer-supplied Excel templates that must be "
+            "populated with the full breadth of information already stored in "
+            "our PIM exports (regular CSV / XLS files). The job is "
+            "straightforward: open the existing PIM flat files, locate the "
+            "matching SKU, and copy every available specification exactly as "
+            "it appears. This is a pure copy-and-paste exercise rather than "
+            "creative writing or rewriting."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Senior Tekla detailer steel detailing (real job 40646275)",
+        "title": "Senior Tekla Detailer Needed Monthly",
+        "text": (
+            # Body "excel" core positive + "tekla" cad core negative ->
+            # mixed_core_signals -> Gemini (steel detailing, not analysis).
+            "Senior Tekla Detailer Needed Monthly. "
+            "I need a seasoned Tekla Structures professional who can own the "
+            "full detailing workflow on a series of industrial projects. "
+            "Produce GA drawings, assembly drawings, single-part sheets, and "
+            "NC/DSTV files ready for the shop. Generate bolt and material "
+            "lists plus BOM and bolt lists in Excel. We'll agree on a "
+            "percentage release each milestone so cash flow stays predictable."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Genuine Excel analysis with 'copy paste' wording still notifies (40640051)",
+        "title": "Excel Data Analysis Support",
+        "text": (
+            # The added negative is precisely "copy and paste". The broader
+            # "copy paste" spelling is intentionally NOT used because it would
+            # also hit this guard-confirmed genuine DA job (40640051); it must
+            # therefore keep notifying.
+            "Excel Data Analysis Support. "
+            "Several operational datasets must be turned into decision-ready "
+            "insights. Data processing with strong command of formulas, pivot "
+            "tables, charts, Power Query, or macros. Import and merge CSV/XLSX "
+            "files, remove duplicates, validate entries, copy paste key fields "
+            "between sheets, build dynamic pivot tables and a refreshable "
+            "dashboard."
+        ),
+        "expected": "notify_directly",
+    },
+]
+
+
 ALL_REGRESSION_CASES = (
     AUTOMATION_CASES
     + SCRAPE_LEADGEN_CASES
@@ -933,6 +1022,7 @@ ALL_REGRESSION_CASES = (
     + WINDOW_2026_08_13_CASES
     + WINDOW_2026_08_13_B_CASES
     + WINDOW_2026_08_13_C_CASES
+    + WINDOW_2026_08_14_CASES
 )
 
 
