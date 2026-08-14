@@ -91,6 +91,12 @@ jobs:
           authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
           ping: ${{ vars.DEPLOY_HOST }}
 
+      - name: Inspect runner node identity
+        run: |
+          tailscale status
+          echo "---"
+          tailscale status --json | grep -E '"HostName"|"Tags"|"MachineName"|"ID"'
+
       - name: Pull image and recreate service
         uses: appleboy/ssh-action@v1
         with:
