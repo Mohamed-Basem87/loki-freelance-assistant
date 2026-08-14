@@ -63,8 +63,8 @@ class FakeEvent:
 def isolated_workbook():
     """
     Point the shared logger singleton at an isolated, temporary
-    workbook for the duration of a test, instead of the real
-    logs/freelance_bot_logs.xlsx -- and restore/close it afterwards.
+    database file for the duration of a test, instead of the real
+    loki_freelance_bot.db -- and restore/close it afterwards.
     Every test in this file that touches the pipeline needs this,
     since app.job_processor logs through the module-level `logger`
     singleton.
@@ -72,7 +72,7 @@ def isolated_workbook():
     tmp_dir = tempfile.mkdtemp(prefix="freelance_assistant_test_")
     original_path = logger.path
 
-    logger.path = Path(tmp_dir) / "test_logs.xlsx"
+    logger.path = Path(tmp_dir) / "test_logs.db"
     logger.initialize()
 
     try:
@@ -82,26 +82,21 @@ def isolated_workbook():
         logger.path = original_path
 
 
-def _jobs_sheet(log):
-    return log.workbook["Jobs"]
-
-
 def test_process_message_logs_exactly_one_job_with_a_decision(isolated_workbook):
     log = isolated_workbook
-    jobs_before = _jobs_sheet(log).max_row
+    jobs_before = log.count_jobs()
 
     event = FakeEvent(888888, -100111, "Pipeline Test", REJECT_TEXT)
     asyncio.run(process_message(event))
 
-    sheet = _jobs_sheet(log)
-    jobs_after = sheet.max_row
+    jobs_after = log.count_jobs()
 
     assert jobs_after == jobs_before + 1, "Expected exactly one new job to be logged."
 
-    last_row = jobs_after
-    assert sheet.cell(row=last_row, column=2).value is not None, "Job UUID was not written."
-    assert sheet.cell(row=last_row, column=5).value, "Job title is empty."
-    assert sheet.cell(row=last_row, column=11).value is not None, "Decision was not calculated."
+    job = log.get_last_job()
+    assert job["Job UUID"] is not None, "Job UUID was not written."
+    assert job["Title"], "Job title is empty."
+    assert job["Decision"] is not None, "Decision was not calculated."
 
 
 def test_reprocessing_the_same_message_is_deduplicated(isolated_workbook):
@@ -110,14 +105,14 @@ def test_reprocessing_the_same_message_is_deduplicated(isolated_workbook):
     event = FakeEvent(888888, -100111, "Pipeline Test", REJECT_TEXT)
     asyncio.run(process_message(event))
 
-    jobs_after_first = _jobs_sheet(log).max_row
+    jobs_after_first = log.count_jobs()
 
     # job_uuid is derived deterministically from (identity_source,
     # job_id) rather than a fresh uuid4() per call, so logger.has_job()
     # recognizes the repeat and process_job() skips it.
     asyncio.run(process_message(event))
 
-    jobs_after_repeat = _jobs_sheet(log).max_row
+    jobs_after_repeat = log.count_jobs()
 
     assert jobs_after_repeat == jobs_after_first, (
         "Reprocessing the same message must not create a duplicate row "
@@ -141,7 +136,7 @@ def test_channel_title_change_does_not_change_job_identity(isolated_workbook):
     )
     asyncio.run(process_message(original_event))
 
-    jobs_after_original = _jobs_sheet(log).max_row
+    jobs_after_original = log.count_jobs()
 
     renamed_event = FakeEvent(
         # Same chat_id (-100222) and same message id (777777) as
@@ -154,7 +149,7 @@ def test_channel_title_change_does_not_change_job_identity(isolated_workbook):
     )
     asyncio.run(process_message(renamed_event))
 
-    jobs_after_renamed = _jobs_sheet(log).max_row
+    jobs_after_renamed = log.count_jobs()
 
     assert jobs_after_renamed == jobs_after_original, (
         "A channel title change must not change job identity -- the "
@@ -196,19 +191,18 @@ def test_reason_collapse_is_preserved_through_the_pipeline(isolated_workbook):
     event = FakeEvent(999999, -100333, "Reason Test Channel", INSUFFICIENT_SIGNAL_TEXT)
     asyncio.run(process_message(event))
 
-    sheet = _jobs_sheet(log)
-    last_row = sheet.max_row
+    job = log.get_last_job()
 
-    # Column 11 ("Decision") holds the classifier's raw decision
-    # string and is written once by create_job(); column 32 ("Final
-    # Decision") holds the human-readable Accepted/Rejected label
-    # job_processor.py computes and writes via the later update_job()
-    # call -- see app/logger.py's COLUMN_MAP. Column 12 ("Decision
-    # Reason") is written by create_job() first (the classifier's raw
-    # `reason`) and then OVERWRITTEN by that same update_job() call --
-    # this is exactly where the reason-collapse bug lived.
-    logged_final_decision = sheet.cell(row=last_row, column=32).value
-    logged_reason = sheet.cell(row=last_row, column=12).value
+    # "Decision" holds the classifier's raw decision string and is
+    # written once by create_job(); "Final Decision" holds the
+    # human-readable Accepted/Rejected label job_processor.py computes
+    # and writes via the later update_job() call -- see app/logger.py's
+    # COLUMN_MAP. "Decision Reason" is written by create_job() first
+    # (the classifier's raw `reason`) and then OVERWRITTEN by that same
+    # update_job() call -- this is exactly where the reason-collapse bug
+    # lived.
+    logged_final_decision = job["Final Decision"]
+    logged_reason = job["Decision Reason"]
 
     assert logged_final_decision == "Rejected"
     assert logged_reason == "insufficient_signal", (

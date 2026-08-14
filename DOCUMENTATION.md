@@ -4,8 +4,8 @@
 channels and FreeHub), classifies each post against a personalized
 Data Analysis / Business Intelligence skill profile using a
 deterministic bilingual keyword engine, escalates borderline posts to
-Google Gemini (with a Groq fallback), logs every decision to an Excel
-workbook, and notifies you on Telegram.**
+Google Gemini (with a Groq fallback), logs every decision to a SQLite
+database, and notifies you on Telegram.**
 
 ---
 
@@ -24,7 +24,7 @@ workbook, and notifies you on Telegram.**
 11. [LLM Subsystem](#11-llm-subsystem)
 12. [Notification Guard](#12-notification-guard)
 13. [Notifications](#13-notifications)
-14. [Excel Logging](#14-excel-logging)
+14. [SQLite Audit Log](#14-sqlite-audit-log)
 15. [State](#15-state)
 16. [Recovery](#16-recovery)
 17. [Deployment](#17-deployment)
@@ -43,7 +43,7 @@ classifier either rejects the job, accepts it directly, or routes it
 to Gemini/Groq review. Direct classifier acceptances pass through the
 Notification Guard before notification; LLM-reviewed jobs bypass the
 Notification Guard. Accepted jobs are then sent to the configured
-Telegram notification destinations and logged to Excel.
+Telegram notification destinations and logged to the audit database.
 
 **Pipeline, at a glance:**
 
@@ -84,7 +84,7 @@ app/message_processor.py                   │
         app/channel_notifier.py (optional channel)
                                 │
                                 ▼
-                   app/logger.py (Excel workbook)
+                   app/logger.py (SQLite database)
 ```
 
 **Reading order:**
@@ -129,7 +129,6 @@ Installed packages (`requirements.txt`):
 | `python-telegram-bot` | 22.8 | Sends notification messages via a Telegram Bot |
 | `google-genai` | 2.11.0 | Calls the Gemini API for borderline-job review |
 | `groq` | 1.6.0 | Calls the Groq API — both the main LLM fallback and the Notification Guard |
-| `openpyxl` | 3.1.5 | Reads/writes the `.xlsx` audit log |
 | `python-dotenv` | 1.2.2 | Loads `.env` into environment variables |
 | `tenacity` | 9.1.4 | Retries transient LLM API failures |
 | `aiohttp` | 3.14.2 | Polls the FreeHub API |
@@ -165,8 +164,8 @@ Because systemd cannot answer this interactive prompt, always
 complete this step manually before installing a systemd service — see
 [Deployment](#17-deployment).
 
-`app/bot.py` also calls `initialize_workbook()` and `state.load()`
-before starting Telegram/FreeHub, creating `logs/freelance_bot_logs.xlsx`
+`app/bot.py` also calls `initialize_database()` and `state.load()`
+before starting Telegram/FreeHub, creating `loki_freelance_bot.db`
 and `database/state.json` if they don't already exist.
 
 ---
@@ -271,7 +270,7 @@ ingestion and parsing stages differ.
 |---|---|
 | `run.py` | Standard entry point. Calls `app.bot.main()`. |
 | `run_guarded.py` | Same as `run.py`, but first calls `app.notification_guard.integration.install()` to wrap the notification functions with the guard. |
-| `app/bot.py` | Initializes the Excel workbook, loads persisted state, then runs the Telegram client and FreeHub worker concurrently. |
+| `app/bot.py` | Initializes the SQLite audit database, loads persisted state, then runs the Telegram client and FreeHub worker concurrently. |
 | `app/config.py` | Loads and validates all core environment variables. |
 | `app/handlers/telegram.py` | Owns the Telethon client: logs in, performs per-channel startup recovery, registers the `NewMessage` handler, dispatches to `process_message`. |
 | `app/message_processor.py` | Telegram-specific entry point: extracts text/source/URL(via buttons) from a Telethon event, calls `parse_job`, then `process_job`; catches and logs any exception with a safety-net save. |
@@ -293,7 +292,7 @@ ingestion and parsing stages differ.
 | `app/channel_notifier.py` | Sends the public channel notification to `BOT_CHANNEL_ID`, if configured. |
 | `app/telegram_bot.py` | The single shared `python-telegram-bot` `Bot` instance used by both notifiers. |
 | `app/state.py` | Persists Telegram per-channel watermarks and FreeHub per-source seen-ID lists to `database/state.json`, with atomic (temp-file + rename) writes. |
-| `app/logger.py` | `ExcelLogger` — all workbook reads/writes funneled through one dedicated worker thread (`ThreadPoolExecutor(max_workers=1)`), since `openpyxl`'s `Workbook` is not thread-safe and multiple coroutines mutate it concurrently. |
+| `app/logger.py` | `DBLogger` — all database reads/writes funneled through one dedicated worker thread (`ThreadPoolExecutor(max_workers=1)`), which keeps SQLite access strictly serial and off the event loop. |
 
 ### Why This Shape
 
@@ -314,11 +313,11 @@ ingestion and parsing stages differ.
   edited to add it. Running `run.py` instead of `run_guarded.py`
   produces byte-identical behavior to a build that never had the
   guard.
-- **One dedicated logger thread.** Every workbook read/write, from
+- **One dedicated logger thread.** Every database read/write, from
   every subsystem (including the Notification Guard's own logging),
-  is routed through `ExcelLogger.run()` onto the same single worker
-  thread, so no two workbook operations — across either ingestion
-  path — can ever race.
+  is routed through `DBLogger.run()` onto the same single worker
+  thread, so no two log operations — across either ingestion path —
+  can ever race.
 
 - **Durable notification workflow.** Jobs that require notification are
   persisted as `Pending` before delivery, and each notification result
@@ -811,11 +810,12 @@ purposes.
 ### Logging
 
 Every guard evaluation — success or `error` — is recorded in the
-**NotificationGuard** worksheet via `app/notification_guard/logger.py`,
-which shares the existing `ExcelLogger`'s workbook, worker thread, and
-save mechanism (no separate workbook or executor). The sheet is
-created lazily on the first guard evaluation, since a workbook that's
-never had the guard run doesn't need the sheet at all.
+**notification_guard** table via `app/notification_guard/logger.py`,
+which shares the existing `DBLogger`'s database, worker thread, and
+commit mechanism (no separate connection or executor). The table is
+created at database initialization but stays empty until the guard's
+first evaluation, since a database that's never had the guard run
+doesn't need any guard rows.
 
 ---
 
@@ -851,40 +851,43 @@ Both notifiers share a single `python-telegram-bot` `Bot` instance
 
 ---
 
-## 14. Excel Logging
+## 14. SQLite Audit Log
 
-`app/logger.py`'s `ExcelLogger` is Loki's only persistence layer for
-job history — there is no database.
+`app/logger.py`'s `DBLogger` is Loki's only persistence layer for
+job history, backed by a SQLite database.
 
-### Workbook Location and Initialization
+### Database Location and Initialization
 
-`logs/freelance_bot_logs.xlsx`, created via `initialize_workbook()`
-(called once, from `app/bot.py`, before Telegram/FreeHub start). If
-the file doesn't exist, a new workbook is created with four sheets —
-**Jobs**, **Gemini**, **Notifications**, **Errors** — each with its
-header row, and saved. The **NotificationGuard** sheet is *not*
-created at initialization; it's added lazily by
-`app/notification_guard/logger.py` the first time the guard actually
-evaluates a job (so a workbook from a deployment that's never enabled
-the guard won't have this sheet at all).
+`loki_freelance_bot.db` (at the repository root, next to
+`docker-compose.yml`), created via `initialize_database()` (called
+once, from `app/bot.py`, before Telegram/FreeHub start). If the
+database doesn't exist, the schema is created with five tables —
+**jobs**, **gemini**, **notifications**, **errors**, and
+**notification_guard** — each with its header columns. The
+`notification_guard` table is empty until the guard's first
+evaluation, so a database from a deployment that's never enabled the
+guard will simply have no rows there.
 
-Either way, the workbook is then loaded and an in-memory
-`job_uuid → row number` index is rebuilt by scanning the Jobs sheet,
-so later updates don't require a linear search.
+Under Docker, this single file is bind-mounted read/write from the
+host (see `docker-compose.yml`), so the audit log is directly
+visible/inspectable on the host and survives container rebuilds.
 
 ### Thread Safety
 
-All five worksheets are read/written exclusively through
-`ExcelLogger.run()`, which dispatches to a single dedicated
-`ThreadPoolExecutor(max_workers=1)` thread. `openpyxl`'s `Workbook` is
-not thread-safe, and multiple coroutines (Telegram handler, FreeHub
-worker, both running under `asyncio.gather`) mutate the same
-in-memory workbook — routing every access through one worker thread
-makes all of it strictly serial, with no two logger calls (read or
-write, from either ingestion path or the guard) ever touching the
-workbook concurrently.
+All five tables are read/written exclusively through
+`DBLogger.run()`, which dispatches to a single dedicated
+`ThreadPoolExecutor(max_workers=1)` thread. Multiple coroutines
+(Telegram handler, FreeHub worker, both running under
+`asyncio.gather`) mutate the same database — routing every access
+through one worker thread makes all of it strictly serial, with no two
+logger calls (read or write, from either ingestion path or the guard)
+ever touching the database concurrently, and keeps all blocking I/O
+off the event loop. The connection uses autocommit; writes are
+committed immediately, and `create_job_if_absent` wraps its
+check-and-insert in an explicit transaction (with the `Job UUID`
+primary key as a second, database-level dedup guard).
 
-### The Five Worksheets
+### The Five Tables
 
 - **Jobs** — one row per job (via `create_job`), updated in place
   (via `update_job`) as the pipeline progresses. Columns include the
@@ -914,11 +917,11 @@ workbook concurrently.
 
 Most mutating calls accept `save=False` so a job's several writes
 (create → update → gemini log → update → notification logs) can be
-batched into a **single** full-workbook save at the end of
-`process_job` (via `logger.run(logger.save)`), instead of a save per
-intermediate step. `message_processor.py`'s exception handler performs
-its own safety-net save only if an exception occurred *before*
-`process_job` had a chance to run its own final save.
+batched and committed once at the end of `process_job` (via
+`logger.run(logger.save)`), instead of a commit per intermediate step.
+`message_processor.py`'s exception handler performs its own
+safety-net save only if an exception occurred *before* `process_job`
+had a chance to run its own final save.
 
 ---
 
@@ -1130,17 +1133,20 @@ started a conversation with the bot (a bot cannot message a user who
 hasn't messaged it first); `BOT_CHANNEL_ID` set but the bot isn't an
 administrator of that channel.
 
-### Excel Logging Issues
+### Audit Log Issues
 
-**Symptom:** Loki fails to save `logs/freelance_bot_logs.xlsx`, or the
-file appears locked.
+**Symptom:** Loki fails to write to `loki_freelance_bot.db`, or
+`docker compose up` mounts it as a directory instead of a file.
 
-**Cause:** `openpyxl` cannot write while the file is open elsewhere
-(e.g. open in Excel/LibreOffice on the same machine).
+**Cause:** Under Docker, the DB file is bind-mounted from the host —
+if the host file does not exist before the first `docker compose up`,
+Docker creates a *directory* at that path, which SQLite cannot open.
 
-**Fix:** Close the workbook in any spreadsheet application before
-Loki needs to save. To inspect the log while Loki runs, copy the file
-first rather than opening the original.
+**Fix:** Create the file on the host once before starting the
+container (`New-Item loki_freelance_bot.db` on Windows, `touch
+loki_freelance_bot.db` on Linux/macOS). To inspect the log while Loki
+runs, use a SQLite viewer — SQLite handles concurrent access, so
+reading the file directly is fine.
 
 ### FreeHub Backfill Cap Reached
 
@@ -1208,9 +1214,9 @@ sample post end-to-end without waiting for a live message.
   Guard, its own independent `app/notification_guard/config.py`
   pattern) rather than ad hoc `os.getenv()` calls elsewhere.
 - **Logging is additive, not optional.** Any new pipeline stage should
-  log its outcome through `ExcelLogger.run()`, following the existing
-  pattern of catching exceptions locally and writing to the Errors
-  sheet rather than letting them propagate.
+  log its outcome through `DBLogger.run()`, following the existing
+  pattern of catching exceptions locally and writing to the errors
+  table rather than letting them propagate.
 - **Niche-specific content lives in `keywords.py` and `llm/prompt.py`**;
   the decision-table *mechanism* in `filters.py` and the
   Gemini/Groq/guard *routing* mechanism are intended to stay

@@ -106,5 +106,16 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: "5m"
           script: |
+            set -e
             cd ${{ vars.DEPLOY_DIR }}
+
+            # Always fetch the exact docker-compose.yml for this commit
+            # from the repo before bringing the service up, so the
+            # server never runs a stale copy. Runtime data on the host
+            # (.env, sessions/, database/, loki_freelance_bot.db) is
+            # bind-mounted by the compose file and left untouched.
+            curl -fsSL \
+              "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.yml" \
+              -o docker-compose.yml
+
             docker compose up -d --pull always

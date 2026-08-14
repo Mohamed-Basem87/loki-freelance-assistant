@@ -79,14 +79,12 @@ async def process_message(event):
         # thread, on its own happy/handled-error path. This is only a
         # safety net for the case where something raised *before*
         # process_job got a chance to (e.g. parse_job itself failing)
-        # -- so any log_error() write above (and any deferred,
-        # save=False writes already sitting in memory) still reaches
-        # disk. Skipped on the normal path to avoid an extra
-        # full-workbook write per message. Routed through
-        # logger.run() (the same single dedicated thread every other
-        # workbook access uses -- see app.logger.ExcelLogger.run)
-        # rather than a bare asyncio.to_thread(), so this save can
-        # never overlap with another job's workbook mutation or save.
+        # -- so any log_error() write above still reaches disk.
+        # Skipped on the normal path to avoid an extra write per
+        # message. Routed through logger.run() (the same single
+        # dedicated thread every other database access uses -- see
+        # app.logger.DBLogger.run) rather than a bare asyncio.to_thread(),
+        # so this save can never overlap with another job's log write.
         if failed:
             try:
                 await logger.run(logger.save)

@@ -94,7 +94,7 @@ async def _resume_pending_notifications(job_uuid: str, row: dict):
     pending or partially complete before an unclean shutdown.
 
     Notification delivery itself is an external side effect and
-    cannot be made transactionally atomic with the workbook. We
+    cannot be made transactionally atomic with the audit log. We
     therefore persist the pending state before delivery and persist
     each successful channel immediately afterwards. This turns the
     large end-of-job crash window into a small per-send window and,

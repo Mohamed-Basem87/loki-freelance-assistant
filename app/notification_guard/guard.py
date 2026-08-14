@@ -32,7 +32,7 @@ class NotificationGuard:
         suppress the notification.
 
         Every actual guard evaluation is recorded in the dedicated
-        NotificationGuard sheet through the existing ExcelLogger.
+        notification_guard table through the existing DB logger.
         """
 
         if not self.enabled:

@@ -11,12 +11,14 @@ __pycache__/
 .env
 .env.*
 
-# Runtime data (persisted via volumes)
+# Runtime data (persisted via volumes / bind mounts)
 sessions/
 logs/
 database/
 *.session
+*.db
 *.sqlite
+*.sqlite3
 *.xlsx
 *.log
 

@@ -69,7 +69,7 @@ def _ensure_seeded_from_state():
 
 async def _persist_seen(source: str):
     # Goes through state.async_set_freehub_seen (a dedicated
-    # single-worker executor thread, mirroring app.logger.ExcelLogger)
+    # single-worker executor thread, mirroring app.logger.DBLogger)
     # rather than calling state.set_freehub_seen directly, since this
     # performs blocking file I/O and poll_once() runs concurrently
     # with the Telegram side under asyncio.gather -- see app.state.

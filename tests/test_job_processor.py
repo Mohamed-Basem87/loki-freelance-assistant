@@ -34,7 +34,7 @@ def isolated_workbook():
     tmp_dir = tempfile.mkdtemp(prefix="freelance_assistant_test_")
     original_path = logger.path
 
-    logger.path = Path(tmp_dir) / "test_logs.xlsx"
+    logger.path = Path(tmp_dir) / "test_logs.db"
     logger.initialize()
 
     try:
@@ -42,14 +42,6 @@ def isolated_workbook():
     finally:
         logger.close()
         logger.path = original_path
-
-
-def _jobs_sheet(log):
-    return log.workbook["Jobs"]
-
-
-def _notifications_sheet(log):
-    return log.workbook["Notifications"]
 
 
 def _build_job(source, title=REJECT_TEXT, url="", budget=""):
@@ -171,8 +163,8 @@ def test_telegram_legacy_uuid_is_recognized_as_a_duplicate(isolated_workbook):
     legacy_uuid = _make_job_uuid(channel_title, message_id)
     _seed_legacy_row(log, legacy_uuid, message_id, channel_title, "Old Title")
 
-    rows_before = _jobs_sheet(log).max_row
-    notifications_before = _notifications_sheet(log).max_row
+    rows_before = log.count_jobs()
+    notifications_before = log.count_notifications()
 
     # Reprocessed under the new chat_id-based identity_source -- same
     # channel/message, exactly what a post-state-reset recovery walk
@@ -180,12 +172,12 @@ def test_telegram_legacy_uuid_is_recognized_as_a_duplicate(isolated_workbook):
     job = _build_job(source=channel_title)
     asyncio.run(process_job(job=job, job_id=message_id, identity_source=chat_id))
 
-    assert _jobs_sheet(log).max_row == rows_before, (
+    assert log.count_jobs() == rows_before, (
         "A job already logged under the legacy (title-based) UUID "
         "must be recognized as a duplicate, not reprocessed and "
         "logged again under the new UUID."
     )
-    assert _notifications_sheet(log).max_row == notifications_before, (
+    assert log.count_notifications() == notifications_before, (
         "No second notification may occur for a job recognized via "
         "the legacy identity lookup."
     )
@@ -217,21 +209,21 @@ def test_freehub_legacy_uuid_is_recognized_as_a_duplicate(isolated_workbook):
         log, legacy_uuid, project_id, live_platform_field, "Old FreeHub Title"
     )
 
-    rows_before = _jobs_sheet(log).max_row
-    notifications_before = _notifications_sheet(log).max_row
+    rows_before = log.count_jobs()
+    notifications_before = log.count_notifications()
 
     job = _build_job(source=live_platform_field)
     asyncio.run(
         process_job(job=job, job_id=project_id, identity_source=poll_source)
     )
 
-    assert _jobs_sheet(log).max_row == rows_before, (
+    assert log.count_jobs() == rows_before, (
         "A FreeHub job already logged under the legacy "
         "(platform-field-based) UUID must be recognized as a "
         "duplicate, not reprocessed and logged again under the new "
         "poll-source-based UUID."
     )
-    assert _notifications_sheet(log).max_row == notifications_before, (
+    assert log.count_notifications() == notifications_before, (
         "No second notification may occur for a FreeHub job "
         "recognized via the legacy identity lookup."
     )
@@ -296,12 +288,12 @@ def test_unrelated_jobs_with_similar_titles_are_not_falsely_deduplicated(
     asyncio.run(
         process_job(job=job_a, job_id="111", identity_source=chat_id)
     )
-    rows_after_first = _jobs_sheet(log).max_row
+    rows_after_first = log.count_jobs()
 
     asyncio.run(
         process_job(job=job_b, job_id="222", identity_source=chat_id)
     )
-    rows_after_second = _jobs_sheet(log).max_row
+    rows_after_second = log.count_jobs()
 
     assert rows_after_second == rows_after_first + 1, (
         "Two different jobs (different job_id, same source/similar "
@@ -330,12 +322,12 @@ def test_unrelated_jobs_with_different_sources_are_not_falsely_deduplicated(
     asyncio.run(
         process_job(job=job_a, job_id="777", identity_source="-100555")
     )
-    rows_after_first = _jobs_sheet(log).max_row
+    rows_after_first = log.count_jobs()
 
     asyncio.run(
         process_job(job=job_b, job_id="777", identity_source="-100666")
     )
-    rows_after_second = _jobs_sheet(log).max_row
+    rows_after_second = log.count_jobs()
 
     assert rows_after_second == rows_after_first + 1, (
         "Two different channels/sources reusing the same job_id must "
@@ -374,7 +366,7 @@ def test_concurrent_duplicate_processing_creates_only_one_row(isolated_workbook)
 
     canonical_uuid = _make_job_uuid("-100777", "concurrent-1")
     assert log.has_job(canonical_uuid)
-    assert _jobs_sheet(log).max_row == 2
+    assert log.count_jobs() == 1
 
 
 def test_pending_notification_is_resumed_without_reprocessing(

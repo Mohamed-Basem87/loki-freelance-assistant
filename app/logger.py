@@ -1,31 +1,24 @@
 import asyncio
-import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
+import sqlite3
 
-from openpyxl import Workbook, load_workbook
 
+# The audit log lives in a SQLite database file next to docker-compose.yml
+# (bind-mounted read/write, never baked into the image), so it is directly
+# visible/inspectable on the host and survives container rebuilds.
+DB_FILE = Path(__file__).resolve().parent.parent / "loki_freelance_bot.db"
 
-LOG_FILE = Path(__file__).resolve().parent.parent / "logs" / "freelance_bot_logs.xlsx"
-
-# All ExcelLogger reads/writes must go through this single worker
-# thread (see ExcelLogger.run below). openpyxl's Workbook is not
-# thread-safe: previously only save() was offloaded via
-# asyncio.to_thread(), which ran the (slow, blocking) full-workbook
-# serialization on a throwaway thread while other coroutines --
-# Telegram handler, FreeHub worker, both running concurrently under
-# asyncio.gather -- kept mutating the same in-memory Workbook on the
-# main thread. That's a genuine concurrent read/write race on the
-# same object. Funneling every workbook access through one dedicated
-# thread makes all of it strictly serial (no two logger calls, read
-# or write, ever touch the workbook at the same time) without ever
-# blocking the event loop itself.
-_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="excel-logger")
+# All DBLogger reads/writes must go through this single worker thread
+# (see DBLogger.run below). Funneling every access through one dedicated
+# thread keeps them strictly serial (no two logger calls ever touch the
+# database at the same time) without ever blocking the event loop.
+_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="db-logger")
 
 
 # ------------------------------------------------------------------
-# Jobs sheet — one row per job, reflecting the tiered decision engine.
+# Jobs table -- one row per job, reflecting the tiered decision engine.
 #
 # Compared to the old scoring model, "Score" is gone (there is no
 # single number driving the decision anymore) and is replaced with the
@@ -78,6 +71,51 @@ JOB_HEADERS = [
     "Filter Time (ms)",
 ]
 
+# snake_case keyword -> SQL column name (the human-readable header).
+COLUMN_MAP = {
+    "timestamp": "Timestamp",
+    "job_uuid": "Job UUID",
+    "job_id": "Job ID",
+    "source": "Source",
+
+    "title": "Title",
+    "description": "Description",
+    "raw_message": "Raw Message",
+    "filter_text": "Filter Text",
+
+    "company": "Company",
+    "url": "URL",
+
+    "decision": "Decision",
+    "decision_reason": "Decision Reason",
+
+    "categories": "Categories",
+    "negative_categories": "Negative Categories",
+
+    "has_core_positive": "Has Core Positive",
+    "has_core_negative": "Has Core Negative",
+    "core_positive_hit_count": "Core Positive Hit Count",
+    "supporting_positive_weight": "Supporting Positive Weight",
+    "supporting_negative_weight": "Supporting Negative Weight",
+
+    "title_core_positive": "Title Core Positive",
+    "title_core_negative": "Title Core Negative",
+
+    "core_positive_matches": "Core Positive Matches",
+    "supporting_positive_matches": "Supporting Positive Matches",
+    "core_negative_matches": "Core Negative Matches",
+    "supporting_negative_matches": "Supporting Negative Matches",
+
+    "hard_reject": "Hard Reject",
+    "hard_reject_matches": "Hard Reject Matches",
+
+    "notify_directly": "Notify Directly",
+    "needs_gemini": "Needs Gemini",
+    "gemini_decision": "Gemini Decision",
+    "notification_status": "Notification Status",
+    "final_decision": "Final Decision",
+    "filter_time_ms": "Filter Time (ms)",
+}
 
 GEMINI_HEADERS = [
     "Timestamp",
@@ -91,14 +129,12 @@ GEMINI_HEADERS = [
     "Confidence",
 ]
 
-
 NOTIFICATION_HEADERS = [
     "Timestamp",
     "Job UUID",
     "Platform",
     "Status",
 ]
-
 
 ERROR_HEADERS = [
     "Timestamp",
@@ -107,56 +143,39 @@ ERROR_HEADERS = [
     "Error",
 ]
 
+NOTIFICATION_GUARD_HEADERS = [
+    "Timestamp",
+    "Job UUID",
+    "Source",
+    "Title",
+    "Original Decision",
+    "Guard Decision",
+    "Provider",
+    "Model",
+    "Response Time (ms)",
+    "Error",
+]
 
-COLUMN_MAP = {
-    "timestamp": 1,
-    "job_uuid": 2,
-    "job_id": 3,
-    "source": 4,
 
-    "title": 5,
-    "description": 6,
-    "raw_message": 7,
-    "filter_text": 8,
+def _column_defs(headers, primary_key=None):
+    defs = [f'"{header}" TEXT' for header in headers]
+    if primary_key is not None:
+        defs[primary_key] = defs[primary_key].replace("TEXT", "TEXT PRIMARY KEY")
+    return ", ".join(defs)
 
-    "company": 9,
-    "url": 10,
 
-    "decision": 11,
-    "decision_reason": 12,
-
-    "categories": 13,
-    "negative_categories": 14,
-
-    "has_core_positive": 15,
-    "has_core_negative": 16,
-    "core_positive_hit_count": 17,
-    "supporting_positive_weight": 18,
-    "supporting_negative_weight": 19,
-
-    "title_core_positive": 20,
-    "title_core_negative": 21,
-
-    "core_positive_matches": 22,
-    "supporting_positive_matches": 23,
-    "core_negative_matches": 24,
-    "supporting_negative_matches": 25,
-
-    "hard_reject": 26,
-    "hard_reject_matches": 27,
-
-    "notify_directly": 28,
-    "needs_gemini": 29,
-    "gemini_decision": 30,
-    "notification_status": 31,
-    "final_decision": 32,
-    "filter_time_ms": 33,
-}
+_CREATE_TABLES = (
+    f'CREATE TABLE IF NOT EXISTS jobs ({_column_defs(JOB_HEADERS, primary_key=1)});',
+    f'CREATE TABLE IF NOT EXISTS gemini ({_column_defs(GEMINI_HEADERS)});',
+    f'CREATE TABLE IF NOT EXISTS notifications ({_column_defs(NOTIFICATION_HEADERS)});',
+    f'CREATE TABLE IF NOT EXISTS errors ({_column_defs(ERROR_HEADERS)});',
+    f'CREATE TABLE IF NOT EXISTS notification_guard ({_column_defs(NOTIFICATION_GUARD_HEADERS)});',
+)
 
 
 def _join_matches(matches):
     """Render a list of {"keyword", "weight", "category"} dicts as a
-    compact, human-readable string for a spreadsheet cell."""
+    compact, human-readable string for a cell."""
     if not matches:
         return ""
     return ", ".join(
@@ -164,93 +183,88 @@ def _join_matches(matches):
     )
 
 
-class ExcelLogger:
+class DBLogger:
 
     def __init__(self):
-        self.path = LOG_FILE
-        self.workbook = None
-        self._row_index: dict[str, int] = {}
+        self.path = DB_FILE
+        self._conn = None
 
     def initialize(self):
-
+        """Create the database file and schema if missing, then keep a
+        single connection for the life of the process. All access is
+        serialized through the dedicated logger worker thread (see
+        run()), so a shared connection is safe."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
-        if not self.path.exists():
+        self._conn = sqlite3.connect(
+            self.path,
+            check_same_thread=False,
+        )
+        # Autocommit: every statement is its own transaction. Explicit
+        # BEGIN IMMEDIATE/COMMIT is still used where atomicity across
+        # multiple statements matters (create_job_if_absent).
+        self._conn.isolation_level = None
 
-            wb = Workbook()
-
-            wb.remove(wb.active)
-
-            jobs = wb.create_sheet("Jobs")
-            jobs.append(JOB_HEADERS)
-
-            gemini = wb.create_sheet("Gemini")
-            gemini.append(GEMINI_HEADERS)
-
-            notifications = wb.create_sheet("Notifications")
-            notifications.append(NOTIFICATION_HEADERS)
-
-            errors = wb.create_sheet("Errors")
-            errors.append(ERROR_HEADERS)
-
-            wb.save(self.path)
-
-        self.workbook = load_workbook(self.path)
-        self._build_row_index()
-
-    def _build_row_index(self):
-
-        self._row_index.clear()
-
-        ws = self.workbook["Jobs"]
-
-        for row in range(2, ws.max_row + 1):
-
-            job_uuid = ws.cell(
-                row=row,
-                column=COLUMN_MAP["job_uuid"],
-            ).value
-
-            if job_uuid:
-                self._row_index[job_uuid] = row
-
-    def save(self):
-        if self.workbook is None:
-            return
-
-        temp_path = self.path.with_suffix(".tmp.xlsx")
-
-        self.workbook.save(temp_path)
-        os.replace(temp_path, self.path)
+        for ddl in _CREATE_TABLES:
+            self._conn.execute(ddl)
 
     def close(self):
-        self.save()
-        self.workbook.close()
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
+
+    def save(self):
+        """Compatibility no-op: writes are committed immediately in
+        autocommit mode. Kept so existing callers that call
+        `logger.run(logger.save)` keep working unchanged."""
+        if self._conn is None:
+            return
+        self._conn.commit()
 
     async def run(self, func, *args, **kwargs):
         """
-        Run a bound ExcelLogger method (has_job, create_job,
-        update_job, log_gemini, log_notification, log_error, save,
-        ...) on the single dedicated logger thread and await its
-        result.
+        Run a bound DBLogger method (has_job, create_job,
+        update_job, log_gemini, log_notification, log_error,
+        log_notification_guard, save, ...) on the single dedicated
+        logger thread and await its result.
 
         Callers (job_processor, message_processor, notifier,
-        channel_notifier, the Telegram handlers, the FreeHub worker)
-        must use this instead of calling the methods directly --
-        calling them straight from a coroutine would mutate the
-        workbook on the main thread while a save() from another job
-        could be serializing that same workbook on the executor
-        thread at the same time. Routing everything through the one
-        worker thread makes that impossible: nothing runs concurrently
-        with anything else here.
+        channel_notifier, the Telegram handlers, the FreeHub worker,
+        the notification guard) must use this instead of calling the
+        methods directly -- routing everything through the one worker
+        thread makes every read/write strictly serial and keeps all
+        blocking database I/O off the event loop.
         """
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_EXECUTOR, lambda: func(*args, **kwargs))
 
+    # ------------------------------------------------------------------
+    # Generic row helpers
+    # ------------------------------------------------------------------
+
+    def _row_to_dict(self, cursor, row):
+        return dict(zip([column[0] for column in cursor.description], row))
+
+    def count_jobs(self) -> int:
+        row = self._conn.execute("SELECT COUNT(*) FROM jobs").fetchone()
+        return row[0]
+
+    def count_notifications(self) -> int:
+        row = self._conn.execute("SELECT COUNT(*) FROM notifications").fetchone()
+        return row[0]
+
+    # ------------------------------------------------------------------
+    # Jobs
+    # ------------------------------------------------------------------
+
     def has_job(self, job_uuid) -> bool:
         """Cheap existence check so callers can skip reprocessing a
         job they've already logged (see app.job_processor dedup)."""
-        return job_uuid in self._row_index
+        row = self._conn.execute(
+            'SELECT 1 FROM jobs WHERE "Job UUID" = ?',
+            (job_uuid,),
+        ).fetchone()
+        return row is not None
 
     def create_job(
         self,
@@ -273,16 +287,16 @@ class ExcelLogger:
         a dozen individual keyword arguments) keeps this call in sync
         automatically as the filter's evidence trail evolves.
 
-        `save=False` lets a caller defer the (expensive, full-workbook)
-        disk write and batch several updates for the same job into one
-        `save()` at the end -- see app.job_processor.process_job.
+        `save=False` lets a caller defer the commit and batch several
+        updates for the same job -- see app.job_processor.process_job.
         """
 
         filter_result = filter_result or {}
 
-        ws = self.workbook["Jobs"]
+        columns = ", ".join(f'"{header}"' for header in JOB_HEADERS)
+        placeholders = ", ".join("?" for _ in JOB_HEADERS)
 
-        ws.append([
+        values = [
             datetime.now().isoformat(),
             job_uuid,
             job_id,
@@ -325,9 +339,12 @@ class ExcelLogger:
             "",
             "",
             filter_time_ms,
-        ])
+        ]
 
-        self._row_index[job_uuid] = ws.max_row
+        self._conn.execute(
+            f"INSERT OR IGNORE INTO jobs ({columns}) VALUES ({placeholders})",
+            values,
+        )
 
         if save:
             self.save()
@@ -344,53 +361,78 @@ class ExcelLogger:
         create the canonical row only when neither identity already
         exists.
 
-        This check-and-create runs entirely on the dedicated logger
-        worker thread through ExcelLogger.run(), so concurrent
+        Runs inside an explicit transaction (on the dedicated logger
+        worker thread through DBLogger.run()), so concurrent
         process_job() calls cannot both pass a separate has_job()
-        check and then append duplicate rows.
+        check and then insert duplicate rows. The PRIMARY KEY on
+        "Job UUID" is a second, database-level guard against
+        duplicates.
         """
         job_uuid = kwargs["job_uuid"]
 
-        if job_uuid in self._row_index:
-            return False
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            if self.has_job(job_uuid):
+                self._conn.execute("COMMIT")
+                return False
 
-        if (
-            legacy_job_uuid
-            and legacy_job_uuid != job_uuid
-            and legacy_job_uuid in self._row_index
-        ):
-            return False
+            if (
+                legacy_job_uuid
+                and legacy_job_uuid != job_uuid
+                and self.has_job(legacy_job_uuid)
+            ):
+                self._conn.execute("COMMIT")
+                return False
 
-        self.create_job(save=save, **kwargs)
-        return True
+            self.create_job(save=False, **kwargs)
+            self._conn.execute("COMMIT")
+            return True
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
 
     def get_job(self, job_uuid):
         """
-        Return the durable Jobs-sheet fields for one job, or None.
+        Return the durable Jobs-table fields for one job (keyed by the
+        human-readable column names, e.g. "Notification Status"), or
+        None.
 
         This is intentionally a read-only operation and must be invoked
-        through ExcelLogger.run() like every other workbook access.
+        through DBLogger.run() like every other database access.
         """
-        row = self._row_index.get(job_uuid)
+        cursor = self._conn.execute(
+            'SELECT * FROM jobs WHERE "Job UUID" = ?',
+            (job_uuid,),
+        )
+        row = cursor.fetchone()
 
         if row is None:
             return None
 
-        ws = self.workbook["Jobs"]
+        return self._row_to_dict(cursor, row)
 
-        return {
-            header: ws.cell(row=row, column=index).value
-            for index, header in enumerate(JOB_HEADERS, start=1)
-        }
+    def get_last_job(self):
+        """
+        Return the most recently inserted Jobs row (keyed by the
+        human-readable column names), or None. Used by tests.
+        """
+        cursor = self._conn.execute(
+            "SELECT * FROM jobs ORDER BY rowid DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+
+        if row is None:
+            return None
+
+        return self._row_to_dict(cursor, row)
 
     def update_job(self, job_uuid, save=True, **fields):
 
-        row = self._row_index.get(job_uuid)
-
-        if row is None:
+        if not self.has_job(job_uuid):
             return False
 
-        ws = self.workbook["Jobs"]
+        sets = []
+        values = []
 
         for key, value in fields.items():
 
@@ -400,15 +442,27 @@ class ExcelLogger:
             if isinstance(value, list):
                 value = ", ".join(value)
 
-            ws.cell(
-                row=row,
-                column=COLUMN_MAP[key],
-            ).value = value
+            sets.append(f'"{COLUMN_MAP[key]}" = ?')
+            values.append(value)
+
+        if not sets:
+            return True
+
+        values.append(job_uuid)
+
+        self._conn.execute(
+            f'UPDATE jobs SET {", ".join(sets)} WHERE "Job UUID" = ?',
+            values,
+        )
 
         if save:
             self.save()
 
         return True
+
+    # ------------------------------------------------------------------
+    # Append-only tables
+    # ------------------------------------------------------------------
 
     def log_gemini(
         self,
@@ -423,19 +477,23 @@ class ExcelLogger:
         save=True,
     ):
 
-        ws = self.workbook["Gemini"]
+        columns = ", ".join(f'"{header}"' for header in GEMINI_HEADERS)
+        placeholders = ", ".join("?" for _ in GEMINI_HEADERS)
 
-        ws.append([
-            datetime.now().isoformat(),
-            job_uuid,
-            decision_before,
-            reason_before,
-            prompt_tokens,
-            completion_tokens,
-            response_time_ms,
-            decision,
-            confidence,
-        ])
+        self._conn.execute(
+            f"INSERT INTO gemini ({columns}) VALUES ({placeholders})",
+            [
+                datetime.now().isoformat(),
+                job_uuid,
+                decision_before,
+                reason_before,
+                prompt_tokens,
+                completion_tokens,
+                response_time_ms,
+                decision,
+                confidence,
+            ],
+        )
 
         if save:
             self.save()
@@ -448,14 +506,18 @@ class ExcelLogger:
         save=True,
     ):
 
-        ws = self.workbook["Notifications"]
+        columns = ", ".join(f'"{header}"' for header in NOTIFICATION_HEADERS)
+        placeholders = ", ".join("?" for _ in NOTIFICATION_HEADERS)
 
-        ws.append([
-            datetime.now().isoformat(),
-            job_uuid,
-            platform,
-            status,
-        ])
+        self._conn.execute(
+            f"INSERT INTO notifications ({columns}) VALUES ({placeholders})",
+            [
+                datetime.now().isoformat(),
+                job_uuid,
+                platform,
+                status,
+            ],
+        )
 
         if save:
             self.save()
@@ -468,21 +530,61 @@ class ExcelLogger:
         save=True,
     ):
 
-        ws = self.workbook["Errors"]
+        columns = ", ".join(f'"{header}"' for header in ERROR_HEADERS)
+        placeholders = ", ".join("?" for _ in ERROR_HEADERS)
 
-        ws.append([
-            datetime.now().isoformat(),
-            job_uuid,
-            module,
-            str(error),
-        ])
+        self._conn.execute(
+            f"INSERT INTO errors ({columns}) VALUES ({placeholders})",
+            [
+                datetime.now().isoformat(),
+                job_uuid,
+                module,
+                str(error),
+            ],
+        )
+
+        if save:
+            self.save()
+
+    def log_notification_guard(
+        self,
+        job_uuid,
+        source,
+        title,
+        original_decision,
+        guard_decision,
+        provider,
+        model,
+        response_time_ms,
+        error="",
+        save=True,
+    ):
+
+        columns = ", ".join(f'"{header}"' for header in NOTIFICATION_GUARD_HEADERS)
+        placeholders = ", ".join("?" for _ in NOTIFICATION_GUARD_HEADERS)
+
+        self._conn.execute(
+            f"INSERT INTO notification_guard ({columns}) VALUES ({placeholders})",
+            [
+                datetime.now().isoformat(),
+                job_uuid,
+                source,
+                title,
+                original_decision,
+                guard_decision,
+                provider,
+                model,
+                response_time_ms,
+                error,
+            ],
+        )
 
         if save:
             self.save()
 
 
-logger = ExcelLogger()
+logger = DBLogger()
 
 
-def initialize_workbook():
+def initialize_database():
     logger.initialize()

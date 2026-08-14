@@ -11,10 +11,18 @@ services:
       #  database/state.json -> /app/database).
       - ./sessions:/app/sessions
       - ./database:/app/database
-      - loki-logs:/app/logs
+      # The SQLite audit log lives next to this file (not copied into
+      # the image). Bind-mounting the single file makes the container
+      # read/write the host file directly, so it stays visible and
+      # inspectable on the host (e.g. with a SQLite viewer) before,
+      # during, and after container runs.
+      #
+      # NOTE: the file must exist on the host before the first
+      # `docker compose up` -- Docker turns a missing bind-mount file
+      # path into a directory. Create it once with e.g.
+      #   New-Item loki_freelance_bot.db    (Windows)
+      #   touch loki_freelance_bot.db       (Linux/macOS)
+      - ./loki_freelance_bot.db:/app/loki_freelance_bot.db
     # Standard entry point (no Notification Guard). To deploy the
     # guarded entry point instead, uncomment:
-    # command: python run_guarded.py
-
-volumes:
-  loki-logs:
+    command: python run_guarded.py

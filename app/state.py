@@ -14,7 +14,7 @@ STATE_FILE = Path(__file__).resolve().parent.parent / "database" / "state.json"
 _FREEHUB_KEY = "_freehub_seen"
 
 # Single dedicated worker thread for all state-file persistence, same
-# pattern as app.logger.ExcelLogger's _EXECUTOR. StateManager.save()
+# pattern as app.logger.DBLogger's _EXECUTOR. StateManager.save()
 # does blocking filesystem I/O (temp-file write + os.replace); calling
 # it directly from a coroutine (as set_last_message_id/
 # set_freehub_seen used to) blocks the single shared event loop for
@@ -23,9 +23,9 @@ _FREEHUB_KEY = "_freehub_seen"
 # under asyncio.gather, two saves could also race on the same
 # STATE_FILE/temp_path if simply offloaded to the default
 # asyncio.to_thread pool (which allows more than one thread at once).
-# Funneling every state write through one dedicated thread makes
-# writes strictly serial -- exactly the same guarantee the Excel
-# logger already relies on -- without blocking the event loop.
+        # Funneling every state write through one dedicated thread makes
+        # writes strictly serial -- exactly the same guarantee the DB
+        # logger already relies on -- without blocking the event loop.
 _EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="state-persist")
 
 
@@ -52,7 +52,7 @@ class StateManager:
         # every channel/source back to never-seen and triggering a
         # full re-recovery (duplicate notifications) on next startup.
         # Writing to a temp file and rename()-ing over the real path
-        # (same pattern already used by app.logger.ExcelLogger.save)
+        # (same pattern already used by app.logger.DBLogger.save)
         # means the real file is only ever replaced by a complete,
         # valid write.
         STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -80,7 +80,7 @@ class StateManager:
         the async_set_last_message_id/async_set_freehub_seen wrappers
         below instead of calling set_last_message_id/
         set_freehub_seen directly, for the same reason job_processor
-        etc. must go through ExcelLogger.run() instead of calling
+        etc. must go through DBLogger.run() instead of calling
         logger methods directly: it keeps every write strictly
         serialized on one thread and off the event loop.
         """

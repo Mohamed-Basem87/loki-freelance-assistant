@@ -5,7 +5,7 @@
 > Data Analysis / Business Intelligence skill profile using a
 > deterministic bilingual (English/Arabic) keyword engine, escalates
 > borderline posts to Google Gemini (with a Groq fallback), logs every
-> decision to an Excel workbook, and notifies you on Telegram the
+> decision to a SQLite database, and notifies you on Telegram the
 > moment something worth bidding on shows up.**
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue)
@@ -25,7 +25,7 @@ genuinely borderline posts are handed to Gemini (falling back to Groq
 if every Gemini key fails) for a judgment call. An optional
 Notification Guard can add a second, independent check before a
 direct-accept job is actually sent. Every stage of the decision is
-recorded in an Excel workbook, and accepted jobs are pushed to
+recorded in a SQLite database, and accepted jobs are pushed to
 Telegram.
 
 ---
@@ -73,7 +73,7 @@ Telegram channels          FreeHub (polled)
              (private chat + optional channel)
                               │
                               ▼
-                    Excel audit log
+                    SQLite audit log
 ```
 
 Note the two branches after the classifier are **not** symmetric: only
@@ -101,10 +101,12 @@ bypass the guard entirely — see
 - **Two notification targets**: a private chat (`BOT_CHAT_ID`) always
   receives full detail; an optional public channel (`BOT_CHANNEL_ID`)
   receives a simplified version if configured.
-- **Excel audit log** — every job, every Gemini call, every
+- **SQLite audit log** — every job, every Gemini call, every
   notification attempt, every error, and (if enabled) every
   Notification Guard decision is written to
-  `logs/freelance_bot_logs.xlsx`.
+  `loki_freelance_bot.db` (a SQLite database next to
+  `docker-compose.yml`, bind-mounted read/write so it stays visible
+  on the host).
 
 ---
 
@@ -117,7 +119,7 @@ bypass the guard entirely — see
 | FreeHub ingestion        | aiohttp (polling)     |
 | Primary LLM review       | Google Gemini (`google-genai`) |
 | Fallback LLM review      | Groq                  |
-| Audit logging            | OpenPyXL (`.xlsx`)    |
+| Audit logging            | SQLite (`.db`)        |
 | Configuration            | python-dotenv         |
 | Deployment               | systemd                |
 
@@ -198,8 +200,9 @@ behavior of each one.
 
 ## Logging
 
-Every processed job is recorded in an Excel workbook
-(`logs/freelance_bot_logs.xlsx`) with these worksheets:
+Every processed job is recorded in a SQLite database
+(`loki_freelance_bot.db`, next to `docker-compose.yml`) in these
+tables:
 
 - **Jobs** — one row per job, with the full classifier evidence trail
   and final decision.
