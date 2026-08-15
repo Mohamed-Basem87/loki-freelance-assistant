@@ -1,0 +1,110 @@
+from pathlib import Path
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _require_env(name: str) -> str:
+    value = os.getenv(name)
+
+    if value is None or value.strip() == "":
+        raise RuntimeError(
+            f"Missing required environment variable: {name}\n"
+            f"Please set it in your .env file."
+        )
+
+    return value
+
+
+def _require_int_env(name: str) -> int:
+    value = _require_env(name)
+
+    try:
+        return int(value)
+    except ValueError as e:
+        raise RuntimeError(
+            f"Environment variable '{name}' must be an integer "
+            f"(got '{value}')."
+        ) from e
+
+
+def _optional_int_env(name: str) -> int | None:
+    value = os.getenv(name)
+
+    if value is None or value.strip() == "":
+        return None
+
+    try:
+        return int(value)
+    except ValueError as e:
+        raise RuntimeError(
+            f"Environment variable '{name}' must be an integer "
+            f"(got '{value}')."
+        ) from e
+
+
+def _require_channel_ids(name: str) -> set[int]:
+    value = _require_env(name)
+
+    try:
+        return {
+            int(channel.strip())
+            for channel in value.split(",")
+            if channel.strip()
+        }
+    except ValueError as e:
+        raise RuntimeError(
+            f"Environment variable '{name}' must contain a comma-separated "
+            f"list of integer channel IDs."
+        ) from e
+
+
+API_ID = _require_int_env("API_ID")
+API_HASH = _require_env("API_HASH")
+PHONE_NUMBER = _require_env("PHONE_NUMBER")
+
+GEMINI_API_KEYS = [
+    key.strip()
+    for key in os.getenv("GEMINI_API_KEYS", "").split(",")
+    if key.strip()
+]
+
+if not GEMINI_API_KEYS:
+    raise RuntimeError("GEMINI_API_KEYS is required")
+
+GROQ_API_KEY = _require_env("GROQ_API_KEY")
+BOT_TOKEN = _require_env("BOT_TOKEN")
+BOT_CHAT_ID = _require_int_env("BOT_CHAT_ID")
+BOT_CHANNEL_ID = os.getenv("BOT_CHANNEL_ID")
+
+TARGET_CHANNELS = _require_channel_ids("TARGET_CHANNEL_IDS")
+
+# ----------------------------
+# FreeHub
+# ----------------------------
+
+FREEHUB_USER_ID = _require_env("FREEHUB_USER_ID")
+FREEHUB_BASE_URL = os.getenv(
+    "FREEHUB_BASE_URL",
+    "http://ec2-51-21-119-160.eu-north-1.compute.amazonaws.com/v1/users",
+).rstrip("/")
+FREEHUB_POLL_INTERVAL = int(
+    os.getenv("FREEHUB_POLL_INTERVAL", "60")
+)
+FREEHUB_PAGE_SIZE = int(
+    os.getenv("FREEHUB_PAGE_SIZE", "30")
+)
+
+SESSION_NAME = str(BASE_DIR / "sessions" / "telegram")
+
+# ----------------------------
+# Notification retry sweep (see app.job_processor.notification_retry_loop)
+# ----------------------------
+
+NOTIFICATION_RETRY_INTERVAL = int(
+    os.getenv("NOTIFICATION_RETRY_INTERVAL", "300")
+)

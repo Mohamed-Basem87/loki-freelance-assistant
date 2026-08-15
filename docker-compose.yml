@@ -1,0 +1,31 @@
+services:
+  loki:
+    image: mohamedbasem2/loki-freelance-assistant:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Reuse the locally-created user session and dedup state instead
+      # of creating fresh ones inside the container
+      # (sessions/telegram.session -> /app/sessions,
+      #  database/state.json -> /app/database).
+      - ./sessions:/app/sessions
+      - ./database:/app/database
+      # The SQLite audit log lives next to this file (not copied into
+      # the image). Bind-mounting the single file makes the container
+      # read/write the host file directly, so it stays visible and
+      # inspectable on the host (e.g. with a SQLite viewer) before,
+      # during, and after container runs.
+      #
+      # NOTE: the file must exist on the host before the first
+      # `docker compose up` -- Docker turns a missing bind-mount file
+      # path into a directory, which sqlite3 cannot open. Create it once
+      # manually (the deploy workflow never touches this file):
+      #   New-Item loki_freelance_bot.db    (Windows)
+      #   touch loki_freelance_bot.db       (Linux/macOS)
+      - ./loki_freelance_bot.db:/app/loki_freelance_bot.db
+    # Guarded entry point (adds the Notification Guard on top of the
+    # standard pipeline). To deploy the standard entry point instead
+    # (no Notification Guard), replace this with:
+    #   command: python run.py
+    command: python run_guarded.py

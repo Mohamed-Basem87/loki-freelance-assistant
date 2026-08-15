@@ -1,0 +1,38 @@
+# Virtual environment
+.venv/
+
+# Environment variables
+.env
+
+# Telegram sessions
+sessions/
+*.session
+
+# Runtime state
+database/state.json
+
+# Runtime logs
+logs/
+*.log
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDEs
+.vscode/
+.idea/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Loki Auditor (Local Development Tool)
+.loki-auditor/
+AGENTS.md
