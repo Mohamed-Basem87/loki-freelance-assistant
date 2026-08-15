@@ -173,6 +173,55 @@ _CREATE_TABLES = (
 )
 
 
+# ------------------------------------------------------------------
+# Legacy schema migration.
+#
+# The first SQLite export of the audit log (converted from the old
+# Excel workbook) created its tables under capitalized names with
+# spreadsheet-derived column names: "Jobs", "Gemini", "Notifications",
+# "Errors", "NotificationGuard", with columns like "Job_UUID" /
+# "Filter_Time_ms". The current schema uses lowercase table names and
+# human-readable spaced column names ("Job UUID", "Filter Time (ms)").
+#
+# SQLite matches table names case-insensitively, so the new
+# CREATE TABLE IF NOT EXISTS for the lowercase name silently matches
+# the legacy capitalized table and keeps its mismatched columns -- and
+# every INSERT using the new column names then fails with "table X has
+# no column named Y". _migrate_schema() detects and fixes that before
+# the CREATE TABLE loop: any table shadowing a current name is rebuilt
+# under the current schema with every recognizable row carried over, so
+# the audit history survives and the app self-heals an old database.
+# ------------------------------------------------------------------
+_LEGACY_TABLE_NAMES = {
+    "jobs": "Jobs",
+    "gemini": "Gemini",
+    "notifications": "Notifications",
+    "errors": "Errors",
+    "notification_guard": "NotificationGuard",
+}
+
+# (table name, expected headers, primary-key column index or None)
+_MIGRATABLE_TABLES = (
+    ("jobs", JOB_HEADERS, 1),
+    ("gemini", GEMINI_HEADERS, None),
+    ("notifications", NOTIFICATION_HEADERS, None),
+    ("errors", ERROR_HEADERS, None),
+    ("notification_guard", NOTIFICATION_GUARD_HEADERS, None),
+)
+
+
+def _legacy_column_names(headers):
+    """Map each current header to the column name the legacy tables
+    used for the same field. Legacy names are a spreadsheet-flavored
+    rendering of the same headers: spaces became underscores and
+    "(ms)" became "ms" ("Job UUID" -> "Job_UUID",
+    "Filter Time (ms)" -> "Filter_Time_ms")."""
+    return [
+        header.replace(" ", "_").replace("(ms)", "ms")
+        for header in headers
+    ]
+
+
 def _join_matches(matches):
     """Render a list of {"keyword", "weight", "category"} dicts as a
     compact, human-readable string for a cell."""
@@ -222,8 +271,124 @@ class DBLogger:
         # into the bind-mounted file itself.
         self._conn.isolation_level = None
 
+        self._migrate_schema()
+
         for ddl in _CREATE_TABLES:
             self._conn.execute(ddl)
+
+    def _table_names(self):
+        return {
+            row[0]
+            for row in self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+
+    def _table_columns(self, name):
+        return [
+            row[1] for row in self._conn.execute(f'PRAGMA table_info("{name}")')
+        ]
+
+    def _copy_columns(self, headers, source_columns):
+        """Which current headers can be carried over from a legacy table,
+        as a list of (target column, source column) pairs. A column that
+        already has the current spelling maps to itself."""
+        legacy_columns = _legacy_column_names(headers)
+        mapping = []
+        for index, header in enumerate(headers):
+            if header in source_columns:
+                mapping.append((header, header))
+            elif legacy_columns[index] in source_columns:
+                mapping.append((header, legacy_columns[index]))
+        return mapping
+
+    def _rebuild_table(self, source, target, headers, pk_index):
+        """Replace `source` (a table with a legacy/partial schema) with a
+        table named `target` under the current schema, copying every row
+        whose columns are recognizable. Runs in autocommit mode; each
+        statement commits on its own, so a crash mid-migration leaves the
+        original table intact until the final rename."""
+        mapping = self._copy_columns(headers, self._table_columns(source))
+        if not mapping:
+            raise RuntimeError(
+                f"Table {source!r} has an unrecognized schema; refusing to "
+                "guess. Expected columns "
+                f"{headers}, found {self._table_columns(source)}."
+            )
+
+        temp = f"_migrating_{target}"
+        self._conn.execute(f'DROP TABLE IF EXISTS "{temp}"')
+        self._conn.execute(
+            f'CREATE TABLE "{temp}" '
+            f"({_column_defs(headers, primary_key=pk_index)});"
+        )
+        target_columns = ", ".join(f'"{name}"' for name, _ in mapping)
+        source_columns = ", ".join(f'"{name}"' for _, name in mapping)
+        self._conn.execute(
+            f'INSERT OR IGNORE INTO "{temp}" ({target_columns}) '
+            f'SELECT {source_columns} FROM "{source}"'
+        )
+        self._conn.execute(f'DROP TABLE "{source}"')
+        self._conn.execute(f'ALTER TABLE "{temp}" RENAME TO "{target}"')
+
+    def _merge_legacy_rows(self, target, source, headers):
+        """Copy any rows from a separately-spelled legacy table into an
+        existing current-schema table, then drop the legacy table."""
+        mapping = self._copy_columns(headers, self._table_columns(source))
+        if mapping:
+            target_columns = ", ".join(f'"{name}"' for name, _ in mapping)
+            source_columns = ", ".join(f'"{name}"' for _, name in mapping)
+            self._conn.execute(
+                f'INSERT OR IGNORE INTO "{target}" ({target_columns}) '
+                f'SELECT {source_columns} FROM "{source}"'
+            )
+        self._conn.execute(f'DROP TABLE "{source}"')
+
+    def _migrate_table(self, table, headers, pk_index):
+        """Bring one logical table up to the current schema, migrating
+        rows from any legacy table that currently shadows it."""
+        names = self._table_names()
+        current = next(
+            (name for name in names if name.lower() == table.lower()), None
+        )
+        legacy = _LEGACY_TABLE_NAMES.get(table)
+        legacy_name = legacy if legacy in names else None
+
+        # Nothing exists yet -- the CREATE TABLE IF NOT EXISTS loop
+        # below will make it with the current schema.
+        if current is None and legacy_name is None:
+            return
+
+        if current is None:
+            # Only the legacy spelling exists (e.g. NotificationGuard
+            # with no notification_guard yet): create the current table
+            # and let the merge below populate it.
+            self._conn.execute(
+                f"CREATE TABLE {table} ({_column_defs(headers, primary_key=pk_index)});"
+            )
+            current = table
+
+        if self._table_columns(current) == headers:
+            # Current schema already in place. A separately-spelled
+            # legacy table can still exist next to it (NotificationGuard
+            # alongside notification_guard): fold its rows in and drop it.
+            if legacy_name is not None and legacy_name != current:
+                self._merge_legacy_rows(current, legacy_name, headers)
+            return
+
+        # The table shadowing our name has mismatched columns -- rebuild
+        # it with the current schema, carrying over recognizable rows.
+        self._rebuild_table(current, table, headers, pk_index)
+
+        if legacy_name is not None and legacy_name != current:
+            self._merge_legacy_rows(table, legacy_name, headers)
+
+    def _migrate_schema(self):
+        """Bring any pre-existing tables up to the current schema (see
+        _LEGACY_TABLE_NAMES). A no-op for a database that already
+        matches; migrates in place, preserving all recognizable rows."""
+        for table, headers, pk_index in _MIGRATABLE_TABLES:
+            self._migrate_table(table, headers, pk_index)
 
     def close(self):
         if self._conn is not None:
