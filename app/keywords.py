@@ -434,6 +434,34 @@ NEGATIVE_KEYWORDS = {
             # than an outright reject.
             "إصلاح أخطاء": 6,
             "مبرمج محترف": 7,
+            # Custom-database application builds (multi-user data-entry
+            # + report-generation software), not data analysis. "Custom
+            # Sales Database Development" (freelancer:40648249, daily
+            # audit 2026-08-15) auto-notified on a lone "excel" core hit
+            # via core_positive_clean; the deliverable is a custom
+            # database solution with user-friendly interfaces for
+            # multiple users entering data and generating one-page
+            # PDF/Excel/Label reports ("Experience in database design
+            # and management"), i.e. a database-application build, not
+            # analysis. The independent NotificationGuard LLM review
+            # returned do_not_notify for the same job. "custom database"
+            # and "database solution" are the verbatim production
+            # phrases; both match exactly one job across the full
+            # 4,084-job replay (40648249, notify_directly -> needs_gemini),
+            # zero collateral on genuine DA/BI postings. The broader
+            # class terms were checked and NOT added: "database design"
+            # (29 jobs) and "database management" (15 jobs) already route
+            # every other production occurrence to reject/needs_gemini,
+            # but the phrases are generic enough to over-reach into
+            # legitimate data-modeling/warehouse work, so only the two
+            # precise verbatim phrases are used. No Arabic equivalent is
+            # added: "قاعدة بيانات مخصصة"/"تطوير قاعدة بيانات" have zero
+            # production occurrences, and the observed Arabic database
+            # vocabulary ("قواعد البيانات", 11 jobs) is already covered
+            # by the existing backend/enterprise negatives and never
+            # auto-notifies.
+            "custom database": 6,
+            "database solution": 6,
         },
         "supporting": {
             "flask": 3,
