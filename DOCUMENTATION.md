@@ -1,1244 +1,1975 @@
-# Loki Freelance Assistant — Technical Documentation
+# Loki Freelance Assistant --- Technical Documentation
 
-**A bot that monitors freelance job sources in real time (Telegram
-channels and FreeHub), classifies each post against a personalized
-Data Analysis / Business Intelligence skill profile using a
-deterministic bilingual keyword engine, escalates borderline posts to
-Google Gemini (with a Groq fallback), logs every decision to a SQLite
-database, and notifies you on Telegram.**
+> Technical reference for the current SQLite/Docker implementation of
+> Loki Freelance Assistant.
 
----
+This document describes the implementation as it exists in the
+repository. Where the implementation has a known limitation or
+reliability gap, it is documented explicitly rather than presented as a
+guarantee.
+
+------------------------------------------------------------------------
 
 ## Table of Contents
 
-1. [Overview](#1-overview)
-2. [Installation](#2-installation)
-3. [Configuration](#3-configuration)
-4. [Production Architecture](#4-production-architecture)
-5. [Telegram Ingestion](#5-telegram-ingestion)
-6. [FreeHub Ingestion](#6-freehub-ingestion)
-7. [Parsing](#7-parsing)
-8. [Normalization](#8-normalization)
-9. [Job Processing](#9-job-processing)
-10. [Deterministic Classifier](#10-deterministic-classifier)
-11. [LLM Subsystem](#11-llm-subsystem)
-12. [Notification Guard](#12-notification-guard)
-13. [Notifications](#13-notifications)
-14. [SQLite Audit Log](#14-sqlite-audit-log)
-15. [State](#15-state)
-16. [Recovery](#16-recovery)
-17. [Deployment](#17-deployment)
-18. [Troubleshooting](#18-troubleshooting)
-19. [Testing / Development](#19-testing--development)
+1.  [System Overview](#1-system-overview)
+2.  [Installation](#2-installation)
+3.  [Configuration](#3-configuration)
+4.  [Architecture and Module
+    Responsibilities](#4-architecture-and-module-responsibilities)
+5.  [Telegram Ingestion](#5-telegram-ingestion)
+6.  [FreeHub Ingestion](#6-freehub-ingestion)
+7.  [Parsing and Normalization](#7-parsing-and-normalization)
+8.  [Shared Job Processing](#8-shared-job-processing)
+9.  [Deterministic Classifier](#9-deterministic-classifier)
+10. [LLM Subsystem](#10-llm-subsystem)
+11. [Notification Guard](#11-notification-guard)
+12. [Notification Delivery](#12-notification-delivery)
+13. [SQLite Audit Database](#13-sqlite-audit-database)
+14. [Persistent State](#14-persistent-state)
+15. [Recovery and Failure Semantics](#15-recovery-and-failure-semantics)
+16. [Concurrency and Race
+    Prevention](#16-concurrency-and-race-prevention)
+17. [Docker Deployment](#17-docker-deployment)
+18. [CI/CD](#18-cicd)
+19. [Testing](#19-testing)
+20. [Troubleshooting](#20-troubleshooting)
+21. [Known Issues and Recommended
+    Fixes](#21-known-issues-and-recommended-fixes)
+22. [Maintenance Guidelines](#22-maintenance-guidelines)
 
----
+------------------------------------------------------------------------
 
-## 1. Overview
+# 1. System Overview
 
-Loki ingests freelance job postings from two independent sources —
-Telegram channels (via a logged-in Telethon **user** account) and the
-FreeHub API (via periodic polling) — and funnels both through the same
-processing pipeline. After parsing, the deterministic keyword
-classifier either rejects the job, accepts it directly, or routes it
-to Gemini/Groq review. Direct classifier acceptances pass through the
-Notification Guard before notification; LLM-reviewed jobs bypass the
-Notification Guard. Accepted jobs are then sent to the configured
-Telegram notification destinations and logged to the audit database.
+Loki is a single-process Python application built around `asyncio`.
 
-**Pipeline, at a glance:**
+Three long-lived coroutines are started by `app.bot.run()`:
 
-```text
-Telegram channels                 FreeHub (polled every
-(Telethon, app/handlers/           FREEHUB_POLL_INTERVAL)
- telegram.py)                      app/freehub.py +
-        │                          app/freehub_worker.py
-        ▼                                  │
-app/message_processor.py                   │
-        │                                  │
-        └──────────────┬───────────────────┘
-                        ▼
-              app/job_processor.py
-                        │
-                        ▼
-      Deterministic classifier — app/filters.py
-          (data: app/keywords.py, app/normalize.py)
-                        │
-        ┌───────────────┼────────────────┐
-        ▼               ▼                ▼
-     reject      notify_directly    needs_gemini
-                        │                │
-                        │                ▼
-                        │      app/llm/manager.py
-                        │      (Gemini → Groq fallback)
-                        │                │
-                        └───────┬────────┘
-                                ▼
-                 [only if run_guarded.py installed
-                  the guard AND it's enabled]
-                 app/notification_guard/ — direct-
-                 accept jobs only; LLM-reviewed jobs
-                 bypass it
-                                │
-                                ▼
-              app/notifier.py (private chat)
-        app/channel_notifier.py (optional channel)
-                                │
-                                ▼
-                   app/logger.py (SQLite database)
-```
-
-**Reading order:**
-- First-time setup → [Installation](#2-installation) → [Configuration](#3-configuration) → [Deployment](#17-deployment).
-- Retargeting the classifier → [Deterministic Classifier](#10-deterministic-classifier).
-- Understanding AI review → [LLM Subsystem](#11-llm-subsystem) → [Notification Guard](#12-notification-guard).
-- Contributing code → [Production Architecture](#4-production-architecture) → [Testing / Development](#19-testing--development).
-
----
-
-## 2. Installation
-
-### Prerequisites
-
-- Python 3.11+
-- A personal Telegram account (Loki logs in as a **user**, not a bot,
-  via Telethon, so it can read channel history and receive live
-  messages the way a bot account cannot)
-- A separate Telegram Bot (via BotFather) used only for sending
-  notifications
-- One or more Google Gemini API keys
-- A Groq API key (used as a fallback if every Gemini key fails)
-- A FreeHub user ID
-
-### 2.1 Clone and Install
-
-```bash
-git clone <repository-url>
-cd freelance-assistant
-
-python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
-
-pip install -r requirements.txt
-```
-
-Installed packages (`requirements.txt`):
-
-| Package | Version | Role |
-|---|---|---|
-| `Telethon` | 1.44.0 | Logs in as a Telegram user, listens for new channel messages, performs recovery backfill |
-| `python-telegram-bot` | 22.8 | Sends notification messages via a Telegram Bot |
-| `google-genai` | 2.11.0 | Calls the Gemini API for borderline-job review |
-| `groq` | 1.6.0 | Calls the Groq API — both the main LLM fallback and the Notification Guard |
-| `python-dotenv` | 1.2.2 | Loads `.env` into environment variables |
-| `tenacity` | 9.1.4 | Retries transient LLM API failures |
-| `aiohttp` | 3.14.2 | Polls the FreeHub API |
-| `requests` | 2.34.2 | Transitive dependency |
-
-### 2.2 Configure `.env`
-
-```bash
-cp .env.example .env
-```
-
-Fill in every value in `.env.example` — see [Configuration](#3-configuration)
-for the full variable reference, and note in particular:
-
-- `GEMINI_API_KEYS` (plural) takes a **comma-separated list** of one or
-  more keys — not a single `GEMINI_API_KEY`.
-- `BOT_CHANNEL_ID` and the entire Notification Guard block are
-  optional.
-
-### 2.3 First Run — Telethon Login
-
-```bash
-python run.py
-```
-
-On the first run, Telethon has no saved session and prompts
-interactively in the terminal: a login code sent to your Telegram
-app, and your 2FA cloud password if enabled. The session is then
-saved (SQLite file, path derived from `SESSION_NAME` in
-`app/config.py`) and reused on subsequent runs.
-
-Because systemd cannot answer this interactive prompt, always
-complete this step manually before installing a systemd service — see
-[Deployment](#17-deployment).
-
-`app/bot.py` also calls `initialize_database()` and `state.load()`
-before starting Telegram/FreeHub, creating `loki_freelance_bot.db`
-and `database/state.json` if they don't already exist.
-
----
-
-## 3. Configuration
-
-All configuration is environment-variable based, loaded via
-`python-dotenv` and validated at import time in `app/config.py`. A
-missing or malformed required variable raises `RuntimeError`
-immediately on startup.
-
-### Environment Variables
-
-| Variable | Required | Type | Description |
-|---|---|---|---|
-| `API_ID` | Yes | integer | Telegram application ID (my.telegram.org), used by Telethon. |
-| `API_HASH` | Yes | string | Telegram application hash, paired with `API_ID`. |
-| `PHONE_NUMBER` | Yes | string | Phone number (international format) of the account Loki logs in as. |
-| `GEMINI_API_KEYS` | Yes | comma-separated strings | One or more Gemini API keys. Parsed into a list; each is tried in order (see [LLM Subsystem](#11-llm-subsystem)). At least one non-empty key is required. |
-| `GROQ_API_KEY` | Yes | string | API key for the main Groq fallback LLM. |
-| `BOT_TOKEN` | Yes | string | Token for the notification Bot (BotFather). |
-| `BOT_CHAT_ID` | Yes | integer | Chat ID the bot sends every private notification to. |
-| `BOT_CHANNEL_ID` | No | string | Optional channel ID for broadcasting accepted jobs publicly. If unset, `app/channel_notifier.py` skips channel notifications entirely (returns success without sending). |
-| `TARGET_CHANNEL_IDS` | Yes | comma-separated integers | Telegram channel/supergroup IDs Loki listens to, parsed into a `set[int]`. |
-| `FREEHUB_USER_ID` | Yes | string | FreeHub account/user identifier used to build the polling URL. |
-| `FREEHUB_BASE_URL` | No | string | FreeHub API base URL. Defaults to the legacy HTTP endpoint; set this to the HTTPS API endpoint when TLS is available. |
-| `FREEHUB_POLL_INTERVAL` | No (default `60`) | integer | Seconds between FreeHub polls. |
-| `FREEHUB_PAGE_SIZE` | No (default `30`) | integer | Page size requested from the FreeHub API. |
-| `NOTIFICATION_GUARD_ENABLED` | No (default `false`) | boolean-like string (`1`/`true`/`yes`/`on`) | Enables the Notification Guard. Read independently by `app/notification_guard/config.py`, which loads `.env` itself. |
-| `GROQ_NOTIFICATION_GUARD_API_KEY` | Only if guard enabled | string | Groq API key used exclusively by the Notification Guard. |
-| `GROQ_NOTIFICATION_GUARD_MAX_RETRIES` | No (default `2`) | integer | `stop_after_attempt` value for the guard's transient-error retry. |
-
-Two derived, non-environment values are also defined in
-`app/config.py`:
-
-- `BASE_DIR` — the project root.
-- `SESSION_NAME` — `BASE_DIR / "sessions" / "telegram"`, the path
-  Telethon persists its login session under.
-
-### Validation Behavior
-
-`app/config.py` defines helpers used at import time:
-
-- **`_require_env(name)`** — raises `RuntimeError` if missing or
-  empty/whitespace-only.
-- **`_require_int_env(name)`** — `_require_env` plus an `int()` cast,
-  raising `RuntimeError` with the offending value on failure.
-- **`_require_channel_ids(name)`** — splits on commas, strips
-  whitespace, casts each entry to `int`, returns a `set[int]`.
-- **`_optional_int_env(name)`** — like `_require_int_env` but returns
-  `None` if unset (defined but not currently used by any variable in
-  this file — the FreeHub interval/page-size defaults instead use a
-  plain `os.getenv(..., "default")` pattern).
-
-`app/notification_guard/config.py` is intentionally independent of
-`app/config.py` — it calls its own `load_dotenv()` so the guard can be
-imported and configured before `app.config` runs.
-
-### Notification Guard Models — Code Constant, Not Configurable
-
-`NOTIFICATION_GUARD_MODELS` (the list of Groq models the guard rotates
-through) is a hardcoded list in `app/notification_guard/config.py`,
-not read from any environment variable. There is deliberately no
-`GROQ_NOTIFICATION_GUARD_MODEL(S)` environment variable.
-
-### TARGET_CHANNEL_IDS
-
-`app/handlers/telegram.py` passes the parsed set directly to
-Telethon's event filter:
-
-```python
-@client.on(events.NewMessage(chats=list(TARGET_CHANNELS)))
-```
-
-Telegram channel/supergroup IDs are negative numbers, conventionally
-prefixed `-100`. Loki's user account must already be a member of a
-channel to receive its messages. Changing this list requires a
-restart — there is no hot-reload.
-
----
-
-## 4. Production Architecture
-
-Loki is a single-process, async application. `app/bot.py` runs two
-concurrent coroutines under `asyncio.gather`:
-
-```python
+``` python
 await asyncio.gather(
-    start(),            # app/handlers/telegram.py — Telethon client
-    freehub_worker(),    # app/freehub_worker.py — FreeHub polling loop
+    start(),
+    freehub_worker(),
+    notification_retry_loop(NOTIFICATION_RETRY_INTERVAL),
 )
 ```
 
-Both ultimately call the same `app.job_processor.process_job()`, so
-Telegram-sourced and FreeHub-sourced jobs share identical
-classification, review, notification, and logging behavior — only the
-ingestion and parsing stages differ.
+They are:
 
-### Module Responsibilities
+-   Telegram ingestion and recovery.
+-   FreeHub polling.
+-   Notification retry sweeping.
 
-| Module | Responsibility |
-|---|---|
-| `run.py` | Standard entry point. Calls `app.bot.main()`. |
-| `run_guarded.py` | Same as `run.py`, but first calls `app.notification_guard.integration.install()` to wrap the notification functions with the guard. |
-| `app/bot.py` | Initializes the SQLite audit database, loads persisted state, then runs the Telegram client and FreeHub worker concurrently. |
-| `app/config.py` | Loads and validates all core environment variables. |
-| `app/handlers/telegram.py` | Owns the Telethon client: logs in, performs per-channel startup recovery, registers the `NewMessage` handler, dispatches to `process_message`. |
-| `app/message_processor.py` | Telegram-specific entry point: extracts text/source/URL(via buttons) from a Telethon event, calls `parse_job`, then `process_job`; catches and logs any exception with a safety-net save. |
-| `app/parser.py` | Converts raw message text into a structured job dict (title, description, budget, url, source, raw_text). Source-specific logic for Nafezly; generic fallback otherwise. The generic path keeps the title out of description so classifier input does not count title keywords twice. |
-| `app/freehub.py` | Polls the FreeHub API for two sources (`kafiil`, `freelancer`), deduplicates against a persisted "seen" set, and returns only new projects (with bounded multi-page backfill). |
-| `app/freehub_worker.py` | Runs `poll_once()` in a loop (`FREEHUB_POLL_INTERVAL` seconds), builds a job dict per new project, and calls `process_job` directly (FreeHub projects don't go through `parser.py` — they're already structured). |
-| `app/normalize.py` | Text normalization (Arabic character unification, diacritic/tatweel stripping, punctuation/separator handling, lowercasing) used before keyword matching. |
-| `app/keywords.py` | The classifier's data: `POSITIVE_KEYWORDS`, `NEGATIVE_KEYWORDS`, `HARD_REJECT_KEYWORDS`, each keyword tagged with a category, tier (`core`/`supporting`), and weight. |
-| `app/filters.py` | The classifier logic: `keyword_filter(text, title)`, a rule-based decision table (not additive scoring) built from `keywords.py` + `normalize.py`. |
-| `app/job_processor.py` | The shared orchestrator for both ingestion paths: atomic dedup/create, classifier/LLM routing, durable notification-state recovery, notifications, and logging. |
-| `app/llm/manager.py` | `evaluate_job()` — tries Gemini first, falls back to Groq only if Gemini raises. |
-| `app/llm/gemini.py` | Gemini client(s), one per configured API key; per-key retry on transient errors, then tries the next key. |
-| `app/llm/groq.py` | Groq client; rotates through a fixed model list on failure. |
-| `app/llm/prompt.py` | The shared system prompt (freelancer profile + evaluation rules) used by both Gemini and Groq. |
-| `app/llm/utils.py` | `build_prompt()` (embeds the classifier's evidence trail + job text) and `parse_response()` (strips code fences, validates required JSON keys). |
-| `app/notification_guard/` | Optional, independently-loaded second-opinion safety layer — see [Notification Guard](#12-notification-guard). |
-| `app/message_builder.py` | Builds the HTML-formatted Telegram notification text shared by both notifiers, with length truncation to stay under Telegram's message limit. |
-| `app/notifier.py` | Sends the private notification to `BOT_CHAT_ID`. |
-| `app/channel_notifier.py` | Sends the public channel notification to `BOT_CHANNEL_ID`, if configured. |
-| `app/telegram_bot.py` | The single shared `python-telegram-bot` `Bot` instance used by both notifiers. |
-| `app/state.py` | Persists Telegram per-channel watermarks and FreeHub per-source seen-ID lists to `database/state.json`, with atomic (temp-file + rename) writes. |
-| `app/logger.py` | `DBLogger` — all database reads/writes funneled through one dedicated worker thread (`ThreadPoolExecutor(max_workers=1)`), which keeps SQLite access strictly serial and off the event loop. |
+All sources converge on:
 
-### Why This Shape
-
-- **Deterministic classifier before any LLM call.** `app/filters.py`
-  is a rule-based decision table (see
-  [Deterministic Classifier](#10-deterministic-classifier)), not an
-  additive score. It runs first because it's fast and free; Gemini
-  (then Groq) is reserved for genuinely ambiguous posts.
-- **Two independent ingestion paths, one shared pipeline.** Telegram
-  and FreeHub each have their own ingestion/parsing code, but both
-  call `app.job_processor.process_job()`, so classification, LLM
-  review, notification, and logging are identical regardless of
-  source.
-- **The Notification Guard is opt-in and additive.** It is installed
-  by replacing `app.job_processor`'s in-memory references to
-  `send_notification`/`send_channel_notification` at runtime
-  (`app/notification_guard/integration.py`) — no production module is
-  edited to add it. Running `run.py` instead of `run_guarded.py`
-  produces byte-identical behavior to a build that never had the
-  guard.
-- **One dedicated logger thread.** Every database read/write, from
-  every subsystem (including the Notification Guard's own logging),
-  is routed through `DBLogger.run()` onto the same single worker
-  thread, so no two log operations — across either ingestion path —
-  can ever race.
-
-- **Durable notification workflow.** Jobs that require notification are
-  persisted as `Pending` before delivery, and each notification result
-  is persisted immediately afterward. If Loki restarts during a
-  notification workflow, the durable row is used to resume only the
-  incomplete portion rather than treating the job as brand new.
-
----
-
-## 5. Telegram Ingestion
-
-`app/handlers/telegram.py` constructs a `TelegramClient(SESSION_NAME,
-API_ID, API_HASH)`, logs in, performs startup recovery for every
-channel in `TARGET_CHANNELS` (see [Recovery](#16-recovery)), then
-registers:
-
-```python
-@client.on(events.NewMessage(chats=list(TARGET_CHANNELS)))
-async def handler(event):
-    ...
-    processed = await process_message(event)
-    if processed:
-        await state.async_set_last_message_id(event.chat_id, event.id)
+``` text
+app.job_processor.process_job()
 ```
 
-Telethon filters at the transport level — messages from chats outside
-`TARGET_CHANNELS` never reach the handler. `process_message()` returns
-`True` only when processing completes without an exception; failures are
-logged and return `False`, so the watermark is not advanced past a
-failed message. This gives Telegram at-least-once processing while the
-deterministic job UUID/legacy lookup prevents duplicate rows or
-notifications if a successfully processed message is encountered again.
+That function is the central processing boundary for:
 
-`app/message_processor.py` (`process_message`) is the actual entry
-point called by the handler above:
+-   deterministic deduplication
+-   classification
+-   LLM escalation
+-   durable job persistence
+-   notification state
+-   notification delivery
+-   retry/resume behavior
 
-1. Extracts `event.raw_text` and the chat title as `source`.
-2. Calls `parse_job(source, text)`.
-3. If no URL was found in the text itself, checks the message's
-   inline keyboard buttons (`event.buttons`), trying both
-   `button.url` and `button.button.url` (different Telethon button
-   wrapper shapes), using the first non-empty URL found.
-4. Calls `process_job(job=job, job_id=str(event.id))`.
-5. On any exception, logs it to the Errors sheet as
-   `"Message Processor"` and performs a safety-net `logger.save()` —
-   needed only because `process_job()`'s own save wouldn't have run if
-   the exception occurred before `process_job` was even reached (e.g.
-   inside `parse_job`).
+## High-level flow
 
----
+``` text
+Telegram
+   │
+   ▼
+message_processor
+   │
+   ▼
+parser
+   │
+   └─────────────────────┐
+                         │
+FreeHub                  │
+   │                     │
+   ▼                     │
+freehub_worker           │
+   │                     │
+   └──────────┬──────────┘
+              ▼
+       process_job()
+              │
+              ▼
+      deterministic filter
+              │
+       ┌──────┼───────┐
+       ▼      ▼       ▼
+    Reject  Direct   LLM
+             Accept  Review
+               │      │
+               │      ▼
+               │   Gemini
+               │      │
+               │      └──► Groq fallback
+               │
+               └──────┬───────┘
+                      ▼
+              Notification state
+                      │
+              ┌───────┴────────┐
+              ▼                ▼
+       Private Telegram   Optional channel
+              │                │
+              └───────┬────────┘
+                      ▼
+               Retry sweep
+```
 
-## 6. FreeHub Ingestion
+Supporting infrastructure:
 
-`app/freehub.py` polls an HTTP API (backend host is hardcoded in the
-module; the account is identified by `FREEHUB_USER_ID`) across two
-sources, `kafiil` and `freelancer`, defined as `SOURCES` in the
-module.
+``` text
+SQLite audit DB
+database/state.json + backup
+Notification Guard
+Docker
+GitHub Actions
+```
 
-`poll_once()`:
+------------------------------------------------------------------------
 
-1. Lazily seeds an in-memory "seen" `deque` per source from
-   `database/state.json` on first call (deferred because `state.load()`
-   runs after this module is imported).
-2. Fetches page 1 for each source.
-3. If nothing has been seen yet for a source (true first run), seeds
-   the cache from page 1 and returns nothing — no jobs are processed
-   on the very first poll for a source.
-4. Otherwise, if **every** project on the most recently fetched page
-   is unseen, walks additional pages (oldest direction) until a page
-   contains an already-seen project, or `_MAX_BACKFILL_PAGES` (10) is
-   reached — printing a `[FREEHUB WARNING]` if the cap is hit.
-5. Returns every newly-seen project (oldest → newest across whatever
-   pages were fetched this cycle) and persists the updated seen list
-   via `app.state.state.set_freehub_seen`.
+# 2. Installation
 
-`app/freehub_worker.py` runs this in a `while True` loop, sleeping
-`FREEHUB_POLL_INTERVAL` seconds between polls. For each new project it
-builds a job dict directly (no `parser.py` involvement — FreeHub
-already returns structured fields):
+## 2.1 Prerequisites
 
-```python
-job = {
-    "title": project["title"],
-    "description": project["description"],
-    "raw_text": f"{project['title']}\n\n{project['description']}",
-    "source": project.get("platform", "FreeHub"),
-    "budget": project.get("price", ""),
-    "url": project.get("project_link", ""),
+-   Python 3.11+
+-   A Telegram user account that can access the monitored channels.
+-   A Telegram Bot token for outgoing notifications.
+-   One or more Gemini API keys.
+-   A Groq API key.
+-   A FreeHub user ID.
+-   Optional: a dedicated Groq API key for the Notification Guard.
+
+Loki uses Telethon as a **user account**, not as the outgoing
+notification bot. This allows the ingestion side to access channel
+history and receive live updates as configured.
+
+## 2.2 Local setup
+
+``` bash
+git clone https://github.com/Mohamed-Basem87/loki-freelance-assistant.git
+cd loki-freelance-assistant
+
+python -m venv .venv
+```
+
+Linux/macOS:
+
+``` bash
+source .venv/bin/activate
+```
+
+Windows PowerShell:
+
+``` powershell
+.venv\Scripts\Activate.ps1
+```
+
+Install dependencies:
+
+``` bash
+pip install -r requirements.txt
+```
+
+Copy the environment template:
+
+``` text
+.env.example → .env
+```
+
+and fill in the required values.
+
+## 2.3 First Telegram login
+
+Run one of:
+
+``` bash
+python run.py
+```
+
+or:
+
+``` bash
+python run_guarded.py
+```
+
+The first Telethon login is interactive. Enter the Telegram code and 2FA
+password if required.
+
+The resulting session is persisted under the configured session path:
+
+``` text
+sessions/telegram*
+```
+
+The session file is sensitive and should never be committed to Git.
+
+------------------------------------------------------------------------
+
+# 3. Configuration
+
+Core configuration is loaded by `app/config.py`.
+
+Notification Guard configuration is intentionally loaded separately by
+`app/notification_guard/config.py`.
+
+## 3.1 Environment variables
+
+  ------------------------------------------------------------------------------------------------
+  Variable                                Required                       Default Purpose
+  --------------------------------------- ---------------- --------------------- -----------------
+  `API_ID`                                Yes                                --- Telegram
+                                                                                 application ID
+
+  `API_HASH`                              Yes                                --- Telegram
+                                                                                 application hash
+
+  `PHONE_NUMBER`                          Yes                                --- Telethon user
+                                                                                 account phone
+
+  `BOT_TOKEN`                             Yes                                --- Outgoing Telegram
+                                                                                 Bot token
+
+  `BOT_CHAT_ID`                           Yes                                --- Private
+                                                                                 notification
+                                                                                 destination
+
+  `BOT_CHANNEL_ID`                        No                                 --- Optional public
+                                                                                 notification
+                                                                                 channel
+
+  `GEMINI_API_KEYS`                       Yes                                --- Comma-separated
+                                                                                 Gemini API keys
+
+  `GROQ_API_KEY`                          Yes                                --- Main Groq
+                                                                                 fallback key
+
+  `TARGET_CHANNEL_IDS`                    Yes                                --- Comma-separated
+                                                                                 Telegram source
+                                                                                 IDs
+
+  `FREEHUB_USER_ID`                       Yes                                --- FreeHub user
+                                                                                 identifier
+
+  `FREEHUB_BASE_URL`                      No                legacy HTTP endpoint FreeHub API base
+                                                                                 URL
+
+  `FREEHUB_POLL_INTERVAL`                 No                                `60` FreeHub poll
+                                                                                 interval in
+                                                                                 seconds
+
+  `FREEHUB_PAGE_SIZE`                     No                                `30` FreeHub API page
+                                                                                 size
+
+  `NOTIFICATION_RETRY_INTERVAL`           No                               `300` Notification
+                                                                                 retry sweep
+                                                                                 interval
+
+  `NOTIFICATION_GUARD_ENABLED`            No                             `false` Enable
+                                                                                 Notification
+                                                                                 Guard
+
+  `GROQ_NOTIFICATION_GUARD_API_KEY`       Guard only                         --- Guard Groq API
+                                                                                 key
+
+  `GROQ_NOTIFICATION_GUARD_MAX_RETRIES`   No                                 `2` Guard retry
+                                                                                 attempts
+  ------------------------------------------------------------------------------------------------
+
+Notification Guard model names are fixed in code and are intentionally
+not environment variables.
+
+## 3.2 Validation
+
+`app/config.py` validates required values during import.
+
+Important helpers include:
+
+-   `_require_env()`
+-   `_require_int_env()`
+-   `_require_channel_ids()`
+
+Invalid required configuration raises `RuntimeError` during startup
+rather than allowing the application to fail later in an unrelated
+subsystem.
+
+------------------------------------------------------------------------
+
+# 4. Architecture and Module Responsibilities
+
+## 4.1 Entry points
+
+### `run.py`
+
+Starts the normal application:
+
+``` text
+run.py
+  ↓
+app.bot.main()
+  ↓
+app.bot.run()
+```
+
+### `run_guarded.py`
+
+Installs the Notification Guard adapter before starting the same
+application:
+
+``` text
+run_guarded.py
+  ↓
+notification_guard.integration.install()
+  ↓
+app.bot.main()
+```
+
+The guard is still disabled unless:
+
+``` text
+NOTIFICATION_GUARD_ENABLED=true
+```
+
+## 4.2 Application modules
+
+  -----------------------------------------------------------------------
+  Module                              Responsibility
+  ----------------------------------- -----------------------------------
+  `app/bot.py`                        Initializes DB/state and starts all
+                                      long-lived workers
+
+  `app/config.py`                     Core environment loading/validation
+
+  `app/handlers/telegram.py`          Telethon client, startup recovery,
+                                      live handler
+
+  `app/message_processor.py`          Telegram event → parsed job →
+                                      shared pipeline
+
+  `app/parser.py`                     Telegram text/source/URL extraction
+
+  `app/freehub.py`                    FreeHub polling, pagination and
+                                      seen-ID discovery
+
+  `app/freehub_worker.py`             FreeHub polling loop and shared
+                                      pipeline dispatch
+
+  `app/normalize.py`                  Arabic/English normalization for
+                                      classification
+
+  `app/keywords.py`                   Classifier vocabulary and weights
+
+  `app/filters.py`                    Deterministic classifier
+
+  `app/job_processor.py`              Central
+                                      dedup/classification/notification
+                                      orchestrator
+
+  `app/llm/manager.py`                Gemini → Groq provider routing
+
+  `app/llm/gemini.py`                 Gemini key rotation and retries
+
+  `app/llm/groq.py`                   Groq model rotation and retries
+
+  `app/llm/prompt.py`                 LLM evaluation system prompt
+
+  `app/llm/utils.py`                  Prompt construction and response
+                                      validation
+
+  `app/notification_guard/`           Optional second-stage notification
+                                      safety check
+
+  `app/message_builder.py`            Telegram HTML message
+                                      construction/truncation
+
+  `app/notifier.py`                   Private Telegram notification
+
+  `app/channel_notifier.py`           Optional public Telegram channel
+                                      notification
+
+  `app/telegram_bot.py`               Shared outgoing
+                                      `python-telegram-bot` instance
+
+  `app/logger.py`                     SQLite persistence and audit
+                                      logging
+
+  `app/state.py`                      Persistent Telegram/FreeHub state
+  -----------------------------------------------------------------------
+
+## 4.3 Architectural invariants
+
+The most important invariants are:
+
+1.  **Job identity is deterministic.**
+2.  **SQLite is the source of truth for job deduplication.**
+3.  **FreeHub seen IDs are an optimization layer, not the ultimate dedup
+    boundary.**
+4.  **Telegram watermarks only advance after successful message
+    processing.**
+5.  **Same-channel live Telegram processing is serialized.**
+6.  **Notification retry and live notification paths share a per-job
+    lock.**
+7.  **Notification state is persisted before and after external
+    notification attempts.**
+8.  **LLM failures fail toward rejection rather than accidental
+    acceptance.**
+9.  **Notification Guard failures fail closed.**
+10. **State-file corruption fails loudly if no valid backup exists.**
+
+------------------------------------------------------------------------
+
+# 5. Telegram Ingestion
+
+`app/handlers/telegram.py` owns the Telethon user client.
+
+## 5.1 Startup
+
+Current startup sequence:
+
+``` text
+TelegramClient
+    ↓
+client.start(phone=PHONE_NUMBER)
+    ↓
+get_me()
+    ↓
+_warm_entity_cache()
+    ↓
+_recover_channel() for every target channel
+    ↓
+register NewMessage handler
+    ↓
+run_until_disconnected()
+```
+
+The entity warm-up calls `get_dialogs()` and verifies that each target
+channel can be resolved.
+
+## 5.2 Live processing
+
+The live handler:
+
+1.  Receives a `NewMessage`.
+2.  Gets the chat information for logging.
+3.  Acquires the per-channel lock.
+4.  Calls `process_message()`.
+5.  Advances that channel's watermark only if processing returns
+    success.
+
+Same-channel messages therefore cannot advance the watermark out of
+order.
+
+Different channels use different locks and can run concurrently.
+
+## 5.3 Identity
+
+Telegram job identity is derived from:
+
+``` text
+chat_id + message_id
+```
+
+The channel's display title is not part of identity.
+
+Therefore a channel rename does not change the job UUID.
+
+------------------------------------------------------------------------
+
+# 6. FreeHub Ingestion
+
+FreeHub is polled by `app.freehub.py` and `app.freehub_worker.py`.
+
+Current sources:
+
+``` text
+kafiil
+freelancer
+```
+
+## 6.1 Polling
+
+Each poll:
+
+1.  Fetches page 1.
+2.  Compares project UIDs with persistent seen state.
+3.  If page 1 is entirely unseen, walks additional pages.
+4.  Stops when an already-seen project is encountered, a page is empty,
+    or the 10-page safety cap is reached.
+5.  Returns newly discovered projects oldest-to-newest.
+
+Projects are tagged internally with:
+
+``` text
+_poll_source
+```
+
+This stable source identifier is used for downstream identity.
+
+That is intentional: the API's displayed `platform` field is treated as
+mutable display data, not as an identity component.
+
+## 6.2 Seen-state semantics
+
+A project is **not** marked seen by `poll_once()`.
+
+Instead:
+
+``` text
+poll_once()
+    ↓
+process_job()
+    ↓
+success
+    ↓
+mark_project_seen()
+```
+
+If processing raises, the project remains unseen and can be
+rediscovered.
+
+## 6.3 Backfill cap
+
+The current maximum is 10 additional pages.
+
+This protects the poller from walking indefinitely after a long outage.
+
+However, an outage combined with sufficiently high posting volume can
+push a project beyond the available backfill window. This is a known
+operational limitation.
+
+------------------------------------------------------------------------
+
+# 7. Parsing and Normalization
+
+## 7.1 Telegram parsing
+
+`app/parser.py` handles:
+
+-   title extraction
+-   description extraction
+-   budget extraction
+-   URL extraction
+-   source identification
+-   Nafezly-specific message structure
+-   generic fallback parsing
+
+URLs can also be extracted from Telegram inline keyboard buttons by
+`app.message_processor.py`.
+
+The generic parser deliberately keeps the title out of the classifier's
+description input so title keywords are not double-counted.
+
+## 7.2 Normalization
+
+`app/normalize.py` handles the text transformations required by the
+classifier.
+
+The Arabic path includes normalization such as:
+
+-   character variants
+-   diacritics
+-   tatweel
+-   punctuation/separator cleanup
+-   lowercasing where applicable
+
+The classifier intentionally uses word boundaries. Common Arabic clitic
+attachment without a separating space remains a known matching
+limitation.
+
+------------------------------------------------------------------------
+
+# 8. Shared Job Processing
+
+`app/job_processor.py` is the central orchestrator.
+
+Conceptually:
+
+``` text
+job
+ ↓
+deterministic identity
+ ↓
+dedup lookup
+ ↓
+atomic create if absent
+ ↓
+keyword filter
+ ↓
+LLM if necessary
+ ↓
+persist final decision
+ ↓
+notification state
+ ↓
+resume notification legs
+```
+
+## 8.1 Job UUID
+
+Identity uses UUIDv5:
+
+``` text
+uuid5(fixed_namespace, f"{source}:{job_id}")
+```
+
+Examples:
+
+``` text
+Telegram:
+chat_id:message_id
+
+FreeHub:
+poll_source:project_uid
+```
+
+The UUID is therefore stable across process restarts.
+
+## 8.2 Atomic creation
+
+`create_job_if_absent()` uses a transaction around the existence check
+and insertion.
+
+The `jobs` table also has:
+
+``` text
+PRIMARY KEY ("Job UUID")
+```
+
+This provides two layers of duplicate protection:
+
+``` text
+application transaction
++
+database primary key
+```
+
+## 8.3 Existing jobs
+
+If a job already exists, the pipeline does not treat it as a new job.
+
+For jobs with incomplete notification state, the notification resume
+path can continue the unresolved notification legs.
+
+------------------------------------------------------------------------
+
+# 9. Deterministic Classifier
+
+The classifier is implemented by:
+
+``` text
+app/keywords.py
+app/normalize.py
+app/filters.py
+```
+
+## 9.1 Keyword tiers
+
+Positive signals include:
+
+-   core positive
+-   supporting positive
+
+Negative signals include:
+
+-   core negative
+-   supporting negative
+
+There is also a hard-reject set and a noise-keyword mechanism.
+
+## 9.2 Decision model
+
+The classifier is an ordered decision table rather than a single numeric
+score.
+
+Important branches include:
+
+1.  hard reject
+2.  title/core positive signals
+3.  mixed core positive + negative
+4.  strong supporting-negative downgrade
+5.  lone-core handling
+6.  clean direct acceptance
+7.  no-core but sufficient supporting evidence → LLM
+8.  insufficient evidence → reject
+
+## 9.3 Why the design exists
+
+The project favors precision over recall.
+
+For example:
+
+``` text
+Excel
+```
+
+alone does not necessarily mean:
+
+``` text
+Data Analysis job
+```
+
+because Excel can appear in:
+
+-   data entry
+-   transcription
+-   spreadsheet population
+-   office administration
+-   unrelated software projects
+
+The classifier therefore tries to require context around weaker signals.
+
+## 9.4 Evidence trail
+
+Classifier evidence is persisted with the job:
+
+-   matched keywords
+-   category
+-   tier
+-   hit counts
+-   weights
+-   hard-reject matches
+-   final reason
+
+This makes historical decisions explainable without rerunning the
+classifier.
+
+## 9.5 Known classifier limitation
+
+The vocabulary is heavily hand-curated and bilingual. It is well suited
+to explainability and fast tuning, but there is currently no
+statistically representative labeled dataset automatically evaluated in
+CI.
+
+The existing regression cases are useful but do not replace a held-out
+precision/recall benchmark.
+
+------------------------------------------------------------------------
+
+# 10. LLM Subsystem
+
+The LLM stack consists of:
+
+``` text
+app/llm/manager.py
+app/llm/gemini.py
+app/llm/groq.py
+app/llm/prompt.py
+app/llm/utils.py
+```
+
+## 10.1 Provider routing
+
+The manager tries:
+
+``` text
+Gemini
+  ↓
+all configured Gemini keys
+  ↓
+Groq fallback
+  ↓
+all configured Groq models
+```
+
+If all providers fail, `evaluate_job()` raises and the current
+`process_job()` implementation records:
+
+``` text
+Final Decision = Rejected
+Decision Reason = LLM Error
+```
+
+### Important reliability limitation
+
+This is currently treated as a completed rejection.
+
+There is no classification retry sweep equivalent to the notification
+retry sweep.
+
+Therefore a genuine borderline job can be permanently lost to a
+temporary simultaneous Gemini/Groq outage.
+
+This should be changed so infrastructure failure is represented as a
+recoverable classification state rather than as a final semantic
+rejection.
+
+## 10.2 Gemini
+
+Configured keys are tried in order.
+
+Transient errors receive a bounded retry before the next key.
+
+Non-transient failures advance to the next key.
+
+## 10.3 Groq
+
+The main Groq client rotates through a fixed list of models.
+
+The same general transient-retry strategy is used before advancing.
+
+## 10.4 Response validation
+
+`app/llm/utils.py`:
+
+-   strips code fences when necessary
+-   parses JSON
+-   requires the expected fields
+-   validates confidence
+-   rejects invalid response types
+
+A boolean confidence value is explicitly rejected even though Python
+considers `bool` an `int` subclass.
+
+## 10.5 Prompt-injection boundary
+
+Job descriptions are external/untrusted content.
+
+The prompt construction explicitly separates:
+
+``` text
+instructions
+```
+
+from:
+
+``` text
+<JobDescription>
+untrusted job text
+</JobDescription>
+```
+
+The Gemini integration also uses the provider's dedicated
+system-instruction mechanism rather than concatenating all instructions
+into the same user content.
+
+This is a mitigation, not a mathematical guarantee against arbitrary LLM
+prompt injection.
+
+------------------------------------------------------------------------
+
+# 11. Notification Guard
+
+The guard lives under:
+
+``` text
+app/notification_guard/
+```
+
+It is installed by `run_guarded.py`.
+
+## 11.1 Purpose
+
+The deterministic classifier may directly accept a job without LLM
+review.
+
+The guard adds:
+
+``` text
+classifier direct accept
+        ↓
+independent Groq safety check
+        ↓
+notify / do_not_notify
+```
+
+LLM-reviewed jobs bypass the guard.
+
+## 11.2 Fail-closed
+
+The guard's only successful allow path is an explicit valid:
+
+``` text
+notify
+```
+
+Any exception, invalid response, or provider failure produces:
+
+``` text
+allowed = False
+```
+
+That prevents guard outages from accidentally increasing notifications.
+
+## 11.3 Error vs rejection
+
+The guard distinguishes:
+
+``` text
+notify
+do_not_notify
+error
+```
+
+This matters because:
+
+-   `do_not_notify` is a terminal suppression.
+-   `error` remains retryable.
+
+Without that distinction, the retry sweep could either hammer a
+permanently rejected job forever or permanently lose a job during a
+transient provider outage.
+
+## 11.4 Two-leg decision reuse
+
+The guard caches a decision so the private and channel notification legs
+for one job share one guard evaluation.
+
+The cache is in-memory and therefore resets after a process restart.
+
+## 11.5 Double opt-in
+
+The guard requires both:
+
+``` text
+run_guarded.py
+```
+
+and:
+
+``` text
+NOTIFICATION_GUARD_ENABLED=true
+```
+
+This is an operational risk because using the guarded entrypoint does
+not itself guarantee that the guard is enabled.
+
+------------------------------------------------------------------------
+
+# 12. Notification Delivery
+
+Notifications are implemented by:
+
+``` text
+app/notifier.py
+app/channel_notifier.py
+app/message_builder.py
+```
+
+## 12.1 Destinations
+
+Private notification:
+
+``` text
+BOT_CHAT_ID
+```
+
+Optional channel:
+
+``` text
+BOT_CHANNEL_ID
+```
+
+If no channel ID is configured, the channel leg is treated as
+successfully skipped.
+
+## 12.2 HTML safety
+
+User-controlled values are escaped before being inserted into Telegram
+HTML.
+
+The builder also has a tag-aware truncation path to avoid malformed HTML
+when messages approach Telegram's length limit.
+
+## 12.3 Durable state
+
+Before sending:
+
+``` text
+Notification Status = Pending
+```
+
+After each leg:
+
+``` text
+Telegram: Sent
+Telegram: Failed
+Telegram Channel: Sent
+Telegram Channel: Failed
+```
+
+Guard suppression is represented separately.
+
+## 12.4 Retry sweep
+
+`notification_retry_loop()` periodically queries incomplete jobs and
+resumes only unresolved legs.
+
+The retry sweep and live notification path share a per-job async lock.
+
+That prevents:
+
+``` text
+live path → send
+retry path → send
+```
+
+from racing each other for the same job.
+
+## 12.5 External side-effect window
+
+SQLite cannot atomically commit with Telegram.
+
+Therefore:
+
+``` text
+Telegram send succeeds
+        ↓
+process crashes before DB update
+        ↓
+DB still says unresolved
+        ↓
+retry
+```
+
+A duplicate notification is possible in this narrow window.
+
+This is an unavoidable external-side-effect boundary rather than a
+SQLite transaction bug.
+
+------------------------------------------------------------------------
+
+# 13. SQLite Audit Database
+
+The database is:
+
+``` text
+loki_freelance_bot.db
+```
+
+## 13.1 Tables
+
+### `jobs`
+
+One durable row per job.
+
+Contains identity, source data, classifier evidence, LLM decision
+information, final decision, notification state, and timing information.
+
+### `gemini`
+
+Records LLM review calls.
+
+Despite the historical table name, this table represents the
+application's LLM review audit data, including the Groq fallback path.
+
+### `notifications`
+
+Records notification attempts per destination.
+
+### `errors`
+
+Records caught exceptions and subsystem labels.
+
+### `notification_guard`
+
+Records Notification Guard evaluations.
+
+## 13.2 Thread architecture
+
+`DBLogger` uses:
+
+``` python
+ThreadPoolExecutor(max_workers=1)
+```
+
+All database access from application subsystems is routed through:
+
+``` text
+await logger.run(...)
+```
+
+This keeps SQLite operations serialized and moves blocking DB work off
+the asyncio event loop.
+
+## 13.3 Transactions
+
+Explicit transactions are used where multiple statements must be atomic,
+particularly:
+
+-   job check-and-create
+-   schema migration/rebuild
+-   legacy-row merging
+-   orphaned migration recovery
+
+Single-statement operations use SQLite autocommit.
+
+## 13.4 Migration
+
+The database includes legacy-schema migration logic.
+
+Migration handling accounts for:
+
+-   legacy column layouts
+-   case-insensitive SQLite table-name behavior
+-   temporary migration tables
+-   orphaned migration recovery
+-   repeated initialization without duplicating merged rows
+
+## 13.5 Schema limitations
+
+The database is intentionally simple and inspectable, but there are some
+schema-quality limitations:
+
+-   several numeric/boolean values are stored as `TEXT`
+-   append-only audit tables do not have explicit application-level
+    primary keys
+-   there is no retention/pruning policy
+-   there is no independent application-level DB backup mechanism
+
+At the project's current scale these are manageable, but they matter if
+the database grows significantly.
+
+------------------------------------------------------------------------
+
+# 14. Persistent State
+
+`app/state.py` stores state in:
+
+``` text
+database/state.json
+```
+
+## 14.1 Telegram state
+
+Top-level keys map channel IDs to last processed message IDs:
+
+``` json
+{
+    "-1001234567890": 12345
 }
 ```
 
-and calls `process_job(job=job, job_id=project["uid"])`. Only after
-`process_job()` completes successfully does the worker persist the
-project UID as seen. If processing fails, the UID remains unseen and
-the next poll can retry it. Both a per-project exception (logged as
-`"FreeHub Project"`) and a poll-cycle-level exception (logged as
-`"FreeHub Worker"`) are caught so one bad project or one failed poll
-never kills the loop.
+## 14.2 FreeHub state
 
----
+FreeHub state lives under:
 
-## 7. Parsing
-
-`app/parser.py`'s `parse_job(source, text)` only runs for
-**Telegram-sourced** jobs (FreeHub jobs are built directly, see
-above). It returns a dict: `title`, `description`, `budget`, `url`,
-`source`, `raw_text`.
-
-- If `source` (the chat title, lowercased) contains `"nafezly"`,
-  Arabic-language regexes extract `عنوان المشروع` (title),
-  `تفاصيل المشروع` (description, up to `الميزانية` or end of string),
-  and `الميزانية` (budget). If the title regex doesn't match,
-  `_fallback_title()` is used instead.
-- For every other source, the fallback path runs directly: title =
-  first non-empty line (`_fallback_title`), description = the full
-  text run through `_normalize_description()` (collapses single
-  newlines to spaces while preserving paragraph breaks, trims
-  trailing whitespace per line, collapses repeated spaces).
-- `url` is extracted via `_extract_url()` (a plain `https?://\S+`
-  regex against the raw text) for both paths.
-
----
-
-## 8. Normalization
-
-`app/normalize.py`'s `normalize(text)` runs before every keyword
-match (both against the job text and, once, against every keyword
-itself at import time in `app/filters.py`):
-
-1. Lowercase.
-2. Arabic character unification via a translation table: hamza
-   variants (`أ إ آ ٱ` → `ا`), `ى` → `ي`, `ؤ` → `و`, `ئ` → `ي`, and
-   taa marbuta → haa (`ة` → `ه`) — the last specifically to handle
-   common informal Telegram spelling variance (e.g. `لوحه` vs.
-   `لوحة`).
-3. Arabic diacritics stripped (`\u064B`–`\u065F`, `\u0670`).
-4. Arabic tatweel/kashida stripped (`\u0640`).
-5. Separator characters (`- _ / \ |`) replaced with spaces.
-6. Remaining punctuation stripped.
-7. Whitespace collapsed and trimmed.
-
----
-
-## 9. Job Processing
-
-`app/job_processor.py`'s `process_job(job, job_id)` is the shared
-orchestrator for both ingestion paths.
-
-1. **Deterministic dedup.** A `job_uuid` is derived via `uuid5` from
-   `(identity_source, job_id)` and the logger performs an atomic
-   check-and-create on its single worker thread. The same underlying
-   message/project therefore cannot create two canonical rows even
-   when two coroutines reach the logger concurrently. Historical
-   pre-stable-identity UUIDs remain a lookup-only compatibility path.
-   A durable notification workflow is resumed when a previously-created
-   row is still pending.
-2. **Classify.** `keyword_filter(f"{title}\n{description}", title=title)`
-   runs (see [Deterministic Classifier](#10-deterministic-classifier)).
-3. **Log the initial row** (`logger.create_job`, unsaved) with the
-   full classifier evidence trail.
-4. **Route** based on the classifier's decision:
-   - `hard_reject` → `Rejected`, reason `"Hard Reject"`.
-   - not `matched` → `Rejected`, reason `"No Matching Keywords"`.
-   - `notify_directly` → `Accepted`, reason = the classifier's own
-     `reason` string, `should_notify = True`.
-   - `needs_gemini` → calls `app.llm.manager.evaluate_job` (off the
-     event loop via `asyncio.to_thread`). On success: `Accepted`/
-     `Rejected` based on `gemini["decision"]`, logged to the Gemini
-     sheet. On exception (both Gemini and Groq exhausted — see
-     [LLM Subsystem](#11-llm-subsystem)): `Rejected`, reason
-     `"LLM Error"`, logged to the Errors sheet as `"LLM"`.
-   - none of the above → `Rejected`, using the classifier's own
-     `reason` string. `"Below Gemini Threshold"` is retained only as a
-     defensive fallback if that reason is unexpectedly empty; normal
-     classifier results provide a specific reason.
-5. **Update the row** with the final decision/reason.
-6. **If `should_notify`**, persist `Notification Status = Pending`
-   before any external send. Then call `send_notification` and
-   `send_channel_notification` in sequence; after each attempt, log
-   its `Sent`/`Failed` result and persist that platform's durable
-   status immediately. On restart, an incomplete notification
-   workflow is resumed from the durable row.
-7. **One final `logger.save()`** is used for non-notifying jobs. A
-   notifying job persists its notification state around each external
-   side effect instead of batching the entire workflow into one
-   end-of-job save.
-
----
-
-## 10. Deterministic Classifier
-
-The classifier is a **decision table**, not an additive score. Rules
-are evaluated top-to-bottom; the first matching rule wins. This
-replaced an earlier score-threshold model — there is no numeric
-"score" anywhere in the current implementation.
-
-### Keyword Data Model (`app/keywords.py`)
-
-Every keyword belongs to exactly one `(polarity, category, tier)`:
-
-- **Polarity**: `POSITIVE_KEYWORDS` (evidence the job IS Data
-  Analysis / Excel / Power BI / SQL / Python-for-data — categories:
-  `power_bi`, `excel`, `sql`, `data_analysis`, `python`) or
-  `NEGATIVE_KEYWORDS` (evidence it's something else — categories
-  include `web`, `backend`, `mobile`, `design`, `education`,
-  `enterprise`, `nocode`, `ai_apps`, `devops`, `automation`, `cad`,
-  `marketing`).
-- **Tier**: `core` (unambiguous alone — presence of one core keyword
-  is sufficient evidence) or `supporting` (consistent with the domain
-  but too generic alone — only matters in aggregate or to break ties).
-- A separate `HARD_REJECT_KEYWORDS` set (unpaid work, internships,
-  translation, etc.) acts as an independent safety net that overrides
-  everything else, checked against the full text regardless of any
-  positive match.
-
-Both English and Arabic keyword variants are included throughout,
-since the monitored sources post in both languages.
-
-### Matching (`app/filters.py`)
-
-- `_contains_keyword` uses `\b`-word-boundary regex matching — Python's
-  `\b` is Unicode-aware and works correctly for Arabic script too
-  (verified directly against Arabic word-boundary cases), with one
-  known, accepted tradeoff: a keyword won't match when a common
-  Arabic prefix (`ل ب و ك ال`) is attached directly with no space.
-- Within a tier, keywords are matched longest-normalized-phrase-first
-  and matched text is masked out afterward, so a longer phrase (e.g.
-  `"excel sheet"`) claims its span before a shorter contained keyword
-  (`"sheet"`) can also match. Matching is independent **across**
-  tiers/polarities by design.
-- Hard-reject keywords are checked against the full normalized text
-  and, unlike the previous model, **are not disabled by a positive
-  match** — a post can match a positive keyword and a hard-reject
-  keyword simultaneously, and hard-reject still wins.
-
-### Title Signal
-
-If a `title` is passed to `keyword_filter`, a core keyword found in
-the title is treated as the single strongest available signal (the
-client wrote the title specifically to say what the job IS) — but it
-does not blindly override a genuine core-negative signal found in the
-body; that combination routes to Gemini instead (`title_positive_but_body_core_negative`).
-
-### Decision Table (evaluated top to bottom, first match wins)
-
-1. `hard_reject` → **reject**.
-2. Title core-positive, no title core-negative, no body core-negative
-   → **notify_directly** (`title_core_positive`).
-3. Title core-positive, no title core-negative, **but** body has a
-   core-negative → **needs_gemini** (`title_positive_but_body_core_negative`).
-4. Title core-negative, no title core-positive, no body core-positive
-   at all → **reject** (`title_core_negative_no_body_positive`).
-5. Body has both core-positive and core-negative → **needs_gemini**
-   (`mixed_core_signals`).
-6. Body has core-negative, no core-positive → **reject**
-   (`core_negative_no_core_positive`).
-7. Body has core-positive, no core-negative:
-   - Exactly one core-positive hit **and** supporting-positive weight
-     `< MIN_SUPPORTING_POSITIVE_FOR_LONE_CORE` (5) → **needs_gemini**
-     (`lone_core_positive_insufficient_support`) — a single
-     unconfirmed core hit is too thin to trust blindly.
-   - Otherwise, if supporting-negative weight
-     `>= SUPPORTING_NEGATIVE_DOWNGRADE_THRESHOLD` (14) →
-     **needs_gemini** (`core_positive_but_heavy_supporting_negative`).
-   - Otherwise → **notify_directly** (`core_positive_clean`).
-8. No core signal either direction: if supporting-positive weight
-   `>= SUPPORTING_POSITIVE_MIN_FOR_GEMINI` (12) → **needs_gemini**
-   (`supporting_positive_only`); otherwise → **reject**
-   (`insufficient_signal`).
-
-### Tunable Thresholds
-
-These three constants at the top of `app/filters.py` are the *only*
-numeric tuning knobs in the decision path:
-
-| Constant | Value | Meaning |
-|---|---|---|
-| `SUPPORTING_POSITIVE_MIN_FOR_GEMINI` | 12 | Minimum supporting-positive weight to send to Gemini when no core signal fired at all. |
-| `SUPPORTING_NEGATIVE_DOWNGRADE_THRESHOLD` | 14 | Supporting-negative weight at/above which a clean core-positive match is downgraded to Gemini review instead of a direct accept. |
-| `MIN_SUPPORTING_POSITIVE_FOR_LONE_CORE` | 5 | Minimum supporting-positive weight required to trust a single, uncorroborated core-positive hit. |
-
-### Retargeting the Classifier
-
-1. Add/adjust categories and keywords in `app/keywords.py` — for every
-   new/changed keyword in one language, look for a corresponding
-   equivalent in the other (English ↔ Arabic) so bilingual coverage
-   stays balanced.
-2. Adjust the three thresholds above in `app/filters.py` if evidence
-   supports it — the decision-table *logic* itself is intended to
-   stay stable; only these constants are meant to be tuned.
-3. If the target niche changes materially, the freelancer profile in
-   `app/llm/prompt.py`'s `SYSTEM_PROMPT` must be rewritten too — it is
-   what Gemini/Groq actually judge borderline posts against,
-   independent of the keyword categories.
-4. Run the relevant tests in `tests/` (see
-   [Testing / Development](#19-testing--development)) against
-   representative sample posts before deploying a change.
-
----
-
-## 11. LLM Subsystem
-
-Invoked only when the classifier returns `needs_gemini` (see
-[Deterministic Classifier](#10-deterministic-classifier)). Both
-providers share the same system prompt (`app/llm/prompt.py`) and
-request/response contract (`app/llm/utils.py`).
-
-### Manager (`app/llm/manager.py`)
-
-```python
-def evaluate_job(text, filter_result):
-    try:
-        return gemini_evaluate(text, filter_result)
-    except Exception as gemini_error:
-        try:
-            return groq_evaluate(text, filter_result)
-        except Exception as groq_error:
-            raise RuntimeError(...) from groq_error
+``` text
+_freehub_seen
 ```
 
-Groq is only attempted if Gemini's own multi-key attempt (below)
-raises. If Groq also fails, a single `RuntimeError` combining both
-providers' final exceptions is raised back to `job_processor.py`,
-which logs it once to the Errors sheet as `"LLM"` (not
-provider-specific, since by this point both providers failed).
+with per-source seen UID lists.
 
-### Gemini (`app/llm/gemini.py`)
+## 14.3 Atomic persistence
 
-- Configured via `GEMINI_API_KEYS` (comma-separated) — one
-  `genai.Client` is constructed per key at import time.
-- Model: **`gemini-3.5-flash`**, called via
-  `client.models.generate_content()`.
-- The request uses Gemini's API-level
-  `response_mime_type="application/json"` constraint, in addition to
-  the prompt's JSON-only instruction.
-- Per-key retry: `@retry(retry_if_exception(_is_transient),
-  stop_after_attempt(2), wait_fixed(1), reraise=True)` — only retries
-  errors matching transient markers (`429`, `503`,
-  `resource_exhausted`, `quota exceeded`, `unavailable`, `timeout`,
-  `timed out`); a malformed request or parse failure is not retried.
-- **Key rotation**: keys are tried in order; **any** exception from a
-  key (including a non-transient one, including a response-parsing
-  failure) moves on to the next key — a bad response from key #1 says
-  nothing about whether key #2 would work. Only once every key has
-  failed does `evaluate_job` re-raise the last exception.
+Writes use:
 
-### Groq (`app/llm/groq.py`)
-
-- Configured via `GROQ_API_KEY` (single key).
-- **Model rotation list** (`GROQ_MODELS`, tried in this exact order):
-  1. `openai/gpt-oss-120b`
-  2. `llama-3.3-70b-versatile`
-  3. `qwen/qwen3.6-27b`
-- Same transient-error retry pattern as Gemini
-  (`stop_after_attempt(2)`, `wait_fixed(1)`).
-- Same any-failure-moves-to-next-model behavior as Gemini's key
-  rotation. Once every model has failed, the last exception is
-  re-raised.
-- Requests use `response_format={"type": "json_object"}`.
-
-### Prompt Construction and Response Parsing (`app/llm/utils.py`)
-
-`build_prompt()` embeds the classifier's full evidence trail
-(decision, reason, matched categories, core/supporting matches on
-both polarities, supporting weights) alongside the raw job text,
-wrapped in an explicit `<JobDescription>` tag with an instruction to
-treat it as **untrusted content** and ignore any instructions
-contained within it — a prompt-injection defense, since job post text
-is attacker-controllable public input.
-
-`parse_response()`:
-1. Strips a leading/trailing ` ```json `/` ``` ` fence if present.
-2. Parses as JSON and requires a JSON object.
-3. Validates all six required keys are present
-   (`decision`, `confidence`, `project_type`, `primary_deliverable`,
-   `reason`, `skills_detected`).
-4. Validates `decision` is exactly `accept` or `reject`, `confidence`
-   is numeric and within 0–100, the textual fields are strings, and
-   `skills_detected` is a list of strings. Invalid values raise
-   `ValueError`, so malformed responses count as provider failures and
-   trigger the existing key/model/provider rotation rather than being
-   accepted accidentally.
-
-### The System Prompt (`app/llm/prompt.py`)
-
-A single shared `SYSTEM_PROMPT` hardcodes the freelancer profile
-(Data Analysis / BI / Power BI / Excel / SQL / Python — explicitly
-**not** web/frontend/backend/full-stack/mobile/DevOps/enterprise
-software) and detailed evaluation rules, most notably:
-
-- Judge the **primary deliverable**, not which technologies are
-  merely mentioned.
-- A dedicated **data-entry / transcription exclusion**: Excel, CSV,
-  Power BI, or a dashboard as the deliverable does *not* by itself
-  mean "Data Analysis" — manual data entry, PDF/OCR-to-Excel
-  transcription, spreadsheet population, contact/lead list building,
-  and form-filling are explicitly rejected even when the final
-  artifact is an Excel file.
-- Be conservative when uncertain — false positives are treated as
-  worse than false negatives.
-- Confidence bands: 95–100 excellent match, 80–94 strong match, 60–79
-  borderline but possible, 0–59 reject.
-
----
-
-## 12. Notification Guard
-
-An **optional, independent second-opinion safety layer** — not part
-of the classifier, and not a mechanism for automatically correcting
-or retraining the classifier. It exists to catch cases where the
-deterministic classifier's `notify_directly` decision (i.e. no
-LLM ever reviewed this specific job) turns out, on a second Groq-based
-look, to not actually be Data Analysis / BI work.
-
-**Important distinction:** a guard result of `do_not_notify` means the
-notification safety layer blocked delivery for this one job — it does
-**not** mean the classifier itself was wrong, and it does not
-automatically train, correct, or modify the classifier or its
-keyword data in any way. Guard decisions are recorded for later human
-review, not consumed by any automated feedback loop in this codebase.
-
-### Installation
-
-The guard is not active under `run.py`. It is installed only by
-`run_guarded.py`, via `app.notification_guard.integration.install()`,
-which replaces `app.job_processor`'s in-memory
-`send_notification`/`send_channel_notification` references with
-wrapped versions — no production source file is edited to do this.
-
-### Which Jobs It Evaluates
-
-- **Direct-accept jobs** (`ai_used=False` at notification time, i.e.
-  the classifier's `notify_directly` fired and no Gemini/Groq review
-  ever happened) — evaluated by the guard.
-- **LLM-reviewed jobs** (`ai_used=True`, i.e. Gemini or Groq already
-  made the accept call) — **bypass the guard completely** and are
-  always allowed through (see `NotificationGuardIntegration._allow`).
-
-### Evaluation and Caching
-
-The guard is evaluated **exactly once per job**, on whichever of the
-two notification calls (private or channel) runs first; the same
-decision is cached and reused for the other call so a single job
-never triggers two guard evaluations. The cache entry is discarded
-after both notification calls have consumed it.
-
-### Enabled / Disabled Behavior
-
-`NotificationGuard.__init__` reads `NOTIFICATION_GUARD_ENABLED` once.
-If disabled, `allow()` always returns `True` immediately — the guard
-has zero effect, and `run_guarded.py` behaves identically to `run.py`.
-
-### Fail-Closed Behavior
-
-If enabled, any exception during evaluation — a Groq call failing
-after all models are exhausted, a malformed response, anything —
-results in `allow()` returning `False`: the notification is
-**suppressed**, not allowed through. The failure is still logged (see
-below) with `guard_decision="error"` and the exception text.
-
-### Model Rotation
-
-Uses its own `GroqNotificationGuard` client
-(`app/notification_guard/groq.py`), configured from
-`GROQ_NOTIFICATION_GUARD_API_KEY`, rotating through the **same three
-models, in the same order**, as the main Groq fallback (this is a
-code constant in `app/notification_guard/config.py`, not an
-environment variable — see [Configuration](#3-configuration)):
-
-1. `openai/gpt-oss-120b`
-2. `llama-3.3-70b-versatile`
-3. `qwen/qwen3.6-27b`
-
-Retry count per model is `GROQ_NOTIFICATION_GUARD_MAX_RETRIES`
-(default `2`). Once a model returns a **valid** `notify`/`do_not_notify`
-decision, that result is final — the guard does not keep rotating
-models after a valid response. A model is only skipped (moving to the
-next) on an exception (network/transient error, malformed JSON, or an
-invalid `decision` value).
-
-### Response Contract
-
-The guard's own system prompt (`app/notification_guard/prompt.py`)
-instructs the model to return only `{"decision": "notify" |
-"do_not_notify"}` given the job's title and description — no
-confidence score, no reasoning field. Any other value for `decision`
-raises `ValueError`, which counts as a model failure for rotation
-purposes.
-
-### Logging
-
-Every guard evaluation — success or `error` — is recorded in the
-**notification_guard** table via `app/notification_guard/logger.py`,
-which shares the existing `DBLogger`'s database, worker thread, and
-commit mechanism (no separate connection or executor). The table is
-created at database initialization but stays empty until the guard's
-first evaluation, since a database that's never had the guard run
-doesn't need any guard rows.
-
----
-
-## 13. Notifications
-
-`app/message_builder.py`'s `build_job_message()` builds the
-HTML-formatted text shared by both notifiers, with a
-`channel_style` flag controlling the two formats:
-
-- **Private** (`app/notifier.py`, `channel_style=False`): full detail
-  — AI-used vs. direct-match header, platform, project title, budget,
-  description (truncated at 3000 characters), categories, and the
-  classifier/LLM's reason text.
-- **Channel** (`app/channel_notifier.py`, `channel_style=True`):
-  simplified — no AI/direct header, no reason text, hashtag-style
-  categories instead of a plain list.
-
-The full message (not just the description) is bounded to Telegram's
-4096-character limit minus a 96-character safety margin, since title/
-budget/reason can each independently push the message over the limit
-even with the description already truncated.
-
-`app/notifier.py` always targets `BOT_CHAT_ID`. `app/channel_notifier.py`
-returns `True` immediately (without sending) if `BOT_CHANNEL_ID` is
-unset. Both attach an inline "Open Project" button if a URL is
-present, and both independently catch and log send failures (to the
-Errors sheet) rather than propagating exceptions — a failed private
-notification does not prevent the channel notification from being
-attempted, and vice versa.
-
-Both notifiers share a single `python-telegram-bot` `Bot` instance
-(`app/telegram_bot.py`), since both send to the same bot account.
-
----
-
-## 14. SQLite Audit Log
-
-`app/logger.py`'s `DBLogger` is Loki's only persistence layer for
-job history, backed by a SQLite database.
-
-### Database Location and Initialization
-
-`loki_freelance_bot.db` (at the repository root, next to
-`docker-compose.yml`), created via `initialize_database()` (called
-once, from `app/bot.py`, before Telegram/FreeHub start). If the
-database doesn't exist, the schema is created with five tables —
-**jobs**, **gemini**, **notifications**, **errors**, and
-**notification_guard** — each with its header columns. The
-`notification_guard` table is empty until the guard's first
-evaluation, so a database from a deployment that's never enabled the
-guard will simply have no rows there.
-
-Under Docker, this single file is bind-mounted read/write from the
-host (see `docker-compose.yml`), so the audit log is directly
-visible/inspectable on the host and survives container rebuilds.
-
-### Thread Safety
-
-All five tables are read/written exclusively through
-`DBLogger.run()`, which dispatches to a single dedicated
-`ThreadPoolExecutor(max_workers=1)` thread. Multiple coroutines
-(Telegram handler, FreeHub worker, both running under
-`asyncio.gather`) mutate the same database — routing every access
-through one worker thread makes all of it strictly serial, with no two
-logger calls (read or write, from either ingestion path or the guard)
-ever touching the database concurrently, and keeps all blocking I/O
-off the event loop. The connection uses autocommit; writes are
-committed immediately, and `create_job_if_absent` wraps its
-check-and-insert in an explicit transaction (with the `Job UUID`
-primary key as a second, database-level dedup guard).
-
-### The Five Tables
-
-- **Jobs** — one row per job (via `create_job`), updated in place
-  (via `update_job`) as the pipeline progresses. Columns include the
-  full classifier evidence trail (categories, core/supporting hit
-  counts and weights, matched keywords per tier/polarity, hard-reject
-  matches), plus `Gemini Decision`, `Notification Status`, `Final
-  Decision`, `Decision Reason`, and `Filter Time (ms)`.
-- **Gemini** — one row per Gemini/Groq review call (`log_gemini`):
-  decision/reason before review, response time, decision, confidence.
-  `Prompt Tokens`/`Completion Tokens` columns exist in the header but
-  are currently always written as empty strings — reserved, not
-  populated.
-- **Notifications** — one row per notification *attempt* (private and
-  channel logged independently): platform (`"Telegram"` or `"Telegram
-  Channel"`), status (`"Sent"` or `"Failed"`).
-- **Errors** — one row per caught exception anywhere in the pipeline,
-  with a short module label (`"Message Processor"`, `"LLM"`,
-  `"Notifier"`, `"ChannelNotifier"`, `"StartupRecovery"`,
-  `"MessageHandler"`, `"FreeHub Project"`, `"FreeHub Worker"`,
-  `"Logger"`) and `str(exception)`.
-- **NotificationGuard** — one row per guard evaluation (only present
-  if the guard has run at least once): original decision, guard
-  decision (`notify`/`do_not_notify`/`error`), provider, model,
-  response time, and error text if applicable.
-
-### Save Behavior
-
-Most mutating calls accept `save=False` so a job's several writes
-(create → update → gemini log → update → notification logs) can be
-batched and committed once at the end of `process_job` (via
-`logger.run(logger.save)`), instead of a commit per intermediate step.
-`message_processor.py`'s exception handler performs its own
-safety-net save only if an exception occurred *before* `process_job`
-had a chance to run its own final save.
-
----
-
-## 15. State
-
-`app/state.py`'s `StateManager` persists to `database/state.json`,
-loaded once at startup (`state.load()`, called from `app/bot.py`) and
-written atomically (temp file + `os.replace()`) on every mutation, so
-a crash mid-write can't corrupt the file (a corrupt/missing file is
-otherwise treated as "no state at all," which would trigger a full
-Telegram re-recovery and FreeHub re-seed).
-
-Two independent schemas share the same file:
-
-- **Telegram watermarks** — bare top-level keys, `str(channel_id) →
-  last_message_id`.
-- **FreeHub seen state** — nested under the `_freehub_seen` key,
-  `source → [seen project uids]`.
-
----
-
-## 16. Recovery
-
-### Telegram
-
-On startup, `app/handlers/telegram.py`'s `_recover_channel()` runs for
-every monitored channel:
-
-- If no state is recorded for a channel yet (`last_id == 0`), the
-  channel is **seeded** from its current newest message only — no
-  backfill, since there's no natural stopping point for "how far back"
-  the very first time a channel is seen.
-- Otherwise, every message newer than `last_id` is fetched (oldest →
-  newest) and processed through the normal pipeline, up to a safety
-  cap of `MAX_RECOVERY_MESSAGES` (2000) per channel. If the cap is
-  hit, a `[RECOVERY WARNING]` is printed — a subsequent restart will
-  continue recovering from where this run left off, since the
-  watermark advances only after successful processing.
-- If a recovered message fails, the failure is logged to Errors as
-  `"StartupRecovery"` and recovery stops at that message. Later
-  messages are not processed in that run, because advancing the
-  watermark past the failed message would make it permanently
-  unrecoverable.
-
-### FreeHub
-
-Handled by the persisted seen-ID deque described in
-[FreeHub Ingestion](#6-freehub-ingestion) and [State](#15-state) — a
-restart resumes from the last persisted seen list rather than
-resetting, and a poll that finds a full page of unseen projects walks
-up to `_MAX_BACKFILL_PAGES` (10) additional pages to catch up on a gap
-larger than one page.
-
----
-
-## 17. Deployment
-
-### Entry Point
-
-Two entry points exist in the repository: `run.py` (no Notification
-Guard) and `run_guarded.py` (installs the guard, still gated by
-`NOTIFICATION_GUARD_ENABLED`). **Which one is actually deployed in
-production could not be verified from the repository contents alone**
-— this depends on the host's systemd unit file (or other process
-supervisor), which was not included in the provided archive. Confirm
-the actual `ExecStart` value on the deployment host rather than
-assuming.
-
-### systemd Unit File (example — adjust paths/user, and the script name per the note above)
-
-```ini
-[Unit]
-Description=Loki Freelance Assistant
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=your_linux_username
-WorkingDirectory=/path/to/freelance-assistant
-ExecStart=/path/to/freelance-assistant/.venv/bin/python run.py
-Restart=on-failure
-RestartSec=10
-EnvironmentFile=/path/to/freelance-assistant/.env
-
-[Install]
-WantedBy=multi-user.target
+``` text
+state.tmp.json
+      ↓
+os.replace()
+      ↓
+state.json
 ```
 
-No unit file was included in the provided archive, so the exact
-service name, `ExecStart`, and working directory used in production
-**cannot be verified from the repository** — the block above is an
-illustrative example only, following the pattern implied by
-`app/config.py`'s `load_dotenv()` + `EnvironmentFile` usage, not a
-confirmed production configuration.
+A backup is also maintained:
 
-Notes on what *is* verifiable from source:
-- `app/config.py` calls `load_dotenv()` itself, so `EnvironmentFile`
-  is a belt-and-suspenders measure, not strictly required for the
-  Python process itself to see the variables — but it does make them
-  visible to systemd/the shell environment too.
-- `Restart=on-failure` is a reasonable choice given the application
-  has no internal reconnect logic beyond what Telethon/aiohttp already
-  provide.
-
-### First-Run Requirement
-
-The manual, interactive Telethon login (see
-[Installation](#2-installation)) must be completed **before** the
-service is installed — systemd cannot answer the login prompt.
-
-### Updating
-
-```bash
-cd /path/to/freelance-assistant
-git pull
-
-source .venv/bin/activate
-pip install -r requirements.txt
-
-sudo systemctl restart <service-name>   # replace with the actual unit name
+``` text
+state.bak.json
 ```
 
----
+## 14.4 Corruption behavior
 
-## 18. Troubleshooting
+If the primary file is corrupt:
 
-### Missing Environment Variables
-
-**Symptom:** `RuntimeError: Missing required environment variable:
-<NAME>`.
-
-**Cause:** `app/config.py` validates every required variable at
-import time.
-
-**Fix:** Check `.env` exists in the project root (not just
-`.env.example`) and contains the named variable. A related error,
-`"... must be an integer (got '<value>')"`, means `API_ID` or
-`BOT_CHAT_ID` contains non-numeric text; the same message for
-`TARGET_CHANNEL_IDS` means one comma-separated entry isn't a valid
-integer.
-
-**Note:** `GEMINI_API_KEYS` fails with a distinct message,
-`"GEMINI_API_KEYS is required"`, raised directly in `config.py` if the
-comma-separated list is empty after parsing — not the generic
-`_require_env` message, since the raw variable being unset vs. being
-set to an empty/comma-only string both need to fail here.
-
-### Telethon Session Issues
-
-**Symptom:** Loki prompts for a login code again despite having
-logged in before.
-
-**Cause:** The session (a SQLite file at the path derived from
-`SESSION_NAME`) was deleted, moved, corrupted, or its login was
-revoked from the Telegram app (**Settings → Devices**). Because
-re-authentication requires interactive input, this will hang
-indefinitely under systemd.
-
-**Fix:** Stop the service, run the entry point manually to
-re-authenticate, then restart the service.
-
-### Gemini / Groq Failures
-
-**Symptom:** A job that should have reached LLM review is instead
-`Rejected` with reason `"LLM Error"`, and an `"LLM"` row appears in
-the Errors sheet.
-
-**Cause:** Every configured Gemini key failed (each retried once for
-transient errors), **and** every Groq model in the rotation also
-failed — see [LLM Subsystem](#11-llm-subsystem). `app.llm.manager`
-only raises once both providers are exhausted.
-
-**Fix:** Check the Errors sheet for the combined exception text (it
-includes both the last Gemini error and the last Groq error). Common
-causes: invalid/expired API key(s), no working keys at all in
-`GEMINI_API_KEYS`, network issues from the host, or a provider-side
-outage/rate limit affecting every key/model tried.
-
-### Notification Guard Blocking Everything
-
-**Symptom:** Direct-accept jobs stop generating Telegram
-notifications after switching to `run_guarded.py`.
-
-**Cause:** Either the guard is genuinely rejecting the jobs on
-review (check the NotificationGuard sheet for `do_not_notify` rows
-with the model's reasoning-free decision), or `GROQ_NOTIFICATION_GUARD_API_KEY`
-is invalid/missing, which causes every evaluation to fail and the
-guard's fail-closed behavior suppresses every notification (check for
-`guard_decision="error"` rows).
-
-**Fix:** Inspect the NotificationGuard sheet's `Guard Decision` and
-`Error` columns for the affected jobs. Remember LLM-reviewed jobs
-(`ai_used=True`) bypass the guard entirely — if *those* also stopped
-notifying, the problem is elsewhere in the pipeline, not the guard.
-
-### Notification Failures
-
-**Symptom:** A job is `Accepted` but no Telegram message arrives.
-
-**Cause:** `notifier.py`/`channel_notifier.py` catch
-`bot.send_message()` exceptions locally, log `"Failed"` to
-Notifications and an entry to Errors, and return `False` without
-raising.
-
-**Fix:** Check the Notifications and Errors sheets for the job's
-UUID. Common causes: invalid/revoked `BOT_TOKEN`; the recipient never
-started a conversation with the bot (a bot cannot message a user who
-hasn't messaged it first); `BOT_CHANNEL_ID` set but the bot isn't an
-administrator of that channel.
-
-### Audit Log Issues
-
-**Symptom:** Loki fails to write to `loki_freelance_bot.db`, or
-`docker compose up` mounts it as a directory instead of a file.
-
-**Cause:** Under Docker, the DB file is bind-mounted from the host —
-if the host file does not exist before the first `docker compose up`,
-Docker creates a *directory* at that path, which SQLite cannot open.
-
-**Fix:** Create the file on the host once before starting the
-container (`New-Item loki_freelance_bot.db` on Windows, `touch
-loki_freelance_bot.db` on Linux/macOS). To inspect the log while Loki
-runs, use a SQLite viewer — SQLite handles concurrent access, so
-reading the file directly is fine.
-
-### FreeHub Backfill Cap Reached
-
-**Symptom:** `[FREEHUB WARNING] <source>: hit the 10-page backfill
-safety cap` in the console/journal output.
-
-**Cause:** More new projects were posted since the last successful
-poll than 10 pages (`FREEHUB_PAGE_SIZE` × 10) can cover — likely
-extended downtime or a long stretch of failed polls.
-
-**Fix:** No action strictly required — the next poll continues from
-where this one left off, and the backfill logic will keep walking
-forward. If this happens repeatedly, investigate why polls are
-failing or being missed rather than increasing the cap blindly.
-
----
-
-## 19. Testing / Development
-
-The `tests/` directory contains the current test suite:
-
-- **`tests/test_parser.py`** — runs `parse_job()` against a
-  Nafezly-formatted Arabic sample message.
-- **`tests/test_keyword_filter.py`** — runs `keyword_filter()` against
-  a set of representative sample posts.
-- **`tests/test_llm_gemini.py`** — exercises `app.llm.gemini.evaluate_job`
-  (via a real `keyword_filter()` result, not a hand-built dict) —
-  requires working Gemini credentials.
-- **`tests/test_llm_groq.py`** — exercises `app.llm.groq.evaluate_job`
-  directly — requires working Groq credentials.
-- **`tests/test_llm_manager.py`** — exercises
-  `app.llm.manager.evaluate_job` (the Gemini→Groq fallback path).
-- **`tests/test_notification_guard.py`** — exercises
-  `NotificationGuardIntegration` against a fake guard, verifying the
-  once-per-job evaluation/caching behavior described in
-  [Notification Guard](#12-notification-guard) without making any
-  real API calls.
-- **`tests/test_pipeline.py`** — an end-to-end smoke test using fake
-  Telethon-shaped `Event`/`Chat`/`Message` objects (no real Telegram
-  connection) run through the real `process_message()`, against a
-  temporary, isolated workbook (not the production log file).
-
-Tests import from `app.*` directly and several load `.env` via
-`load_dotenv()`, so a valid `.env` is needed to run the ones that make
-live LLM calls. A `tests/__init__.py` is present, and compiled
-`pytest`-run artifacts exist under `tests/__pycache__/`, indicating
-the suite is run with `pytest`; `pytest` itself is not listed in
-`requirements.txt`, so install it separately (`pip install pytest`) if
-it isn't already available in your environment.
-
-```bash
-pytest tests/
+``` text
+try primary
+    ↓
+fail
+    ↓
+try backup
 ```
 
-`replay_message.py` at the project root is a standalone script that
-constructs a single fake Telegram event (Nafezly-style Arabic text)
-and replays it through `process_message()` against the real
-configured workbook — useful for manually re-testing a specific
-sample post end-to-end without waiting for a live message.
+If both fail, Loki raises `StateCorruptionError` and refuses to start
+with a silently reset state.
 
-### Contribution Notes
+This is intentional. Silently resetting the state would make the
+deployment indistinguishable from a first run and could create dangerous
+recovery behavior.
 
-- **Configuration is centralized.** New settings should go through
-  `app/config.py`'s validation helpers (or, for the Notification
-  Guard, its own independent `app/notification_guard/config.py`
-  pattern) rather than ad hoc `os.getenv()` calls elsewhere.
-- **Logging is additive, not optional.** Any new pipeline stage should
-  log its outcome through `DBLogger.run()`, following the existing
-  pattern of catching exceptions locally and writing to the errors
-  table rather than letting them propagate.
-- **Niche-specific content lives in `keywords.py` and `llm/prompt.py`**;
-  the decision-table *mechanism* in `filters.py` and the
-  Gemini/Groq/guard *routing* mechanism are intended to stay
-  niche-agnostic.
-- **The Notification Guard is additive by design.** Changes to it
-  should preserve the property that `run.py` (guard never installed)
-  and `run_guarded.py` with `NOTIFICATION_GUARD_ENABLED=false` behave
-  identically.
+## 14.5 Async persistence
 
----
+State mutations from asynchronous subsystems are serialized through a
+dedicated single-worker executor.
 
-## Notes on Verified vs. Unverifiable Details
+This prevents concurrent Telegram/FreeHub writes from racing the same
+state file and avoids blocking the event loop with filesystem writes.
 
-- Every model name, environment variable, threshold constant, and
-  worksheet name in this document was read directly from the source
-  files listed alongside each claim above, not carried over from
-  prior documentation or assumed.
-- The **production deployment configuration** (which entry point is
-  actually running, the real systemd unit name, working directory,
-  and `ExecStart`) could not be verified — no systemd unit file or
-  other deployment manifest was present in the provided archive. See
-  [Deployment](#17-deployment).
-- The FreeHub backend hostname is hardcoded in `app/freehub.py`; it is
-  intentionally not reproduced in this document since it's
-  infrastructure detail rather than something an operator configures.
+------------------------------------------------------------------------
+
+# 15. Recovery and Failure Semantics
+
+## 15.1 Telegram startup recovery
+
+For each configured channel:
+
+``` text
+last watermark
+     ↓
+iter_messages(min_id=last_id, reverse=True)
+     ↓
+oldest → newest
+     ↓
+process each message
+     ↓
+advance watermark after success
+```
+
+The current cap is:
+
+``` text
+2000 messages
+```
+
+If the cap is reached, Loki warns that additional history may remain
+unrecovered.
+
+## 15.2 First-time Telegram channel
+
+If the watermark is zero:
+
+``` text
+get newest message
+    ↓
+seed watermark
+```
+
+It does not backfill the entire historical channel.
+
+This avoids treating an entire channel history as "downtime."
+
+## 15.3 Failed Telegram recovery
+
+If a message fails:
+
+``` text
+stop recovery
+do not advance beyond failed message
+```
+
+This preserves retryability on the next restart.
+
+## 15.4 FreeHub failure
+
+If `process_job()` raises for a project:
+
+``` text
+do not mark seen
+```
+
+The project can therefore be rediscovered on a future poll.
+
+## 15.5 Notification failure
+
+A failed notification leg is persisted as unresolved/failed and is
+picked up by the retry sweep.
+
+## 15.6 LLM failure
+
+Current behavior is different:
+
+``` text
+all LLM providers fail
+        ↓
+Rejected / LLM Error
+        ↓
+job considered handled
+```
+
+This is the major recovery asymmetry in the current system and should be
+corrected.
+
+------------------------------------------------------------------------
+
+# 16. Concurrency and Race Prevention
+
+## 16.1 Same-channel Telegram messages
+
+Telethon can dispatch events independently.
+
+Loki uses:
+
+``` python
+channel_locks[event.chat_id]
+```
+
+to serialize processing for each channel.
+
+This prevents:
+
+``` text
+message N+1 completes
+      ↓
+watermark = N+1
+      ↓
+message N fails
+```
+
+which would otherwise permanently move the recovery point beyond a
+failed earlier message.
+
+## 16.2 Different Telegram channels
+
+Different channels use different lock keys.
+
+Therefore:
+
+``` text
+channel A → independent
+channel B → independent
+```
+
+They can process concurrently.
+
+## 16.3 Concurrent duplicate jobs
+
+`create_job_if_absent()` provides the database transaction boundary.
+
+Even if two async paths process the same job concurrently:
+
+``` text
+worker A ──┐
+           ├── atomic DB create
+worker B ──┘
+```
+
+only one job row wins.
+
+The UUID primary key provides a second backstop.
+
+## 16.4 Notification retry vs live path
+
+Both paths use the same per-job notification lock.
+
+The retry path also re-reads the durable job row after acquiring the
+lock, so it does not blindly act on a stale snapshot.
+
+## 16.5 SQLite
+
+All DB work is serialized through the dedicated logger executor.
+
+## 16.6 Notification lock caveat
+
+The current per-job lock registry uses a `WeakValueDictionary`.
+
+The current usage pattern is safe because the returned lock remains
+strongly referenced through the `async with` critical section.
+
+However, this creates a future-maintenance invariant: a refactor that
+allows the lock object to disappear before acquisition could silently
+create a second lock for the same job.
+
+This is currently a hardening concern rather than a demonstrated race.
+
+------------------------------------------------------------------------
+
+# 17. Docker Deployment
+
+## 17.1 Dockerfile
+
+The Dockerfile uses:
+
+``` text
+python:3.11-slim builder
+        ↓
+pip install into /install
+        ↓
+python:3.11-slim runtime
+```
+
+The runtime:
+
+-   runs as user `loki`
+-   does not require root privileges
+-   copies only installed dependencies from the builder
+-   persists runtime data through mounts
+
+The default command is:
+
+``` text
+python run_guarded.py
+```
+
+## 17.2 Compose mounts
+
+`docker-compose.yml` mounts:
+
+``` text
+./sessions              → /app/sessions
+./database              → /app/database
+./loki_freelance_bot.db → /app/loki_freelance_bot.db
+```
+
+The database file must exist on the host before the first Compose start.
+
+Linux/macOS:
+
+``` bash
+touch loki_freelance_bot.db
+```
+
+Windows PowerShell:
+
+``` powershell
+New-Item loki_freelance_bot.db -ItemType File
+```
+
+## 17.3 Restart behavior
+
+Compose uses:
+
+``` yaml
+restart: unless-stopped
+```
+
+A process crash therefore causes Docker to restart the container.
+
+The application-level recovery mechanisms then restore:
+
+-   Telegram processing position
+-   FreeHub seen state
+-   notification progress
+
+## 17.4 Current operational gap
+
+There is no Docker `HEALTHCHECK`.
+
+A hung process or silently disconnected external subsystem can therefore
+remain alive without Docker automatically replacing it.
+
+------------------------------------------------------------------------
+
+# 18. CI/CD
+
+## 18.1 CI workflow
+
+`.github/workflows/ci.yml` runs on:
+
+-   pushes to `main`
+-   pull requests
+
+It:
+
+1.  checks out the repository
+2.  installs Python 3.11
+3.  installs dependencies and pytest
+4.  runs:
+
+``` bash
+pytest tests/ -q
+```
+
+## 18.2 Docker workflow
+
+`.github/workflows/docker.yml`:
+
+1.  runs tests
+2.  builds the Docker image
+3.  pushes:
+    -   `:latest`
+    -   `:<commit SHA>`
+4.  connects to the deployment network through Tailscale
+5.  SSHes to the deployment host
+6.  runs:
+
+``` bash
+docker compose up -d --pull always
+```
+
+The build and deployment jobs are gated behind successful tests.
+
+A concurrency group prevents two production deployments from racing each
+other.
+
+## 18.3 Rollback
+
+SHA-tagged images are pushed, which gives the registry a rollback
+artifact.
+
+However, Compose references:
+
+``` text
+:latest
+```
+
+so rollback is currently a manual image-tag selection rather than a
+one-command automated rollback mechanism.
+
+------------------------------------------------------------------------
+
+# 19. Testing
+
+Current test modules include:
+
+``` text
+test_freehub.py
+test_freehub_worker.py
+test_job_processor.py
+test_keyword_filter.py
+test_llm_gemini.py
+test_llm_groq.py
+test_llm_manager.py
+test_llm_utils.py
+test_logger.py
+test_message_builder.py
+test_message_processor.py
+test_notification_guard.py
+test_notification_guard_prompt.py
+test_parser.py
+test_pipeline.py
+test_state.py
+test_telegram_recovery.py
+```
+
+## 19.1 Strongly covered areas
+
+The suite directly exercises:
+
+-   UUID stability
+-   legacy UUID recognition
+-   concurrent duplicate processing
+-   SQLite migration behavior
+-   orphaned migration recovery
+-   repeated initialization
+-   state corruption recovery
+-   atomic state writes
+-   concurrent state writes
+-   Telegram recovery
+-   per-channel live serialization
+-   cross-channel concurrency
+-   FreeHub backfill
+-   FreeHub seen-state behavior
+-   notification retry behavior
+-   live-vs-retry notification race prevention
+-   message HTML/truncation safety
+-   Notification Guard decisions
+-   prompt-injection boundaries
+-   LLM response validation
+
+## 19.2 Live provider tests
+
+Some LLM tests make real provider calls.
+
+That provides useful integration confidence but also means those tests
+can be:
+
+-   credential dependent
+-   network dependent
+-   rate-limit dependent
+-   more expensive
+-   less deterministic than mocked unit tests
+
+## 19.3 Testing gaps
+
+The most important missing tests are:
+
+1.  Telegram live-handler registration during startup recovery.
+2.  End-to-end event buffering/queuing once that bug is fixed.
+3.  Automatic classification retry after total LLM outage.
+4.  Notification Guard exactly-once evaluation across both notification
+    legs.
+5.  A labeled classifier dataset with precision/recall regression
+    metrics.
+6.  True process-crash simulations around external notification side
+    effects.
+7.  Application-level health/liveness behavior.
+
+------------------------------------------------------------------------
+
+# 20. Troubleshooting
+
+## Missing environment variables
+
+Startup `RuntimeError` usually means a required variable is absent or
+malformed.
+
+Check:
+
+``` text
+.env
+.env.example
+app/config.py
+```
+
+## Telegram session/login problems
+
+Run the selected entrypoint manually.
+
+The Telethon user session is persistent and sensitive.
+
+If the session has been revoked, re-authentication is required.
+
+## LLM failures
+
+Check:
+
+``` text
+errors
+gemini
+```
+
+in the SQLite database.
+
+A complete provider outage currently results in:
+
+``` text
+Rejected / LLM Error
+```
+
+and requires manual intervention because classification retry is not yet
+implemented.
+
+## Notification Guard blocks everything
+
+Check:
+
+``` text
+notification_guard
+```
+
+for:
+
+``` text
+do_not_notify
+error
+```
+
+Also verify:
+
+``` text
+NOTIFICATION_GUARD_ENABLED=true
+GROQ_NOTIFICATION_GUARD_API_KEY=...
+```
+
+## Notification failures
+
+Check:
+
+``` text
+notifications
+errors
+```
+
+and verify:
+
+-   `BOT_TOKEN`
+-   `BOT_CHAT_ID`
+-   optional `BOT_CHANNEL_ID`
+-   bot permissions
+-   recipient accessibility
+-   network/provider status
+
+## SQLite bind mount becomes a directory
+
+Create the host database file before starting Compose:
+
+``` bash
+touch loki_freelance_bot.db
+```
+
+## FreeHub backfill warning
+
+If the 10-page cap is reached repeatedly, investigate:
+
+-   host downtime
+-   polling failures
+-   API availability
+-   unusually high source volume
+
+Do not blindly increase the cap without understanding the backlog
+behavior.
+
+------------------------------------------------------------------------
+
+# 21. Known Issues and Recommended Fixes
+
+These are the current implementation findings that should be treated as
+engineering work, not ignored as documentation details.
+
+## 21.1 Telegram live-handler registration gap
+
+### Current behavior
+
+The live handler is registered only after all startup recovery has
+completed.
+
+### Failure scenario
+
+``` text
+startup
+  ↓
+recover channel A
+  ↓
+recover channel B
+  ↓
+new message arrives in channel A
+  ↓
+live handler does not exist yet
+  ↓
+message is not processed live
+```
+
+### Impact
+
+A message can be missed until a later restart.
+
+### Recommended fix
+
+Register the live handler before recovery and introduce a per-channel
+readiness mechanism:
+
+``` text
+live event
+   ↓
+channel recovered?
+ ├── no → queue
+ └── yes → process
+```
+
+After recovery of a channel:
+
+``` text
+drain queued events in message-ID order
+```
+
+The queue should then transition to normal live processing.
+
+This preserves both:
+
+-   startup recovery correctness
+-   real-time capture during recovery
+
+## 21.2 Total LLM failure is treated as semantic rejection
+
+### Current behavior
+
+``` text
+Gemini exhausted
+       ↓
+Groq exhausted
+       ↓
+LLM Error
+       ↓
+Rejected
+```
+
+### Problem
+
+An infrastructure outage is not the same thing as a classifier
+conclusion.
+
+### Recommended fix
+
+Introduce a recoverable classification state, for example:
+
+``` text
+Pending LLM
+LLM Retry
+Classified
+```
+
+Store retry metadata such as:
+
+``` text
+attempt count
+last attempt
+next retry time
+```
+
+and run a bounded retry loop.
+
+Only successful LLM evaluation should produce a semantic `Accepted` or
+`Rejected` decision.
+
+## 21.3 Notification lock registry hardening
+
+The current `WeakValueDictionary` implementation works under the current
+call discipline.
+
+Possible hardening:
+
+-   use a normal dictionary with explicit lifecycle management, or
+-   retain the weak registry but document and test the lock-lifetime
+    invariant more explicitly.
+
+This is lower priority than the two issues above.
+
+## 21.4 Observability
+
+Recommended additions:
+
+-   structured logs
+-   startup configuration summary without secrets
+-   last successful Telegram event timestamp
+-   last successful FreeHub poll timestamp
+-   last successful LLM review
+-   count of unresolved notification jobs
+-   count of `LLM Error` jobs
+-   Docker healthcheck
+-   optional alerting
+
+## 21.5 Notification Guard configuration visibility
+
+At startup, explicitly print:
+
+``` text
+Notification Guard: ENABLED
+```
+
+or:
+
+``` text
+Notification Guard: DISABLED
+```
+
+This would make the current two-step activation model much harder to
+misunderstand.
+
+## 21.6 Classifier regression dataset
+
+The keyword engine is valuable because it is deterministic and
+explainable.
+
+The next maturity step is to maintain a labeled dataset:
+
+``` text
+job text
+expected decision
+```
+
+and calculate:
+
+``` text
+precision
+recall
+false-positive rate
+false-negative rate
+```
+
+in CI whenever classifier vocabulary changes.
+
+------------------------------------------------------------------------
+
+# 22. Maintenance Guidelines
+
+## 22.1 Do not bypass the shared pipeline
+
+New ingestion sources should converge on:
+
+``` python
+process_job(...)
+```
+
+rather than duplicating classification or notification logic.
+
+## 22.2 Preserve deterministic identity
+
+New sources need a stable identity tuple.
+
+Good:
+
+``` text
+source + immutable external UID
+```
+
+Bad:
+
+``` text
+title + timestamp + description
+```
+
+## 22.3 Preserve durable ordering
+
+If a new asynchronous source maintains a watermark:
+
+``` text
+process
+  ↓
+success
+  ↓
+advance watermark
+```
+
+Never advance a checkpoint before the work it represents has succeeded.
+
+## 22.4 Preserve fail-closed safety
+
+For safety decisions:
+
+``` text
+uncertain / provider error
+        ↓
+do not notify
+```
+
+unless the business logic explicitly establishes a different policy.
+
+## 22.5 Keep database access serialized
+
+Application code should continue using:
+
+``` python
+await logger.run(...)
+```
+
+rather than touching the SQLite connection directly.
+
+## 22.6 Keep state writes serialized
+
+Async callers should use the state manager's async persistence wrappers
+rather than performing filesystem writes directly from multiple
+coroutines.
+
+## 22.7 Test invariants, not only implementation details
+
+The most valuable tests in this repository are tests such as:
+
+-   concurrent duplicate processing
+-   same-channel ordering
+-   cross-channel independence
+-   recovery after corruption
+-   migration recovery
+-   retry-vs-live notification races
+
+New tests should prefer these observable invariants over merely checking
+private implementation details.
+
+------------------------------------------------------------------------
+
+## Final Engineering Summary
+
+The current implementation has a strong reliability-oriented core:
+
+-   deterministic identity
+-   atomic SQLite deduplication
+-   persistent recovery state
+-   atomic state-file writes
+-   transactional migration
+-   per-channel Telegram serialization
+-   per-job notification serialization
+-   notification retry
+-   LLM provider fallback
+-   fail-closed Notification Guard
+-   structured classifier evidence
+-   HTML-safe notification construction
+
+The two most important remaining correctness issues are:
+
+1.  **The Telegram live-handler registration gap during startup
+    recovery.**
+2.  **Permanent rejection of jobs when every LLM provider is temporarily
+    unavailable.**
+
+The largest non-correctness gap is observability.
+
+Those issues should be addressed before describing Loki as fully
+production-grade. The underlying architecture, however, is fundamentally
+sound and substantially more robust than a simple polling/notification
+bot.
