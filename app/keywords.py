@@ -181,6 +181,24 @@ POSITIVE_KEYWORDS = {
             "محلل بيانات": 9,
             "تحليل مالي": 9,
             "تابلو": 8,
+            # "analisis data" is the verbatim Indonesian production wording
+            # for "data analysis" (Indonesian: "analisis data"). Freelancer
+            # posts arrive in Indonesian; "Ahli Analisis Data Dibutuhkan"
+            # (freelancer:40648719, daily audit 2026-08-16, "Data Analyst
+            # Needed") was rejected at insufficient_signal (supporting
+            # weight 5: dashboard + python) even though the body is a
+            # genuine data-analysis engagement (clean/merge raw datasets,
+            # statistical exploration, dashboards/reports, Python/R). The
+            # phrase occurs on exactly 3 jobs across the full 4,369-job
+            # production replay — all genuine DA: the two sibling postings
+            # "Bantuan Analisis Data Pribadi" (freelancer:40635845 /
+            # 40635961) already route to notify_directly on English core
+            # hits. Core mirrors the existing "data analysis" (9) and
+            # "تحليل بيانات" (9) treatment. English ("data analysis") and
+            # Arabic ("تحليل بيانات") equivalents already exist at the
+            # same core tier, so the EN/AR bilingual policy is satisfied;
+            # the addition only fills the Indonesian vocabulary gap.
+            "analisis data": 9,
         },
         "supporting": {
             # "analysis" (bare) was reasonably strong (17/24, 71%) and
