@@ -2,7 +2,6 @@
 #
 # Core keywords are strong standalone evidence; supporting keywords require
 # aggregation. NOISE_KEYWORDS are excluded from scoring entirely.
-# Historical evidence and keyword rationale live in state/audit_checkpoint.json.
 
 # Positive evidence: Data Analysis / Excel / Power BI / SQL / Python-for-data.
 POSITIVE_KEYWORDS = {
