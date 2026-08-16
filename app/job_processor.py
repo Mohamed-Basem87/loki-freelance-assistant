@@ -58,7 +58,8 @@ def _notification_payload_from_row(job_uuid: str, row: dict) -> dict:
         "categories": categories,
         "core_hit_count": row.get("Core Positive Hit Count") or 0,
         "supporting_weight": row.get("Supporting Positive Weight") or 0,
-        "ai_used": bool(row.get("Needs Gemini")),
+        "ai_used": str(row.get("Needs Gemini") or "").strip().lower()
+        in ("1", "true", "yes", "y"),
     }
 
 
