@@ -591,6 +591,7 @@ NEGATIVE_KEYWORDS = {
             "market scanner": 6,
             "stock scanner": 6,
             "stock screener": 6,
+            "pricefx": 6,
             "selenium": 6,
             "image to excel": 6,
             "skills assessment": 6,
