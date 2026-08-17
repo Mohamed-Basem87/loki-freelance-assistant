@@ -16,6 +16,8 @@ BASE_URL = FREEHUB_BASE_URL
 SOURCES = (
     "kafiil",
     "freelancer",
+    "mostaql",
+    "nafezly",
 )
 
 # aiohttp has no default total timeout, so an unresponsive backend

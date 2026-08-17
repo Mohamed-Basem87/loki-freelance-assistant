@@ -1,4 +1,5 @@
 import asyncio
+import re
 import time
 import uuid
 import weakref
@@ -8,6 +9,7 @@ from app.filters import keyword_filter
 from app.llm.manager import evaluate_job
 from app.logger import logger
 from app.notifier import send_notification
+from app.state import state
 
 
 # Deterministic namespace for deriving job_uuid from (source, job_id).
@@ -36,6 +38,21 @@ def _make_job_uuid(source: str, job_id: str) -> str:
     return str(
         uuid.uuid5(_JOB_UUID_NAMESPACE, f"{source}:{job_id}")
     )
+
+
+# Cross-source dedup is persisted and claimed atomically by
+# app.state.StateManager.  The state executor serializes the
+# check-and-claim operation, so FreeHub and Telegram cannot both win
+# for the same project when they arrive concurrently.
+
+
+def _extract_project_id(url: str):
+    """Extract a numeric project ID from a freelance platform URL."""
+    if not url:
+        return None
+
+    match = re.search(r"/project/(\d+)(?:[/?#]|$)", url)
+    return match.group(1) if match else None
 
 
 def _notification_payload_from_row(job_uuid: str, row: dict) -> dict:
@@ -314,6 +331,7 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
     if identity_source is None:
         identity_source = job.get("source", "")
 
+    project_id = _extract_project_id(job.get("url", ""))
     job_uuid = _make_job_uuid(identity_source, job_id)
 
     legacy_identity_source = job.get("source", "")
@@ -376,6 +394,35 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
         if existing is not None and existing.get("Notification Status"):
             await _resume_pending_notifications(job_uuid, existing)
         return
+
+    # Claim the canonical project ID only after the durable job row has
+    # been created. The claim itself is atomic inside StateManager's
+    # single-worker executor, so concurrent FreeHub/Telegram calls
+    # cannot both win.
+    #
+    # This is intentionally after the same-identity lookup above:
+    # if the process crashed after claiming but before finishing the
+    # pipeline, a retry of that same job_uuid can still resume instead
+    # of being rejected by its own cross-source claim.
+    if project_id:
+        claimed = await state.async_claim_cross_source_project(
+            project_id,
+            job_uuid,
+        )
+
+        if not claimed:
+            await logger.run(
+                logger.update_job,
+                job_uuid,
+                final_decision="Rejected",
+                decision_reason="Duplicate project from another source",
+                save=True,
+            )
+            print(
+                f"[DEDUP] Project {project_id} was already claimed by "
+                "another source -- skipping duplicate."
+            )
+            return
 
     final_decision = "Rejected"
     decision_reason = ""
