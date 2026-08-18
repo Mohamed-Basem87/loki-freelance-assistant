@@ -1,12 +1,5 @@
-from dataclasses import dataclass
-
+from app.logger import logger as db_logger
 from app.notification_guard.guard import NotificationGuard
-
-
-@dataclass
-class _Decision:
-    allowed: bool
-    remaining: int
 
 
 class NotificationGuardIntegration:
@@ -16,16 +9,35 @@ class NotificationGuardIntegration:
     The production application remains untouched. The adapter replaces
     the notification references inside app.job_processor at runtime.
 
-    The guard is evaluated exactly once per DIRECT_NOTIFY job and the
-    same result is reused for the private and channel notifications.
+    The guard decision belongs to the *job*, not to an individual
+    notification attempt. It is looked up from the durable
+    `notification_guard` table (the existing persistence architecture
+    -- see app.logger / app.notification_guard.logger) before ever
+    asking the guard's provider:
 
-    Existing LLM-reviewed jobs bypass the guard completely.
+    - A previously persisted "notify" or "do_not_notify" is a valid,
+      final decision and is reused forever for that job -- for the
+      private/channel pair of a single process_job() invocation, for
+      every later retry_incomplete_notifications() sweep pass, and
+      across process restarts. The guard's provider (Groq) is never
+      asked again for that job once a valid decision exists.
+    - "error" (a transient provider/evaluation failure) is NOT a
+      valid decision and is never reused -- the guard is evaluated
+      fresh the next time this job needs a decision, whether that's
+      later in the same invocation or a future retry sweep pass. This
+      keeps a genuine content-based rejection distinguishable from a
+      transient outage: only the former is durable enough to skip
+      re-evaluation.
+    - No row at all (guard never evaluated for this job) behaves the
+      same as "error": evaluate fresh.
+
+    Existing LLM-reviewed jobs bypass the guard completely and never
+    touch this lookup.
     """
 
     def __init__(self, guard: NotificationGuard):
 
         self.guard = guard
-        self._decisions: dict[str, _Decision] = {}
 
     async def _allow(self, kwargs: dict) -> bool:
 
@@ -35,19 +47,22 @@ class NotificationGuardIntegration:
 
         job_uuid = kwargs.get("job_uuid", "")
 
-        cached = self._decisions.get(job_uuid)
+        persisted = await db_logger.run(
+            db_logger.get_latest_guard_decision,
+            job_uuid,
+        )
 
-        if cached is not None:
+        if persisted == "notify":
+            return True
 
-            allowed = cached.allowed
+        if persisted == "do_not_notify":
+            return False
 
-            cached.remaining -= 1
-
-            if cached.remaining <= 0:
-                self._decisions.pop(job_uuid, None)
-
-            return allowed
-
+        # persisted is None (never evaluated) or "error" (transient
+        # failure, not reusable) -- evaluate fresh. guard.allow()
+        # persists whatever it produces, including another "error",
+        # so the next caller (the other notification leg, or a later
+        # retry sweep pass) makes the same check again.
         job = {
             "job_uuid": job_uuid,
             "source": kwargs.get("source", ""),
@@ -55,22 +70,13 @@ class NotificationGuardIntegration:
             "description": kwargs.get("description", ""),
         }
 
-        allowed = await self.guard.allow(
+        return await self.guard.allow(
             job,
             original_decision=kwargs.get(
                 "decision",
                 "",
             ),
         )
-
-        # process_job normally calls both notification functions once.
-        # Reuse the same Groq decision for the second notification.
-        self._decisions[job_uuid] = _Decision(
-            allowed=allowed,
-            remaining=1,
-        )
-
-        return allowed
 
     def wrap_private(self, original):
 

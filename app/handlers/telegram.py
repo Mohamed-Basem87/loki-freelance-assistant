@@ -89,7 +89,7 @@ async def _recover_channel(client, channel):
             await state.async_set_last_message_id(channel, newest[0].id)
 
         print(f"[RECOVERY] {channel}: first run, seeded (no backfill)")
-        return
+        return True
 
     messages = []
 
@@ -118,7 +118,7 @@ async def _recover_channel(client, channel):
                     f"Message {message.id} failed; "
                     f"stopping recovery at this watermark."
                 )
-                break
+                return False
 
             await state.async_set_last_message_id(
                 message.chat_id,
@@ -141,8 +141,11 @@ async def _recover_channel(client, channel):
             )
 
             # Leave the watermark before the failed message and retry
-            # it on the next recovery run.
-            break
+            # it on the next recovery run. Returning False also tells
+            # the startup coordinator to keep this channel's recovery
+            # barrier active so live messages cannot advance its
+            # watermark past the failed message.
+            return False
 
     if len(messages) >= MAX_RECOVERY_MESSAGES:
         print(
@@ -157,8 +160,10 @@ async def _recover_channel(client, channel):
         f"{new_messages} new message(s)"
     )
 
+    return True
 
-async def _handle_live_message(event, channel_locks):
+
+async def _handle_live_message(event, channel_locks, recovery_blocked=None):
     """
     Process one live NewMessage event, serialized per-channel via
     `channel_locks`.
@@ -183,10 +188,22 @@ async def _handle_live_message(event, channel_locks):
             processed = await process_message(event)
 
             if processed:
-                await state.async_set_last_message_id(
-                    event.chat_id,
-                    event.id,
+                # If startup recovery for this channel stopped on a
+                # failed message, live messages are still captured and
+                # processed, but they must not advance the watermark
+                # past that failed recovery point. Otherwise the first
+                # live message after the failure could make the failed
+                # message permanently unrecoverable on the next restart.
+                blocked = (
+                    recovery_blocked is not None
+                    and recovery_blocked.get(event.chat_id, False)
                 )
+
+                if not blocked:
+                    await state.async_set_last_message_id(
+                        event.chat_id,
+                        event.id,
+                    )
             else:
                 print(
                     f"[ERROR] Message {event.id} failed; "
@@ -205,6 +222,72 @@ async def _handle_live_message(event, channel_locks):
                 f"[ERROR] Failed to process "
                 f"message {event.id}: {e}"
             )
+
+
+async def _recover_all_channels(client, channel_locks, recovery_blocked):
+    """
+    Recover every configured Telegram channel, one at a time, while
+    guaranteeing that a live NewMessage event can never be processed
+    ahead of that channel's own recovery.
+
+    Startup race fix: previously the live NewMessage handler was only
+    registered *after* every channel finished recovering, so a message
+    arriving in that window -- after a channel's recovery snapshot was
+    taken but before the handler existed -- was silently dropped by
+    both mechanisms. The fix has two parts, split across this function
+    and `start()`:
+
+    1. `start()` acquires every channel's lock (see `channel_locks`,
+       shared with `_handle_live_message`) up front, then registers
+       the live handler, and only then calls this function. Because
+       none of that involves an actual suspension point (an
+       uncontended `asyncio.Lock.acquire()` never yields control back
+       to the event loop), the handler is guaranteed to be registered
+       -- and every lock guaranteed to already be held -- before
+       Telethon can dispatch a single live update. A live event can
+       therefore never be lost: `_handle_live_message` always finds a
+       registered handler waiting for it.
+
+    2. This function then recovers each channel in turn and keeps that
+       channel's lock held for the entire recovery attempt. Once the
+       attempt finishes -- successfully or by stopping at a failed
+       message -- the lock is released. A live event for a channel
+       whose lock is still held
+       (recovery not yet reached it, or still running) is captured by
+       the handler immediately but blocks inside
+       `_handle_live_message`'s `async with channel_locks[chat_id]`
+       until this function releases it -- so it is processed strictly
+       after that channel's recovery, never before and never
+       concurrently with it. This preserves recovery's oldest -> newest
+       watermark ordering: a live event can't advance a channel's
+       watermark past a point recovery hasn't reached yet.
+
+    The same underlying message can therefore be seen once by recovery
+    (in its snapshot) and once by the live handler (queued behind the
+    lock). That's harmless: the existing SQLite job_uuid dedup in
+    app.job_processor.process_job makes the second observation a
+    no-op.
+
+    If recovery stops on a failed message, the lock is still released
+    so live processing can continue, but `recovery_blocked[channel]`
+    remains true. Live processing then deliberately does not advance
+    that channel's watermark, preventing a newer live message from
+    making the failed recovery message unrecoverable.
+    """
+
+    for channel in TARGET_CHANNELS:
+        try:
+            recovered = await _recover_channel(client, channel)
+
+            # A failed recovery still releases the lock so live events
+            # are not lost forever, but the shared barrier remains
+            # active. Those live events can be processed for real-time
+            # notifications, while their watermark is held behind the
+            # failed recovery message until the next restart can retry
+            # it.
+            recovery_blocked[channel] = not recovered
+        finally:
+            channel_locks[channel].release()
 
 
 async def start():
@@ -230,17 +313,18 @@ async def start():
     # See _warm_entity_cache for why this must run before recovery.
     await _warm_entity_cache(client)
 
-    print("Recovering missed messages...\n")
+    # See _handle_live_message for why this needs to be per-channel
+    # locked (H-1), and _recover_all_channels for why every lock is
+    # acquired here -- synchronously, before the live handler below is
+    # registered -- rather than inside the recovery loop itself.
+    channel_locks = defaultdict(asyncio.Lock)
+    recovery_blocked = {
+        channel: True
+        for channel in TARGET_CHANNELS
+    }
 
     for channel in TARGET_CHANNELS:
-        await _recover_channel(client, channel)
-
-    print("Recovery complete.")
-    print("Listening for new jobs...\n")
-
-    # See _handle_live_message for why this needs to be per-channel
-    # locked (H-1).
-    channel_locks = defaultdict(asyncio.Lock)
+        await channel_locks[channel].acquire()
 
     @client.on(events.NewMessage(chats=list(TARGET_CHANNELS)))
     async def handler(event):
@@ -252,6 +336,17 @@ async def start():
             f"Message ID: {event.id}"
         )
 
-        await _handle_live_message(event, channel_locks)
+        await _handle_live_message(
+            event,
+            channel_locks,
+            recovery_blocked,
+        )
+
+    print("Recovering missed messages...\n")
+
+    await _recover_all_channels(client, channel_locks, recovery_blocked)
+
+    print("Recovery complete.")
+    print("Listening for new jobs...\n")
 
     await client.run_until_disconnected()

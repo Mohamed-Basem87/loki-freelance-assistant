@@ -1,8 +1,44 @@
-import asyncio
+"""
+NotificationGuardIntegration is now backed by the durable
+`notification_guard` table (see app.logger / the retry-correctness
+fix in app.notification_guard.integration) rather than an in-memory,
+use-twice-then-evict cache, so every test in this file needs a real
+(isolated, temporary) database -- exactly like test_job_processor.py
+and test_pipeline.py -- for `_allow()`'s
+`get_latest_guard_decision` lookup to have something to read.
 
+FakeGuard.allow() persists a decision the same way the real
+NotificationGuard.allow() does (via log_guard_decision), so these
+tests exercise the actual reuse-from-persistence path instead of
+special-casing the fake.
+"""
+
+import asyncio
+import tempfile
+from pathlib import Path
+
+import pytest
+
+from app.logger import logger
 from app.notification_guard.integration import (
     NotificationGuardIntegration,
 )
+from app.notification_guard.logger import log_guard_decision
+
+
+@pytest.fixture()
+def isolated_database():
+    tmp_dir = tempfile.mkdtemp(prefix="freelance_assistant_test_")
+    original_path = logger.path
+
+    logger.path = Path(tmp_dir) / "test_logs.db"
+    logger.initialize()
+
+    try:
+        yield logger
+    finally:
+        logger.close()
+        logger.path = original_path
 
 
 class FakeGuard:
@@ -18,6 +54,18 @@ class FakeGuard:
             "job": job,
             "original_decision": original_decision,
         })
+
+        await log_guard_decision(
+            job_uuid=job.get("job_uuid", ""),
+            source=job.get("source", ""),
+            title=job.get("title", ""),
+            original_decision=original_decision,
+            guard_decision="notify" if self.allowed else "do_not_notify",
+            provider="Fake",
+            model="fake-model",
+            response_time_ms=0,
+        )
+
         return self.allowed
 
 
@@ -60,7 +108,7 @@ async def run_guard_test(
     )
 
 
-def test_direct_notification_allowed():
+def test_direct_notification_allowed(isolated_database):
 
     guard, private, channel = asyncio.run(
         run_guard_test(True)
@@ -74,7 +122,7 @@ def test_direct_notification_allowed():
     assert guard.jobs[0]["original_decision"] == "Accepted"
 
 
-def test_direct_notification_rejected():
+def test_direct_notification_rejected(isolated_database):
 
     guard, private, channel = asyncio.run(
         run_guard_test(False)
@@ -87,7 +135,7 @@ def test_direct_notification_rejected():
     assert guard.jobs[0]["job"]["job_uuid"] == "job-1"
 
 
-def test_llm_review_bypasses_guard():
+def test_llm_review_bypasses_guard(isolated_database):
 
     guard, private, channel = asyncio.run(
         run_guard_test(
