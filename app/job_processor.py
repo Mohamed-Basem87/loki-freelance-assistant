@@ -51,7 +51,7 @@ def _extract_project_id(url: str):
     if not url:
         return None
 
-    match = re.search(r"/project/(\d+)(?:[/?#]|$)", url)
+    match = re.search(r"/project/(\d+)(?:[/?#\-\s]|$)", url)
     return match.group(1) if match else None
 
 
