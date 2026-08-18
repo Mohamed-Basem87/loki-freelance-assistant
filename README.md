@@ -35,8 +35,6 @@ It currently supports:
     and notification retry state.
 -   **Docker deployment** with persistent host-mounted
     session/state/database data.
--   **GitHub Actions CI/CD** that tests, builds, pushes, and deploys the
-    Docker image.
 
 The project is intentionally conservative: false positives are treated
 as more costly than false negatives, and infrastructure/LLM failures are
@@ -105,7 +103,7 @@ Supporting infrastructure:
 SQLite audit DB
 database/state.json + backup
 Notification Guard
-Docker / GitHub Actions
+Docker
 ```
 
 ### Core design principle
@@ -370,9 +368,10 @@ around the external send.
 
 ------------------------------------------------------------------------
 
-## Telegram Startup Caveat
+## Telegram Startup Recovery
 
-There is currently one known live-ingestion gap.
+The live `NewMessage` handler is registered before startup recovery
+begins.
 
 The startup sequence is:
 
@@ -381,27 +380,24 @@ connect
   ↓
 warm entity cache
   ↓
+create/acquire per-channel locks
+  ↓
+register NewMessage handler
+  ↓
 recover channel 1
   ↓
 recover channel 2
   ↓
 ...
   ↓
-register NewMessage handler
+release each channel's recovery lock
   ↓
 live operation
 ```
 
-Because the live handler is registered only after all recovery
-completes, a new message posted during the recovery window is not
-handled live.
-
-If it is also outside the recovery window already processed for that
-channel, it may not be noticed until the next restart.
-
-**This is a known bug and should be fixed by registering the live
-handler earlier and buffering/holding events until the relevant
-channel's recovery is complete.**
+A live message arriving during recovery is captured by the handler but
+waits on the relevant channel lock until recovery has reached the
+appropriate point.
 
 ------------------------------------------------------------------------
 
@@ -528,51 +524,6 @@ docker compose logs -f loki
 
 ------------------------------------------------------------------------
 
-## CI/CD
-
-GitHub Actions currently has two workflows.
-
-### `ci.yml`
-
-Runs on pushes to `main` and pull requests:
-
-``` text
-checkout
-  ↓
-Python 3.11
-  ↓
-install requirements + pytest
-  ↓
-pytest tests/ -q
-```
-
-### `docker.yml`
-
-On `main`:
-
-``` text
-tests
-  ↓
-Docker build
-  ↓
-push :latest
-push :<commit SHA>
-  ↓
-Tailscale connection
-  ↓
-SSH to deployment host
-  ↓
-docker compose up -d --pull always
-```
-
-The build/push and deploy jobs require the test job to succeed.
-
-The SHA-tagged image provides a rollback target, although the compose
-file currently references `:latest`, so rollback requires selecting a
-specific image tag manually.
-
-------------------------------------------------------------------------
-
 ## Configuration
 
 The main environment variables are:
@@ -660,10 +611,8 @@ The suite covers:
 -   state-file corruption/atomicity
 -   end-to-end pipeline behavior
 
-Two LLM tests perform live provider calls and therefore require valid
-credentials. CI currently installs dependencies and runs the test suite,
-so repository CI should be treated as credential/configuration-dependent
-if those tests are executed as live integrations.
+Some LLM tests perform live provider calls and therefore require valid
+credentials.
 
 ------------------------------------------------------------------------
 
@@ -700,9 +649,6 @@ if those tests are executed as live integrations.
 ├── tests/
 ├── database/
 ├── sessions/
-├── .github/workflows/
-│   ├── ci.yml
-│   └── docker.yml
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .env.example
@@ -718,18 +664,7 @@ if those tests are executed as live integrations.
 
 These are implementation findings, not aspirational roadmap items.
 
-### 1. Telegram live-handler registration gap --- Medium
-
-The live `NewMessage` handler is registered after all startup recovery
-completes.
-
-A message arriving during that gap can be missed until a later restart.
-
-**Recommended direction:** register the live handler before recovery and
-queue/hold events for channels whose recovery is not complete, then
-drain them in order.
-
-### 2. Total LLM failure is finalized as `Rejected` --- Medium
+### 1. Total LLM failure is finalized as `Rejected` --- Medium
 
 When Gemini and Groq are both unavailable, the current code records:
 
@@ -744,7 +679,7 @@ reclassified later.
 **Recommended direction:** make classification infrastructure failure a
 recoverable state with a retry mechanism.
 
-### 3. Notification lock implementation is structurally fragile --- Low
+### 1. Notification lock implementation is structurally fragile --- Low
 
 Per-job notification locks use a `WeakValueDictionary`.
 
@@ -754,7 +689,7 @@ holding the lock object strongly across the critical section.
 This is primarily a maintainability/hardening concern, not a currently
 demonstrated production failure.
 
-### 4. Observability is limited
+### 1. Observability is limited
 
 There is no dedicated health endpoint, metrics system, alerting
 integration, or structured logging layer.
@@ -762,7 +697,7 @@ integration, or structured logging layer.
 The service can therefore remain alive while a meaningful subsystem is
 unhealthy without automatically notifying the operator.
 
-### 5. Notification Guard is a double opt-in
+### 1. Notification Guard is a double opt-in
 
 The guard requires both:
 
@@ -788,7 +723,6 @@ active.
 -   Telegram notification content is HTML-escaped before being inserted
     into Telegram messages.
 -   The Docker runtime runs as a non-root user.
--   GitHub Actions workflows request `contents: read` permissions.
 -   The default FreeHub endpoint in the current configuration is HTTP;
     use HTTPS when the backend supports it.
 

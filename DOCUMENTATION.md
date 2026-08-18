@@ -31,12 +31,11 @@ guarantee.
 16. [Concurrency and Race
     Prevention](#16-concurrency-and-race-prevention)
 17. [Docker Deployment](#17-docker-deployment)
-18. [CI/CD](#18-cicd)
-19. [Testing](#19-testing)
-20. [Troubleshooting](#20-troubleshooting)
+18. [Testing](#18-testing)
+19. [Troubleshooting](#19-troubleshooting)
 21. [Known Issues and Recommended
     Fixes](#21-known-issues-and-recommended-fixes)
-22. [Maintenance Guidelines](#22-maintenance-guidelines)
+21. [Maintenance Guidelines](#21-maintenance-guidelines)
 
 ------------------------------------------------------------------------
 
@@ -131,7 +130,6 @@ SQLite audit DB
 database/state.json + backup
 Notification Guard
 Docker
-GitHub Actions
 ```
 
 ------------------------------------------------------------------------
@@ -414,15 +412,16 @@ The most important invariants are:
     boundary.**
 4.  **Telegram watermarks only advance after successful message
     processing.**
-5.  **Same-channel live Telegram processing is serialized.**
-6.  **Notification retry and live notification paths share a per-job
+5.  **The live Telegram handler is registered before startup recovery.**
+6.  **Same-channel Telegram processing is serialized.**
+7.  **Notification retry and live notification paths share a per-job
     lock.**
-7.  **Notification state is persisted before and after external
+8.  **Notification state is persisted before and after external
     notification attempts.**
-8.  **LLM failures fail toward rejection rather than accidental
+9.  **LLM failures fail toward rejection rather than accidental
     acceptance.**
-9.  **Notification Guard failures fail closed.**
-10. **State-file corruption fails loudly if no valid backup exists.**
+10. **Notification Guard failures fail closed.**
+11. **State-file corruption fails loudly if no valid backup exists.**
 
 ------------------------------------------------------------------------
 
@@ -443,15 +442,23 @@ get_me()
     ↓
 _warm_entity_cache()
     ↓
-_recover_channel() for every target channel
+create/acquire per-channel locks
     ↓
 register NewMessage handler
+    ↓
+_recover_channel() for every target channel
+    ↓
+release each channel's recovery lock
     ↓
 run_until_disconnected()
 ```
 
 The entity warm-up calls `get_dialogs()` and verifies that each target
 channel can be resolved.
+
+The live handler is registered before recovery so messages arriving
+during startup are captured. Per-channel locks prevent those live events
+from overtaking recovery for the same channel.
 
 ## 5.2 Live processing
 
@@ -1231,6 +1238,11 @@ The current cap is:
 If the cap is reached, Loki warns that additional history may remain
 unrecovered.
 
+A channel remains recovery-blocked while its startup recovery is active.
+Live events captured during that period wait on the same channel lock,
+preventing a newer live message from advancing the watermark past an
+unresolved recovery point.
+
 ## 15.2 First-time Telegram channel
 
 If the watermark is zero:
@@ -1446,65 +1458,7 @@ remain alive without Docker automatically replacing it.
 
 ------------------------------------------------------------------------
 
-# 18. CI/CD
-
-## 18.1 CI workflow
-
-`.github/workflows/ci.yml` runs on:
-
--   pushes to `main`
--   pull requests
-
-It:
-
-1.  checks out the repository
-2.  installs Python 3.11
-3.  installs dependencies and pytest
-4.  runs:
-
-``` bash
-pytest tests/ -q
-```
-
-## 18.2 Docker workflow
-
-`.github/workflows/docker.yml`:
-
-1.  runs tests
-2.  builds the Docker image
-3.  pushes:
-    -   `:latest`
-    -   `:<commit SHA>`
-4.  connects to the deployment network through Tailscale
-5.  SSHes to the deployment host
-6.  runs:
-
-``` bash
-docker compose up -d --pull always
-```
-
-The build and deployment jobs are gated behind successful tests.
-
-A concurrency group prevents two production deployments from racing each
-other.
-
-## 18.3 Rollback
-
-SHA-tagged images are pushed, which gives the registry a rollback
-artifact.
-
-However, Compose references:
-
-``` text
-:latest
-```
-
-so rollback is currently a manual image-tag selection rather than a
-one-command automated rollback mechanism.
-
-------------------------------------------------------------------------
-
-# 19. Testing
+# 18. Testing
 
 Current test modules include:
 
@@ -1583,7 +1537,7 @@ The most important missing tests are:
 
 ------------------------------------------------------------------------
 
-# 20. Troubleshooting
+# 18. Troubleshooting
 
 ## Missing environment variables
 
@@ -1688,12 +1642,12 @@ behavior.
 
 ------------------------------------------------------------------------
 
-# 21. Known Issues and Recommended Fixes
+# 18. Known Issues and Recommended Fixes
 
 These are the current implementation findings that should be treated as
 engineering work, not ignored as documentation details.
 
-## 21.1 Telegram live-handler registration gap
+## 21.1 Telegram startup recovery ordering
 
 ### Current behavior
 
@@ -1857,7 +1811,7 @@ in CI whenever classifier vocabulary changes.
 
 ------------------------------------------------------------------------
 
-# 22. Maintenance Guidelines
+# 18. Maintenance Guidelines
 
 ## 22.1 Do not bypass the shared pipeline
 
@@ -1962,7 +1916,7 @@ The current implementation has a strong reliability-oriented core:
 
 The two most important remaining correctness issues are:
 
-1.  **The Telegram live-handler registration gap during startup
+1.  **The Telegram startup recovery ordering during startup
     recovery.**
 2.  **Permanent rejection of jobs when every LLM provider is temporarily
     unavailable.**
