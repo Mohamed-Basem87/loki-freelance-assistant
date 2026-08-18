@@ -61,6 +61,20 @@ def test_nafezly_detection_is_case_and_source_independent():
     assert job["title"] == "اختبار"
 
 
+def test_nafezly_detection_by_arabic_name():
+    """
+    The Nafezly-specific parsing path also triggers when the source
+    string contains the Arabic name "نفذلي" -- this handles the case
+    where the source is already the abbreviated display name (e.g.
+    from FreeHub or a previously-normalized channel title).
+    """
+    text = "عنوان المشروع : اختبار عربي\n\nتفاصيل المشروع : وصف قصير\n"
+
+    job = parse_job("نفذلي", text)
+
+    assert job["title"] == "اختبار عربي"
+
+
 def test_generic_message_falls_back_to_first_line_and_normalized_body():
     text = (
         "Power BI Dashboard Needed\n\n"

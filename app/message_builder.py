@@ -1,5 +1,7 @@
 from html import escape
 
+from app.config import source_display_name
+
 
 # Telegram's hard limit on a single text message. Kept a little under
 # the real 4096 so we always have headroom after escaping and after
@@ -95,10 +97,12 @@ def build_job_message(
     description = _truncate(description, MAX_DESCRIPTION_LENGTH) if description else ""
     reason = _truncate(reason, MAX_REASON_LENGTH) if reason else reason
 
+    display_source = source_display_name(source) if channel_style else source
+
     if channel_style:
         header = "🚀 <b>New Data Analysis Opportunity</b>\n\n"
         header += f"📄 <b>{escape(title)}</b>\n"
-        header += f"🏢 <b>Platform</b>\n{escape(source)}"
+        header += f"🏢 <b>Platform</b>\n{escape(display_source)}"
     else:
         ai_header = (
             "🧠 <b>AI Recommendation</b>"

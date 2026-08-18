@@ -80,7 +80,7 @@ def parse_job(source: str, text: str) -> dict[str, str]:
     # -----------------------------
     # Nafezly
     # -----------------------------
-    if "nafezly" in source_name:
+    if "nafezly" in source_name or "نفذلي" in (source or ""):
         title = re.search(
             r"عنوان المشروع\s*:\s*(.+)",
             text,

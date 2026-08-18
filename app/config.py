@@ -101,6 +101,35 @@ FREEHUB_PAGE_SIZE = int(
 
 SESSION_NAME = str(BASE_DIR / "sessions" / "telegram")
 
+
+# ----------------------------
+# Source display name mapping
+# ----------------------------
+
+# Maps source strings (channel titles, FreeHub poll sources) to short
+# Arabic display names used in public-channel notifications.  The
+# lookup is case-insensitive and matches on substring presence so that
+# Telegram channel titles like "مستقل | برمجة" or "Mostaql Jobs" are
+# both handled by the same rule.
+_SOURCE_DISPLAY_NAMES: list[tuple[str, str]] = [
+    ("mostaql", "مستقل"),
+    ("nafezly", "نفذلي"),
+    ("kafiil", "كفيل"),
+]
+
+
+def source_display_name(source: str) -> str:
+    """Return the short Arabic display name for a source string.
+
+    If the source does not match any known platform, it is returned
+    unchanged.  Matching is case-insensitive.
+    """
+    lower = (source or "").lower()
+    for pattern, name in _SOURCE_DISPLAY_NAMES:
+        if pattern in lower:
+            return name
+    return source
+
 # ----------------------------
 # Notification retry sweep (see app.job_processor.notification_retry_loop)
 # ----------------------------

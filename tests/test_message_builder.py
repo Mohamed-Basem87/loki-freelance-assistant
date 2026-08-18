@@ -99,6 +99,53 @@ def test_channel_style_message_stays_valid_html_when_truncated():
     _assert_balanced_b_tags(message)
 
 
+def test_channel_style_uses_abbreviated_arabic_source_names():
+    """
+    Public channel notifications should display abbreviated Arabic
+    source names (مستقل, نفذلي, كفيل) instead of the full channel
+    title or FreeHub source string.
+    """
+    test_cases = [
+        ("Mostaql Jobs", "مستقل"),
+        ("مستقل | برمجة، تطوير المواقع والتطبيقات", "مستقل"),
+        ("NAFEZLY Channel", "نفذلي"),
+        ("Nafezly - نفذلي", "نفذلي"),
+        ("kafiil", "كفيل"),
+        ("freelancer", "freelancer"),
+    ]
+
+    for source, expected_display in test_cases:
+        message = build_job_message(
+            title="Test Job",
+            description="Test description.",
+            source=source,
+            reason="Test reason.",
+            channel_style=True,
+        )
+
+        assert expected_display in message, (
+            f"Expected '{expected_display}' in channel message for "
+            f"source '{source}', got: {message!r}"
+        )
+
+
+def test_private_style_keeps_full_source_name():
+    """
+    Private chat notifications should keep the full original source
+    name, not the abbreviated Arabic version.
+    """
+    message = build_job_message(
+        title="Test Job",
+        description="Test description.",
+        source="Mostaql Jobs",
+        reason="Test reason.",
+        channel_style=False,
+    )
+
+    assert "Mostaql Jobs" in message
+    assert "مستقل" not in message
+
+
 # ------------------------------------------------------------------
 # Direct unit tests of _safe_html_truncate against constructed inputs
 # that land the cut exactly inside a tag -- the specific bug Fix 8
