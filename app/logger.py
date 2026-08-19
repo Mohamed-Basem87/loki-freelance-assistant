@@ -143,6 +143,21 @@ ERROR_HEADERS = [
     "Error",
 ]
 
+CATEGORY_DECISION_HEADERS = [
+    "Timestamp",
+    "Job UUID",
+    "Category ID",
+    "Category Name",
+    "Decision",
+    "Reason",
+    "Keyword Decision",
+    "AI Used",
+    "LLM Decision",
+    "LLM Confidence",
+    "Evidence JSON",
+]
+
+
 NOTIFICATION_GUARD_HEADERS = [
     "Timestamp",
     "Job UUID",
@@ -170,6 +185,7 @@ _CREATE_TABLES = (
     f'CREATE TABLE IF NOT EXISTS notifications ({_column_defs(NOTIFICATION_HEADERS)});',
     f'CREATE TABLE IF NOT EXISTS errors ({_column_defs(ERROR_HEADERS)});',
     f'CREATE TABLE IF NOT EXISTS notification_guard ({_column_defs(NOTIFICATION_GUARD_HEADERS)});',
+    f'CREATE TABLE IF NOT EXISTS category_decisions ({_column_defs(CATEGORY_DECISION_HEADERS)});',
 )
 
 
@@ -756,6 +772,50 @@ class DBLogger:
 
         if save:
             self.save()
+
+    def log_category_decision(
+        self,
+        job_uuid,
+        category_id,
+        category_name,
+        decision,
+        reason,
+        keyword_decision="",
+        ai_used=False,
+        llm_decision="",
+        llm_confidence="",
+        evidence_json="",
+        save=True,
+    ):
+        columns = ", ".join(f'"{header}"' for header in CATEGORY_DECISION_HEADERS)
+        placeholders = ", ".join("?" for _ in CATEGORY_DECISION_HEADERS)
+
+        self._conn.execute(
+            f"INSERT INTO category_decisions ({columns}) VALUES ({placeholders})",
+            [
+                datetime.now().isoformat(),
+                job_uuid,
+                category_id,
+                category_name,
+                decision,
+                reason,
+                keyword_decision,
+                ai_used,
+                llm_decision,
+                llm_confidence,
+                evidence_json,
+            ],
+        )
+
+        if save:
+            self.save()
+
+    def get_category_decisions(self, job_uuid):
+        cursor = self._conn.execute(
+            'SELECT * FROM category_decisions WHERE "Job UUID" = ? ORDER BY rowid',
+            (job_uuid,),
+        )
+        return [self._row_to_dict(cursor, row) for row in cursor.fetchall()]
 
     def log_notification(
         self,

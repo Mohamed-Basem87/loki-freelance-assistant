@@ -2,7 +2,7 @@ from google import genai
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
 
 from app.config import GEMINI_API_KEYS
-from app.llm.prompt import SYSTEM_PROMPT
+from app.categories.registry import get_category
 from app.llm.utils import build_prompt, parse_response
 
 
@@ -60,8 +60,11 @@ def _generate_response(client: genai.Client, contents: str, system_instruction: 
     )
 
 
-def evaluate_job(text: str, filter_result: dict):
+def evaluate_job(text: str, filter_result: dict, category=None):
 
+    if category is None:
+        category = filter_result.get("category_id", "data_analysis")
+    profile = get_category(category) if isinstance(category, str) else category
     prompt = build_prompt(text, filter_result)
 
     last_exception = None
@@ -75,7 +78,7 @@ def evaluate_job(text: str, filter_result: dict):
             response = _generate_response(
                 client,
                 prompt,
-                SYSTEM_PROMPT,
+                profile.llm_prompt.SYSTEM_PROMPT,
             )
 
             return parse_response(response.text)

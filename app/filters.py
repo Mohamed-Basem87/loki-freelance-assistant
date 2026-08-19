@@ -1,10 +1,6 @@
 import re
 
-from app.keywords import (
-    HARD_REJECT_KEYWORDS,
-    NEGATIVE_KEYWORDS,
-    POSITIVE_KEYWORDS,
-)
+from app.categories.registry import get_category
 from app.normalize import normalize
 
 
@@ -117,19 +113,6 @@ def _flatten(keyword_dict: dict, tier: str):
     return sorted(items, key=lambda x: len(x["normalized_keyword"]), reverse=True)
 
 
-# Built once at import time.
-_POSITIVE_CORE = _flatten(POSITIVE_KEYWORDS, "core")
-_POSITIVE_SUPPORTING = _flatten(POSITIVE_KEYWORDS, "supporting")
-_NEGATIVE_CORE = _flatten(NEGATIVE_KEYWORDS, "core")
-_NEGATIVE_SUPPORTING = _flatten(NEGATIVE_KEYWORDS, "supporting")
-
-_HARD_REJECT = sorted(
-    ({"keyword": kw, "normalized_keyword": normalize(kw)} for kw in HARD_REJECT_KEYWORDS),
-    key=lambda x: len(x["normalized_keyword"]),
-    reverse=True,
-)
-
-
 def _match_tier(text: str, tier_items: list) -> list:
     """
     Match every keyword in tier_items against text. Matches within the
@@ -161,7 +144,7 @@ def _has_core_hit(text: str, tier_items: list) -> bool:
 # Main entry point
 # ------------------------------------------------------------------
 
-def keyword_filter(text: str, title: str = ""):
+def keyword_filter(text: str, title: str = "", category="data_analysis"):
     """
     Classify a job posting using a tiered decision table instead of an
     additive score. See module docstring in keywords.py for the tier
@@ -176,20 +159,39 @@ def keyword_filter(text: str, title: str = ""):
     decision and a plain-English `reason` explaining exactly which
     rule fired.
     """
+    profile = get_category(category) if isinstance(category, str) else category
+    keywords = profile.keywords
+
+    cache = getattr(keyword_filter, "_profile_cache", {})
+    if profile.id not in cache:
+        cache[profile.id] = {
+            "positive_core": _flatten(keywords.POSITIVE_KEYWORDS, "core"),
+            "positive_supporting": _flatten(keywords.POSITIVE_KEYWORDS, "supporting"),
+            "negative_core": _flatten(keywords.NEGATIVE_KEYWORDS, "core"),
+            "negative_supporting": _flatten(keywords.NEGATIVE_KEYWORDS, "supporting"),
+            "hard_reject": sorted(
+                ({"keyword": kw, "normalized_keyword": normalize(kw)} for kw in keywords.HARD_REJECT_KEYWORDS),
+                key=lambda x: len(x["normalized_keyword"]),
+                reverse=True,
+            ),
+        }
+        keyword_filter._profile_cache = cache
+
+    tables = cache[profile.id]
     normalized_text = normalize(text)
     normalized_title = normalize(title) if title else ""
 
     # --- Hard reject keywords (checked against full text) -----------
     hard_reject_matches = [
-        item["keyword"] for item in _HARD_REJECT
+        item["keyword"] for item in tables["hard_reject"]
         if _contains_keyword(normalized_text, item["normalized_keyword"])
     ]
 
     # --- Body-level matches, tier by tier ----------------------------
-    positive_core_hits = _match_tier(normalized_text, _POSITIVE_CORE)
-    positive_supporting_hits = _match_tier(normalized_text, _POSITIVE_SUPPORTING)
-    negative_core_hits = _match_tier(normalized_text, _NEGATIVE_CORE)
-    negative_supporting_hits = _match_tier(normalized_text, _NEGATIVE_SUPPORTING)
+    positive_core_hits = _match_tier(normalized_text, tables["positive_core"])
+    positive_supporting_hits = _match_tier(normalized_text, tables["positive_supporting"])
+    negative_core_hits = _match_tier(normalized_text, tables["negative_core"])
+    negative_supporting_hits = _match_tier(normalized_text, tables["negative_supporting"])
 
     positive_matches = positive_core_hits + positive_supporting_hits
     negative_matches = negative_core_hits + negative_supporting_hits
@@ -214,8 +216,8 @@ def keyword_filter(text: str, title: str = ""):
     hard_reject = bool(hard_reject_matches)
 
     # --- Title-level signal (authoritative when present) -------------
-    title_core_positive = bool(normalized_title) and _has_core_hit(normalized_title, _POSITIVE_CORE)
-    title_core_negative = bool(normalized_title) and _has_core_hit(normalized_title, _NEGATIVE_CORE)
+    title_core_positive = bool(normalized_title) and _has_core_hit(normalized_title, tables["positive_core"])
+    title_core_negative = bool(normalized_title) and _has_core_hit(normalized_title, tables["negative_core"])
 
     # ------------------------------------------------------------------
     # Decision table. Rules are evaluated top-to-bottom; first match wins.
@@ -304,6 +306,7 @@ def keyword_filter(text: str, title: str = ""):
         ]
 
     return {
+        "category_id": profile.id,
         "matched": matched,
         "decision": decision,
         "reason": reason,

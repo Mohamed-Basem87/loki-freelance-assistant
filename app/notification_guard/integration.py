@@ -76,6 +76,7 @@ class NotificationGuardIntegration:
                 "decision",
                 "",
             ),
+            category=kwargs.get("category", "data_analysis"),
         )
 
     def wrap_private(self, original):

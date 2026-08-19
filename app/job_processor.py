@@ -1,10 +1,12 @@
 import asyncio
+import json
 import re
 import time
 import uuid
 import weakref
 
 from app.channel_notifier import send_channel_notification
+from app.categories.registry import get_categories
 from app.filters import keyword_filter
 from app.llm.manager import evaluate_job
 from app.logger import logger
@@ -77,6 +79,10 @@ def _notification_payload_from_row(job_uuid: str, row: dict) -> dict:
         "supporting_weight": row.get("Supporting Positive Weight") or 0,
         "ai_used": str(row.get("Needs Gemini") or "").strip().lower()
         in ("1", "true", "yes", "y"),
+        # Current production jobs are classified by the Data Analysis
+        # profile. This becomes durable category metadata when the
+        # multi-category routing tables are introduced.
+        "category": row.get("Category") or "data_analysis",
     }
 
 
@@ -403,12 +409,36 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
         return
 
     filter_text = f"{job['title']}\n{job['description']}"
-    result = keyword_filter(filter_text, title=job["title"])
+    profiles = get_categories()
+    if not profiles:
+        raise RuntimeError("No enabled category profiles are configured.")
+
+    # Every incoming job is evaluated independently against every enabled
+    # category. Keyword classification happens before the durable Jobs row
+    # is created, exactly as in the original single-category pipeline; LLM
+    # work happens only after that durable row exists.
+    category_results = []
+    for profile in profiles:
+        category_results.append({
+            "profile": profile,
+            "result": keyword_filter(
+                filter_text,
+                title=job["title"],
+                category=profile,
+            ),
+        })
 
     filter_time = round(
         (time.perf_counter() - start) * 1000,
         2,
     )
+
+    # The Jobs row remains one row per source job. Its legacy filter
+    # evidence fields are populated from the first enabled category so
+    # existing tooling/recovery remains compatible. The complete per-category
+    # audit is stored in category_decisions below.
+    primary_profile = category_results[0]["profile"]
+    primary_result = category_results[0]["result"]
 
     if not existing_incomplete:
         created = await logger.run(
@@ -423,7 +453,7 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
             filter_text=filter_text,
             company=job.get("company", ""),
             url=job["url"],
-            filter_result=result,
+            filter_result=primary_result,
             filter_time_ms=filter_time,
             save=False,
         )
@@ -472,78 +502,120 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
             return
 
     final_decision = "Rejected"
-    decision_reason = ""
+    decision_reason = "No Matching Categories"
     should_notify = False
+    accepted_categories = []
+    notification_ai_used = False
+    notification_category = primary_profile.id
 
-    if result["hard_reject"]:
-        decision_reason = "Hard Reject"
+    # Evaluate every category independently. A job is globally accepted if
+    # at least one category accepts it; a job is rejected only when every
+    # category rejects it. This is what allows one job to legitimately match
+    # multiple categories without duplicating the source job itself.
+    for entry in category_results:
+        profile = entry["profile"]
+        result = entry["result"]
+        llm_result = None
+        category_decision = "Rejected"
+        category_reason = ""
+        category_ai_used = False
 
-    elif not result["matched"]:
-        decision_reason = "No Matching Keywords"
+        if result["hard_reject"]:
+            category_reason = "Hard Reject"
 
-    elif result["notify_directly"]:
-        final_decision = "Accepted"
-        decision_reason = result["reason"]
-        should_notify = True
+        elif not result["matched"]:
+            category_reason = "No Matching Keywords"
 
-    elif result["needs_gemini"]:
-        gemini_start = time.perf_counter()
+        elif result["notify_directly"]:
+            category_decision = "Accepted"
+            category_reason = result["reason"]
 
-        try:
-            gemini = await asyncio.to_thread(
-                evaluate_job,
-                filter_text,
-                result,
-            )
+        elif result["needs_gemini"]:
+            gemini_start = time.perf_counter()
+            try:
+                llm_result = await asyncio.to_thread(
+                    evaluate_job,
+                    filter_text,
+                    result,
+                    profile,
+                )
+            except Exception as e:
+                await logger.run(
+                    logger.log_error,
+                    f"LLM:{profile.id}",
+                    e,
+                    job_uuid,
+                    save=False,
+                )
+                category_reason = "LLM Error"
+            else:
+                gemini_time = round(
+                    (time.perf_counter() - gemini_start) * 1000,
+                    2,
+                )
+                category_ai_used = True
+                category_decision = (
+                    "Accepted"
+                    if llm_result["decision"] == "accept"
+                    else "Rejected"
+                )
+                category_reason = llm_result["reason"]
 
-        except Exception as e:
-            await logger.run(
-                logger.log_error,
-                "LLM",
-                e,
-                job_uuid,
-                save=False,
-            )
-
-            final_decision = "Rejected"
-            decision_reason = "LLM Error"
+                await logger.run(
+                    logger.log_gemini,
+                    job_uuid=job_uuid,
+                    decision_before=result["decision"],
+                    reason_before=result["reason"],
+                    prompt_tokens="",
+                    completion_tokens="",
+                    response_time_ms=gemini_time,
+                    decision=llm_result["decision"],
+                    confidence=llm_result["confidence"],
+                    save=False,
+                )
 
         else:
-            gemini_time = round(
-                (time.perf_counter() - gemini_start) * 1000,
-                2,
-            )
+            category_reason = result["reason"] or "Below Gemini Threshold"
 
-            final_decision = (
-                "Accepted"
-                if gemini["decision"] == "accept"
-                else "Rejected"
-            )
-            decision_reason = gemini["reason"]
-            should_notify = gemini["decision"] == "accept"
+        if category_decision == "Accepted":
+            accepted_categories.append(profile.id)
+            if len(accepted_categories) == 1:
+                notification_category = profile.id
+                notification_ai_used = category_ai_used
+            final_decision = "Accepted"
+            should_notify = True
+            decision_reason = category_reason
 
-            await logger.run(
-                logger.update_job,
-                job_uuid,
-                gemini_decision=gemini["decision"],
-                save=False,
-            )
+        elif not accepted_categories and category_reason:
+            # Keep the latest useful rejection reason until a category
+            # actually accepts the job.
+            decision_reason = category_reason
 
-            await logger.run(
-                logger.log_gemini,
-                job_uuid=job_uuid,
-                decision_before=result["decision"],
-                reason_before=result["reason"],
-                prompt_tokens="",
-                completion_tokens="",
-                response_time_ms=gemini_time,
-                decision=gemini["decision"],
-                confidence=gemini["confidence"],
-                save=False,
-            )
+        evidence = dict(result)
+        evidence.pop("normalized_text", None)
+        evidence.pop("llm_error", None)
+        if llm_result is not None:
+            evidence["llm"] = llm_result
 
-    else:
-        decision_reason = result["reason"] or "Below Gemini Threshold"
+        await logger.run(
+            logger.log_category_decision,
+            job_uuid=job_uuid,
+            category_id=profile.id,
+            category_name=profile.name,
+            decision=category_decision,
+            reason=category_reason,
+            keyword_decision=result.get("decision", ""),
+            ai_used=category_ai_used,
+            llm_decision=(llm_result or {}).get("decision", ""),
+            llm_confidence=(llm_result or {}).get("confidence", ""),
+            evidence_json=json.dumps(evidence, ensure_ascii=False, default=str),
+            save=False,
+        )
+
+    if not accepted_categories:
+        final_decision = "Rejected"
+        if not decision_reason:
+            decision_reason = "No Matching Categories"
 
     await logger.run(
         logger.update_job,
@@ -578,7 +650,8 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
                 "Supporting Positive Weight": result[
                     "supporting_positive_weight"
                 ],
-                "Needs Gemini": result["needs_gemini"],
+                "Needs Gemini": notification_ai_used,
+                "category": notification_category,
                 "Notification Status": "Pending",
             },
         )
