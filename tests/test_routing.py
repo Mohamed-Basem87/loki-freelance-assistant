@@ -24,7 +24,7 @@ def test_user_routing_is_single_category_and_idempotent():
 
             first = await queue_for_category("job-1", "data_analysis")
             second = await queue_for_category("job-1", "data_analysis")
-            rows = await logger.run(logger.get_pending_user_notifications)
+            rows = await logger.run(logger.claim_pending_user_notifications)
 
             assert first == 1
             assert second == 0

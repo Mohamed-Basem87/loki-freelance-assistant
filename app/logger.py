@@ -198,6 +198,7 @@ USER_NOTIFICATION_HEADERS = [
     "Last Error",
     "Created At",
     "Updated At",
+    "Next Attempt At",
 ]
 
 
@@ -509,6 +510,7 @@ class DBLogger:
         """Add newly introduced columns to an already-current SQLite DB."""
         for table, headers in (
             ("jobs", JOB_HEADERS),
+            ("user_notifications", USER_NOTIFICATION_HEADERS),
         ):
             existing = set(self._table_columns(table))
             for header in headers:
@@ -1028,8 +1030,8 @@ class DBLogger:
                 'INSERT OR IGNORE INTO user_notifications '
                 '("Notification ID", "Job UUID", "User ID", "Telegram User ID", '
                 '"Category ID", "Status", "Attempts", "Last Error", '
-                '"Created At", "Updated At") '
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                '"Created At", "Updated At", "Next Attempt At") '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 (
                     str(uuid.uuid4()),
                     job_uuid,
@@ -1041,6 +1043,7 @@ class DBLogger:
                     "",
                     now,
                     now,
+                    now,
                 ),
             )
             if cursor.rowcount:
@@ -1050,16 +1053,69 @@ class DBLogger:
             self.save()
         return queued
 
-    def get_pending_user_notifications(self, limit=100):
+    def get_user_categories(self, user_id):
+        cursor = self._conn.execute(
+            'SELECT "Category ID" FROM user_categories WHERE "User ID" = ?',
+            (str(user_id),),
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+    def set_user_active(self, telegram_user_id, active, save=True):
+        self._conn.execute(
+            'UPDATE users SET "Is Active" = ?, "Updated At" = ? '
+            'WHERE "Telegram User ID" = ?',
+            ("1" if active else "0", datetime.now().isoformat(), str(telegram_user_id)),
+        )
+        if save:
+            self.save()
+
+    def reset_sending_user_notifications(self, save=True):
+        self._conn.execute(
+            'UPDATE user_notifications SET "Status" = "Pending", '
+            '"Next Attempt At" = ? WHERE "Status" = "Sending"',
+            (datetime.now().isoformat(),),
+        )
+        if save:
+            self.save()
+
+    def claim_pending_user_notifications(self, limit=20):
+        """Claim a batch for delivery; all DB access is serialized."""
+        now = datetime.now().isoformat()
         cursor = self._conn.execute(
             'SELECT * FROM user_notifications '
-            'WHERE "Status" = "Pending" ORDER BY rowid LIMIT ?',
-            (int(limit),),
+            'WHERE ("Status" = "Pending" OR "Status" = "Failed") '
+            'AND CAST("Attempts" AS INTEGER) < 5 '
+            'AND ("Next Attempt At" IS NULL OR "Next Attempt At" = "" '
+            'OR "Next Attempt At" <= ?) '
+            'ORDER BY rowid LIMIT ?',
+            (now, int(limit)),
         )
-        return [self._row_to_dict(cursor, row) for row in cursor.fetchall()]
+        rows = [self._row_to_dict(cursor, row) for row in cursor.fetchall()]
 
-    def update_user_notification(self, notification_id, status,
-                                 attempts=None, last_error="", save=True):
+        for row in rows:
+            attempts = int(row.get("Attempts") or 0) + 1
+            self._conn.execute(
+                'UPDATE user_notifications SET "Status" = "Sending", '
+                '"Attempts" = ?, "Updated At" = ? '
+                'WHERE "Notification ID" = ? AND '
+                '("Status" = "Pending" OR "Status" = "Failed")',
+                (str(attempts), now, row["Notification ID"]),
+            )
+            row["Status"] = "Sending"
+            row["Attempts"] = str(attempts)
+
+        self.save()
+        return rows
+
+    def update_user_notification(
+        self,
+        notification_id,
+        status,
+        attempts=None,
+        last_error="",
+        next_attempt_at=None,
+        save=True,
+    ):
         sets = ['"Status" = ?', '"Updated At" = ?']
         values = [status, datetime.now().isoformat()]
         if attempts is not None:
@@ -1068,6 +1124,12 @@ class DBLogger:
         if last_error is not None:
             sets.append('"Last Error" = ?')
             values.append(last_error)
+        if next_attempt_at is not None:
+            sets.append('"Next Attempt At" = ?')
+            values.append(next_attempt_at)
+        elif status == "Sent":
+            sets.append('"Next Attempt At" = ?')
+            values.append("")
         values.append(str(notification_id))
         self._conn.execute(
             f'UPDATE user_notifications SET {", ".join(sets)} '

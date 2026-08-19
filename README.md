@@ -762,3 +762,15 @@ Faculty of Artificial Intelligence --- Menoufia University
 
 Focused on Data Analytics, Business Intelligence, Python automation, and
 AI applications.
+
+
+## User subscriptions
+
+Loki also exposes the same Telegram bot as a user-facing interface. Users can
+send `/start` or `/categories`, select one or more enabled job categories, and
+receive matching jobs by Telegram DM.
+
+The user subscription records and notification queue are stored in the same
+SQLite database. Delivery uses a bounded asynchronous worker pool so multiple
+users can receive the same job concurrently without creating an unbounded
+number of Telegram requests.
