@@ -1647,58 +1647,40 @@ behavior.
 These are the current implementation findings that should be treated as
 engineering work, not ignored as documentation details.
 
-## 21.1 Telegram startup recovery ordering
+## 21.1 Telegram startup recovery ordering — fixed
 
-### Current behavior
+The Telegram live handler is registered before startup recovery, and
+per-channel `asyncio.Lock` instances are acquired before recovery starts.
 
-The live handler is registered only after all startup recovery has
-completed.
+A live event for a channel that is still being recovered is therefore
+captured by the handler immediately but waits on that channel's lock.
+Recovery processes the channel's backlog first, then releases the lock,
+allowing the queued live event to continue through the normal pipeline.
 
-### Failure scenario
+Conceptually:
 
 ``` text
 startup
   ↓
-recover channel A
+register live handler
   ↓
-recover channel B
+acquire per-channel recovery locks
   ↓
-new message arrives in channel A
+recover channel
   ↓
-live handler does not exist yet
+release channel lock
   ↓
-message is not processed live
+queued live events continue
 ```
 
-### Impact
+This preserves:
 
-A message can be missed until a later restart.
-
-### Recommended fix
-
-Register the live handler before recovery and introduce a per-channel
-readiness mechanism:
-
-``` text
-live event
-   ↓
-channel recovered?
- ├── no → queue
- └── yes → process
-```
-
-After recovery of a channel:
-
-``` text
-drain queued events in message-ID order
-```
-
-The queue should then transition to normal live processing.
-
-This preserves both:
-
--   startup recovery correctness
+-   startup recovery ordering
 -   real-time capture during recovery
+-   same-channel message ordering
+
+No separate readiness queue is required because the per-channel lock
+provides the required serialization boundary.
 
 ## 21.2 Total LLM failure is treated as semantic rejection
 
@@ -1914,12 +1896,13 @@ The current implementation has a strong reliability-oriented core:
 -   structured classifier evidence
 -   HTML-safe notification construction
 
-The two most important remaining correctness issues are:
+The main remaining correctness issue is:
 
-1.  **The Telegram startup recovery ordering during startup
-    recovery.**
-2.  **Permanent rejection of jobs when every LLM provider is temporarily
+1.  **Permanent rejection of jobs when every LLM provider is temporarily
     unavailable.**
+
+The Telegram startup recovery ordering issue has been fixed in the
+implementation and is documented as such in section 21.1.
 
 The largest non-correctness gap is observability.
 

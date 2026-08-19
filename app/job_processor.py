@@ -341,19 +341,60 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
         else None
     )
 
-    # Fast path for already-known canonical jobs. If a notification
-    # workflow was durably left pending/partially complete, resume it
-    # instead of silently treating the durable row as fully complete.
+    # Fast path for already-known canonical jobs.
+    #
+    # A row with a recorded notification status has already completed
+    # classification, so only the unfinished notification workflow
+    # needs to be resumed. A row with a terminal Final Decision but no
+    # notification status is a completed non-notifying job (Rejected).
+    #
+    # The important recovery case is a row with NO Final Decision.
+    # That means the process may have crashed after the durable row was
+    # created but before classification finished. Treat that row as an
+    # incomplete classification and continue through the pipeline
+    # instead of returning and letting the ingestion watermark/seen
+    # cache permanently discard it.
     existing = await logger.run(logger.get_job, job_uuid)
+    existing_incomplete = False
+
     if existing is not None:
-        if existing.get("Notification Status"):
+        notification_status = existing.get("Notification Status") or ""
+        final_decision = existing.get("Final Decision") or ""
+
+        if notification_status:
             await _resume_pending_notifications(job_uuid, existing)
-        return
+            return
+
+        if final_decision == "Accepted":
+            # A crash can also occur in the tiny window after the final
+            # decision is saved but before notification is marked
+            # Pending. Accepted jobs must not be mistaken for completed
+            # work in that state.
+            await logger.run(
+                logger.update_job,
+                job_uuid,
+                notification_status="Pending",
+                save=True,
+            )
+            existing["Notification Status"] = "Pending"
+            await _resume_pending_notifications(job_uuid, existing)
+            return
+
+        if final_decision:
+            return
+
+        existing_incomplete = True
 
     # Historical rows may still use the pre-stable-identity UUID.
-    # They remain lookup-only compatibility records.
-    if legacy_job_uuid is not None and await logger.run(
-        logger.has_job, legacy_job_uuid
+    # They remain lookup-only compatibility records. Only perform this
+    # compatibility lookup when there is no canonical row; an existing
+    # incomplete canonical row must be resumed.
+    if (
+        existing is None
+        and legacy_job_uuid is not None
+        and await logger.run(
+            logger.has_job, legacy_job_uuid
+        )
     ):
         print(
             f"[DEDUP] Recognized job {job_id!r} via legacy identity "
@@ -369,41 +410,47 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
         2,
     )
 
-    created = await logger.run(
-        logger.create_job_if_absent,
-        legacy_job_uuid=legacy_job_uuid,
-        job_uuid=job_uuid,
-        job_id=job_id,
-        source=job["source"],
-        title=job["title"],
-        description=job["description"],
-        raw_message=job["raw_text"],
-        filter_text=filter_text,
-        company=job.get("company", ""),
-        url=job["url"],
-        filter_result=result,
-        filter_time_ms=filter_time,
-        save=False,
-    )
+    if not existing_incomplete:
+        created = await logger.run(
+            logger.create_job_if_absent,
+            legacy_job_uuid=legacy_job_uuid,
+            job_uuid=job_uuid,
+            job_id=job_id,
+            source=job["source"],
+            title=job["title"],
+            description=job["description"],
+            raw_message=job["raw_text"],
+            filter_text=filter_text,
+            company=job.get("company", ""),
+            url=job["url"],
+            filter_result=result,
+            filter_time_ms=filter_time,
+            save=False,
+        )
 
-    if not created:
-        # Another concurrent invocation won the atomic create race.
-        # Re-read the durable row so a pending notification workflow
-        # can be resumed if necessary.
-        existing = await logger.run(logger.get_job, job_uuid)
-        if existing is not None and existing.get("Notification Status"):
-            await _resume_pending_notifications(job_uuid, existing)
-        return
+        if not created:
+            # Another concurrent invocation won the atomic create race.
+            # Re-read the durable row so a pending notification workflow
+            # can be resumed if necessary, or leave a still-incomplete
+            # classification for that invocation to finish.
+            existing = await logger.run(logger.get_job, job_uuid)
+            if existing is not None:
+                if existing.get("Notification Status"):
+                    await _resume_pending_notifications(job_uuid, existing)
+                elif existing.get("Final Decision"):
+                    return
+            return
 
-    # Claim the canonical project ID only after the durable job row has
+    # Claim the canonical project ID after the durable job row has
     # been created. The claim itself is atomic inside StateManager's
     # single-worker executor, so concurrent FreeHub/Telegram calls
     # cannot both win.
     #
-    # This is intentionally after the same-identity lookup above:
-    # if the process crashed after claiming but before finishing the
-    # pipeline, a retry of that same job_uuid can still resume instead
-    # of being rejected by its own cross-source claim.
+    # The state claim is idempotent for the same job_uuid, so an
+    # incomplete row can safely re-enter this step after a crash:
+    # - if this job already owns the claim, it remains valid;
+    # - if another source claimed the project while this job was down,
+    #   this job loses the claim and is rejected as a duplicate.
     if project_id:
         claimed = await state.async_claim_cross_source_project(
             project_id,

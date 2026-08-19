@@ -532,7 +532,6 @@ def test_retry_sweep_resumes_a_previously_failed_notification(
     assert row["Notification Status"] == "Complete"
 
 
-
 def test_retry_sweep_cannot_duplicate_a_live_notification(
     isolated_workbook, monkeypatch
 ):
@@ -681,3 +680,116 @@ def test_retry_sweep_marks_guard_rejected_job_suppressed_not_failed(
     # A second sweep must not touch it again.
     retried_again = asyncio.run(retry_incomplete_notifications())
     assert retried_again == 0
+
+
+def test_incomplete_job_row_is_resumed_after_processing_crash(isolated_workbook):
+    """
+    P1-A regression test: simulate a process crash after the durable
+    Jobs row was created but before Final Decision was recorded.
+    Reprocessing the same identity must finish classification instead
+    of silently returning and leaving the row permanently undecided.
+    """
+    log = isolated_workbook
+
+    job_id = "crashed-001"
+    identity_source = "-100777"
+    job = _build_job(source="Recovery Test Channel")
+
+    from app.filters import keyword_filter
+
+    filter_text = f"{job['title']}\n{job['description']}"
+    result = keyword_filter(filter_text, title=job["title"])
+
+    created = log.create_job_if_absent(
+        job_uuid=_make_job_uuid(identity_source, job_id),
+        job_id=job_id,
+        source=job["source"],
+        title=job["title"],
+        description=job["description"],
+        raw_message=job["raw_text"],
+        filter_text=filter_text,
+        company="",
+        url=job["url"],
+        filter_result=result,
+        filter_time_ms=0,
+        save=True,
+    )
+    assert created is True
+
+    incomplete = log.get_job(_make_job_uuid(identity_source, job_id))
+    assert incomplete["Final Decision"] in ("", None)
+    assert incomplete["Notification Status"] in ("", None)
+
+    asyncio.run(
+        process_job(
+            job=job,
+            job_id=job_id,
+            identity_source=identity_source,
+        )
+    )
+
+    recovered = log.get_job(_make_job_uuid(identity_source, job_id))
+    assert recovered["Final Decision"] == "Rejected"
+    assert recovered["Decision Reason"] == result["reason"]
+    assert recovered["Notification Status"] in ("", None)
+
+
+def test_accepted_job_without_notification_status_resumes_notification(
+    isolated_workbook, monkeypatch
+):
+    """
+    Crash-window regression adjacent to P1-A: if Final Decision was
+    durably recorded as Accepted but the process died before
+    Notification Status was set to Pending, the retry must resume the
+    notification workflow rather than silently returning.
+    """
+    log = isolated_workbook
+
+    job_id = "accepted-recovery-001"
+    identity_source = "-100779"
+    job = _build_job(source="Accepted Recovery Channel")
+    job_uuid = _make_job_uuid(identity_source, job_id)
+
+    from app.filters import keyword_filter
+
+    filter_text = f"{job['title']}\n{job['description']}"
+    result = keyword_filter(filter_text, title=job["title"])
+
+    assert log.create_job_if_absent(
+        job_uuid=job_uuid,
+        job_id=job_id,
+        source=job["source"],
+        title=job["title"],
+        description=job["description"],
+        raw_message=job["raw_text"],
+        filter_text=filter_text,
+        company="",
+        url=job["url"],
+        filter_result=result,
+        filter_time_ms=0,
+        save=True,
+    )
+
+    log.update_job(
+        job_uuid,
+        final_decision="Accepted",
+        decision_reason="test acceptance",
+        save=True,
+    )
+
+    async def fake_send(**kwargs):
+        return True
+
+    monkeypatch.setattr("app.job_processor.send_notification", fake_send)
+    monkeypatch.setattr("app.job_processor.send_channel_notification", fake_send)
+
+    asyncio.run(
+        process_job(
+            job=job,
+            job_id=job_id,
+            identity_source=identity_source,
+        )
+    )
+
+    recovered = log.get_job(job_uuid)
+    assert recovered["Notification Status"] == "Complete"

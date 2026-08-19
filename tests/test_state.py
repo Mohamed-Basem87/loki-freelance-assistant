@@ -168,3 +168,17 @@ def test_many_concurrent_async_writes_never_corrupt_the_file(isolated_state_file
 
     for i in range(50):
         assert on_disk[str(-100000 - i)] == i
+
+
+def test_cross_source_claim_is_idempotent_for_same_job(isolated_state_file):
+    """
+    A crash can occur after a job owns a cross-source claim but before
+    classification finishes. Retrying that same job must keep its
+    ownership, while a different job must still lose the claim.
+    """
+    manager = StateManager()
+    manager.load()
+
+    assert manager.claim_cross_source_project("123456", "job-a") is True
+    assert manager.claim_cross_source_project("123456", "job-a") is True
+    assert manager.claim_cross_source_project("123456", "job-b") is False

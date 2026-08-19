@@ -178,15 +178,16 @@ class StateManager:
         """
         Atomically claim a project ID for a job.
 
-        Returns True only for the first claimant inside the active
-        dedup window. The check and write happen in the same dedicated
-        executor thread, so concurrent FreeHub/Telegram calls cannot
-        both win the claim.
+        Returns True for the first claimant inside the active dedup
+        window, and also for a retry from the same job_uuid that already
+        owns the claim. A different job_uuid still loses the claim.
+        The check and write happen in the same dedicated executor
+        thread, so concurrent FreeHub/Telegram calls cannot both win.
 
-        This method deliberately persists immediately. If the process
-        crashes after the claim, the durable job row can still be
-        retried by its original identity; process_job() checks that
-        identity before attempting another cross-source claim.
+        This idempotent ownership check is important for crash recovery:
+        a durable job row may be retried after the process has already
+        persisted its cross-source claim but before classification
+        finished.
         """
         now = time.time()
         records = self._prune_cross_source_seen(now)
@@ -195,7 +196,10 @@ class StateManager:
         existing = records.get(project_id)
 
         if existing is not None:
-            return False
+            # Retrying the same durable job after a crash must not make
+            # it lose a claim it already owns. A different job_uuid is
+            # still rejected as the cross-source duplicate.
+            return existing.get("job_uuid") == job_uuid
 
         records[project_id] = {
             "job_uuid": job_uuid,
