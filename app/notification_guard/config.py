@@ -28,10 +28,11 @@ NOTIFICATION_GUARD_ENABLED = (
 )
 
 
-NOTIFICATION_GUARD_API_KEY = os.getenv(
-    "GROQ_NOTIFICATION_GUARD_API_KEY",
-    "",
-).strip()
+NOTIFICATION_GUARD_API_KEYS = [
+    key.strip()
+    for key in os.getenv("GROQ_NOTIFICATION_GUARD_API_KEY", "").split(",")
+    if key.strip()
+]
 
 
 # Same rotation strategy as the main Groq LLM subsystem.

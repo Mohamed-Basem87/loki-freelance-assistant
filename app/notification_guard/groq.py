@@ -8,16 +8,17 @@ from tenacity import (
 )
 
 from app.notification_guard.config import (
-    NOTIFICATION_GUARD_API_KEY,
+    NOTIFICATION_GUARD_API_KEYS,
     NOTIFICATION_GUARD_MODELS,
     NOTIFICATION_GUARD_MAX_RETRIES,
 )
 from app.notification_guard.prompt import SYSTEM_PROMPT, build_prompt
 
 
-CLIENT = Groq(
-    api_key=NOTIFICATION_GUARD_API_KEY,
-)
+CLIENTS = [
+    Groq(api_key=key)
+    for key in NOTIFICATION_GUARD_API_KEYS
+]
 
 
 _TRANSIENT_ERROR_MARKERS = (
@@ -47,11 +48,12 @@ def _is_transient(exception: Exception) -> bool:
     reraise=True,
 )
 def _generate_response(
+    client: Groq,
     model: str,
     title: str,
     description: str,
 ):
-    return CLIENT.chat.completions.create(
+    return client.chat.completions.create(
         model=model,
         messages=[
             {
@@ -76,6 +78,7 @@ class GroqNotificationGuard:
 
     def __init__(self):
         self.models = list(NOTIFICATION_GUARD_MODELS)
+        self.clients = list(CLIENTS)
 
         # Kept for compatibility with the existing guard logger.
         self.model = self.models[0] if self.models else ""
@@ -88,49 +91,52 @@ class GroqNotificationGuard:
 
         last_exception = None
 
-        for model in self.models:
+        for client_index, client in enumerate(self.clients):
 
-            print(
-                f"Using Groq guard model: {model}"
-            )
-
-            try:
-
-                response = _generate_response(
-                    model,
-                    title,
-                    description,
-                )
-
-                content = (
-                    response
-                    .choices[0]
-                    .message
-                    .content
-                )
-
-                decision = self._parse_decision(
-                    content
-                )
-
-                # A valid decision is final.
-                # Do NOT rotate models after a valid
-                # notify/do_not_notify response.
-                return decision
-
-            except Exception as e:
+            for model in self.models:
 
                 print(
-                    f"Groq guard model '{model}' failed: {e}"
+                    f"Using Groq guard key #{client_index + 1}, model: {model}"
                 )
 
-                last_exception = e
+                try:
 
-                # Continue to the next model regardless
-                # of failure type, matching the main
-                # project's Groq behavior.
+                    response = _generate_response(
+                        client,
+                        model,
+                        title,
+                        description,
+                    )
 
-                continue
+                    content = (
+                        response
+                        .choices[0]
+                        .message
+                        .content
+                    )
+
+                    decision = self._parse_decision(
+                        content
+                    )
+
+                    # A valid decision is final.
+                    # Do NOT rotate models after a valid
+                    # notify/do_not_notify response.
+                    return decision
+
+                except Exception as e:
+
+                    print(
+                        f"Groq guard key #{client_index + 1}, model '{model}' failed: {e}"
+                    )
+
+                    last_exception = e
+
+                    # Continue to the next model regardless
+                    # of failure type, matching the main
+                    # project's Groq behavior.
+
+                    continue
 
         if last_exception:
             raise last_exception
