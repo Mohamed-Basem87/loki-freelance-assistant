@@ -153,11 +153,28 @@ async def post_init(application: Application):
 
 
 def build_user_notification(job_row, category_id):
-    profile = next(
-        (p for p in enabled_categories() if p.id == category_id),
-        None,
-    )
-    category_name = profile.name if profile else category_id
+    """Build the subscriber message using the exact public-channel format.
+
+    Subscriber delivery is a personalized destination, not a new message
+    format. Reuse the channel-style builder so subscribers receive the same
+    normalized source name, category heading, tags, description, and project
+    button content as the public category channel.
+    """
+    categories = job_row.get("Categories") or ""
+    if isinstance(categories, str):
+        categories = [item.strip() for item in categories.split(",") if item.strip()]
+
+    # A legacy/recovery row may not have the stored keyword categories. Keep
+    # the final category available as a minimal fallback without changing the
+    # normal path, which uses the exact categories already used by the public
+    # channel.
+    if not categories and category_id:
+        profile = next(
+            (p for p in enabled_categories() if p.id == category_id),
+            None,
+        )
+        if profile is not None:
+            categories = [profile.id]
 
     return build_job_message(
         title=job_row.get("Title") or "",
@@ -166,9 +183,9 @@ def build_user_notification(job_row, category_id):
         reason=job_row.get("Decision Reason") or "",
         url=job_row.get("URL") or "",
         budget="",
-        categories=[category_name],
+        categories=categories,
         ai_used=(job_row.get("Category Selection Method") == "llm"),
-        channel_style=False,
+        channel_style=True,
     )
 
 
