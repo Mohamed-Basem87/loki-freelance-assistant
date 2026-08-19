@@ -2,12 +2,10 @@ from app.llm.gemini import evaluate_job as gemini_evaluate
 from app.llm.groq import evaluate_job as groq_evaluate
 
 
-def evaluate_job(text: str, filter_result: dict, category=None):
+def evaluate_job(text: str, filter_result: dict):
 
     try:
-        if category is None:
-            return gemini_evaluate(text, filter_result)
-        return gemini_evaluate(text, filter_result, category)
+        return gemini_evaluate(text, filter_result)
 
     except Exception as gemini_error:
 
@@ -15,9 +13,7 @@ def evaluate_job(text: str, filter_result: dict, category=None):
         print("Falling back to Groq...")
 
         try:
-            if category is None:
-                return groq_evaluate(text, filter_result)
-            return groq_evaluate(text, filter_result, category)
+            return groq_evaluate(text, filter_result)
 
         except Exception as groq_error:
 

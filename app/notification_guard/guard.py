@@ -23,7 +23,6 @@ class NotificationGuard:
         job: dict,
         *,
         original_decision="",
-        category="data_analysis",
     ) -> bool:
         """
         Return True only when the job is allowed to reach the notifier.
@@ -47,7 +46,6 @@ class NotificationGuard:
                 self.provider.evaluate,
                 job.get("title", ""),
                 job.get("description", ""),
-                category,
             )
 
             response_time_ms = round(

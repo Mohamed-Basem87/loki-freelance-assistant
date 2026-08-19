@@ -1,3 +1,4 @@
-"""Backward-compatible access to the default Data Analysis prompt."""
+"""Backward-compatible Data Analysis LLM prompt exports."""
+from app.categories.data_analysis.llm_prompt import SYSTEM_PROMPT
 
-from app.categories.data_analysis.llm_prompt import *  # noqa: F401,F403
+__all__ = ["SYSTEM_PROMPT"]

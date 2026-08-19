@@ -12,7 +12,7 @@ from app.notification_guard.config import (
     NOTIFICATION_GUARD_MODELS,
     NOTIFICATION_GUARD_MAX_RETRIES,
 )
-from app.categories.registry import get_category
+from app.notification_guard.prompt import SYSTEM_PROMPT, build_prompt
 
 
 CLIENTS = [
@@ -52,21 +52,20 @@ def _generate_response(
     model: str,
     title: str,
     description: str,
-    profile,
 ):
     return client.chat.completions.create(
         model=model,
         messages=[
             {
                 "role": "system",
-                "content": profile.guard_prompt.SYSTEM_PROMPT,
+                "content": SYSTEM_PROMPT,
             },
             {
                 "role": "user",
                 # Single source of truth for the guard's user-turn
                 # prompt structure (including the untrusted-content
                 # framing) -- see app.notification_guard.prompt.
-                "content": profile.guard_prompt.build_prompt(title, description),
+                "content": build_prompt(title, description),
             },
         ],
         response_format={
@@ -88,10 +87,8 @@ class GroqNotificationGuard:
         self,
         title: str,
         description: str,
-        category="data_analysis",
     ) -> bool:
 
-        profile = get_category(category) if isinstance(category, str) else category
         last_exception = None
 
         for client_index, client in enumerate(self.clients):
@@ -109,7 +106,6 @@ class GroqNotificationGuard:
                         model,
                         title,
                         description,
-                        profile,
                     )
 
                     content = (

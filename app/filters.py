@@ -1,7 +1,8 @@
 import re
 
-from app.categories.registry import get_category
+from app.categories.data_analysis.profile import PROFILE as DATA_ANALYSIS_PROFILE
 from app.normalize import normalize
+
 
 
 # ------------------------------------------------------------------
@@ -16,7 +17,7 @@ from app.normalize import normalize
 # Gemini when NO core signal (positive or negative) was found at all.
 # Below this, the job is rejected outright as "not enough signal to
 # bother a human/LLM with".
-SUPPORTING_POSITIVE_MIN_FOR_GEMINI = 12
+SUPPORTING_POSITIVE_MIN_FOR_GEMINI = DATA_ANALYSIS_PROFILE.supporting_positive_min_for_gemini
 
 # If a core-positive keyword is present with no core-negative keyword,
 # but the supporting-negative evidence is unusually heavy (i.e. the
@@ -32,7 +33,7 @@ SUPPORTING_POSITIVE_MIN_FOR_GEMINI = 12
 # original threshold. The vocabulary change was the actual fix; the
 # threshold move added no measurable coverage on top of it, so it's not
 # justified as an independent change.
-SUPPORTING_NEGATIVE_DOWNGRADE_THRESHOLD = 14
+SUPPORTING_NEGATIVE_DOWNGRADE_THRESHOLD = DATA_ANALYSIS_PROFILE.supporting_negative_downgrade_threshold
 
 # If exactly ONE core-positive keyword fired (no second core hit to
 # corroborate it) and there is no supporting-positive evidence backing
@@ -49,7 +50,7 @@ SUPPORTING_NEGATIVE_DOWNGRADE_THRESHOLD = 14
 # the boundary. Under the FP>FN rule, a lone core hit backed by only
 # ~4 supporting weight goes to Gemini for review rather than a blind
 # notification.
-MIN_SUPPORTING_POSITIVE_FOR_LONE_CORE = 5
+MIN_SUPPORTING_POSITIVE_FOR_LONE_CORE = DATA_ANALYSIS_PROFILE.min_supporting_positive_for_lone_core
 
 # Branch-specific threshold for title_core_positive: when the title
 # contains a core-positive keyword but the body shows heavy
@@ -59,7 +60,7 @@ MIN_SUPPORTING_POSITIVE_FOR_LONE_CORE = 5
 # Set to 10 (daily audit 2026-08-19): catches two confirmed FPs
 # (40654831 Learning Assessment SNW=7, 40655423 C++ Desktop App
 # SNW=6) with ~5 total jobs affected and low collateral risk.
-TITLE_POSITIVE_SUPPORTING_NEGATIVE_THRESHOLD = 10
+TITLE_POSITIVE_SUPPORTING_NEGATIVE_THRESHOLD = DATA_ANALYSIS_PROFILE.title_positive_supporting_negative_threshold
 
 
 # ------------------------------------------------------------------
@@ -113,6 +114,27 @@ def _flatten(keyword_dict: dict, tier: str):
     return sorted(items, key=lambda x: len(x["normalized_keyword"]), reverse=True)
 
 
+def _compiled_profile(profile):
+    """Compile one category profile's vocabulary for the shared engine."""
+    positive_core = _flatten(profile.positive_keywords, "core")
+    positive_supporting = _flatten(profile.positive_keywords, "supporting")
+    negative_core = _flatten(profile.negative_keywords, "core")
+    negative_supporting = _flatten(profile.negative_keywords, "supporting")
+    hard_reject = sorted(
+        ({"keyword": kw, "normalized_keyword": normalize(kw)}
+         for kw in profile.hard_reject_keywords),
+        key=lambda x: len(x["normalized_keyword"]),
+        reverse=True,
+    )
+    return (
+        positive_core,
+        positive_supporting,
+        negative_core,
+        negative_supporting,
+        hard_reject,
+    )
+
+
 def _match_tier(text: str, tier_items: list) -> list:
     """
     Match every keyword in tier_items against text. Matches within the
@@ -144,7 +166,7 @@ def _has_core_hit(text: str, tier_items: list) -> bool:
 # Main entry point
 # ------------------------------------------------------------------
 
-def keyword_filter(text: str, title: str = "", category="data_analysis"):
+def keyword_filter(text: str, title: str = "", profile=DATA_ANALYSIS_PROFILE):
     """
     Classify a job posting using a tiered decision table instead of an
     additive score. See module docstring in keywords.py for the tier
@@ -159,39 +181,31 @@ def keyword_filter(text: str, title: str = "", category="data_analysis"):
     decision and a plain-English `reason` explaining exactly which
     rule fired.
     """
-    profile = get_category(category) if isinstance(category, str) else category
-    keywords = profile.keywords
+    if profile is None:
+        profile = DATA_ANALYSIS_PROFILE
 
-    cache = getattr(keyword_filter, "_profile_cache", {})
-    if profile.id not in cache:
-        cache[profile.id] = {
-            "positive_core": _flatten(keywords.POSITIVE_KEYWORDS, "core"),
-            "positive_supporting": _flatten(keywords.POSITIVE_KEYWORDS, "supporting"),
-            "negative_core": _flatten(keywords.NEGATIVE_KEYWORDS, "core"),
-            "negative_supporting": _flatten(keywords.NEGATIVE_KEYWORDS, "supporting"),
-            "hard_reject": sorted(
-                ({"keyword": kw, "normalized_keyword": normalize(kw)} for kw in keywords.HARD_REJECT_KEYWORDS),
-                key=lambda x: len(x["normalized_keyword"]),
-                reverse=True,
-            ),
-        }
-        keyword_filter._profile_cache = cache
+    (
+        positive_core,
+        positive_supporting,
+        negative_core,
+        negative_supporting,
+        hard_reject,
+    ) = _compiled_profile(profile)
 
-    tables = cache[profile.id]
     normalized_text = normalize(text)
     normalized_title = normalize(title) if title else ""
 
     # --- Hard reject keywords (checked against full text) -----------
     hard_reject_matches = [
-        item["keyword"] for item in tables["hard_reject"]
+        item["keyword"] for item in hard_reject
         if _contains_keyword(normalized_text, item["normalized_keyword"])
     ]
 
     # --- Body-level matches, tier by tier ----------------------------
-    positive_core_hits = _match_tier(normalized_text, tables["positive_core"])
-    positive_supporting_hits = _match_tier(normalized_text, tables["positive_supporting"])
-    negative_core_hits = _match_tier(normalized_text, tables["negative_core"])
-    negative_supporting_hits = _match_tier(normalized_text, tables["negative_supporting"])
+    positive_core_hits = _match_tier(normalized_text, positive_core)
+    positive_supporting_hits = _match_tier(normalized_text, positive_supporting)
+    negative_core_hits = _match_tier(normalized_text, negative_core)
+    negative_supporting_hits = _match_tier(normalized_text, negative_supporting)
 
     positive_matches = positive_core_hits + positive_supporting_hits
     negative_matches = negative_core_hits + negative_supporting_hits
@@ -216,8 +230,8 @@ def keyword_filter(text: str, title: str = "", category="data_analysis"):
     hard_reject = bool(hard_reject_matches)
 
     # --- Title-level signal (authoritative when present) -------------
-    title_core_positive = bool(normalized_title) and _has_core_hit(normalized_title, tables["positive_core"])
-    title_core_negative = bool(normalized_title) and _has_core_hit(normalized_title, tables["negative_core"])
+    title_core_positive = bool(normalized_title) and _has_core_hit(normalized_title, positive_core)
+    title_core_negative = bool(normalized_title) and _has_core_hit(normalized_title, negative_core)
 
     # ------------------------------------------------------------------
     # Decision table. Rules are evaluated top-to-bottom; first match wins.
@@ -243,7 +257,7 @@ def keyword_filter(text: str, title: str = "", category="data_analysis"):
         if has_core_negative:
             decision = "needs_gemini"
             reason = "title_positive_but_body_core_negative"
-        elif supporting_negative_weight >= TITLE_POSITIVE_SUPPORTING_NEGATIVE_THRESHOLD:
+        elif supporting_negative_weight >= profile.title_positive_supporting_negative_threshold:
             # Heavy supporting-negative evidence (education, CRUD,
             # desktop-app context) can outweigh a title positive when
             # the body reads more like non-DA work. Uses a lower
@@ -271,7 +285,7 @@ def keyword_filter(text: str, title: str = "", category="data_analysis"):
     elif has_core_positive and not has_core_negative:
         if (
             core_positive_hit_count == 1
-            and supporting_positive_weight < MIN_SUPPORTING_POSITIVE_FOR_LONE_CORE
+            and supporting_positive_weight < profile.min_supporting_positive_for_lone_core
         ):
             # A single core-positive keyword with no corroborating
             # supporting evidence is too thin to trust blindly — could
@@ -279,7 +293,7 @@ def keyword_filter(text: str, title: str = "", category="data_analysis"):
             # otherwise unrelated posting).
             decision = "needs_gemini"
             reason = "lone_core_positive_insufficient_support"
-        elif supporting_negative_weight >= SUPPORTING_NEGATIVE_DOWNGRADE_THRESHOLD:
+        elif supporting_negative_weight >= profile.supporting_negative_downgrade_threshold:
             decision = "needs_gemini"
             reason = "core_positive_but_heavy_supporting_negative"
         else:
@@ -289,7 +303,7 @@ def keyword_filter(text: str, title: str = "", category="data_analysis"):
     else:
         # No core signal in either direction (and title, if present,
         # was inconclusive or absent).
-        if supporting_positive_weight >= SUPPORTING_POSITIVE_MIN_FOR_GEMINI:
+        if supporting_positive_weight >= profile.supporting_positive_min_for_gemini:
             decision = "needs_gemini"
             reason = "supporting_positive_only"
         else:
@@ -306,7 +320,6 @@ def keyword_filter(text: str, title: str = "", category="data_analysis"):
         ]
 
     return {
-        "category_id": profile.id,
         "matched": matched,
         "decision": decision,
         "reason": reason,

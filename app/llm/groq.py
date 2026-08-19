@@ -2,7 +2,7 @@ from groq import Groq
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
 
 from app.config import GROQ_API_KEY
-from app.categories.registry import get_category
+from app.llm.prompt import SYSTEM_PROMPT
 from app.llm.utils import build_prompt, parse_response
 
 
@@ -37,14 +37,14 @@ def _is_transient(exception: Exception) -> bool:
     wait=wait_fixed(1),
     reraise=True,
 )
-def _generate_response(model: str, prompt: str, profile):
+def _generate_response(model: str, prompt: str):
 
     return CLIENT.chat.completions.create(
         model=model,
         messages=[
             {
                 "role": "system",
-                "content": profile.llm_prompt.SYSTEM_PROMPT,
+                "content": SYSTEM_PROMPT,
             },
             {
                 "role": "user",
@@ -55,11 +55,8 @@ def _generate_response(model: str, prompt: str, profile):
     )
 
 
-def evaluate_job(text: str, filter_result: dict, category=None):
+def evaluate_job(text: str, filter_result: dict):
 
-    if category is None:
-        category = filter_result.get("category_id", "data_analysis")
-    profile = get_category(category) if isinstance(category, str) else category
     prompt = build_prompt(text, filter_result)
 
     last_exception = None
@@ -70,7 +67,7 @@ def evaluate_job(text: str, filter_result: dict, category=None):
 
         try:
 
-            response = _generate_response(model, prompt, profile)
+            response = _generate_response(model, prompt)
 
             return parse_response(
                 response.choices[0].message.content

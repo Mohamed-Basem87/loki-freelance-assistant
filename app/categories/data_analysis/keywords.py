@@ -1,4 +1,4 @@
-# keywords.py — Tiered classifier vocabulary
+# Data Analysis category — tiered classifier vocabulary
 #
 # Core keywords are strong standalone evidence; supporting keywords require
 # aggregation. NOISE_KEYWORDS are excluded from scoring entirely.

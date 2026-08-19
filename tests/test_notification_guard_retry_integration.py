@@ -103,7 +103,7 @@ class ScriptedGuard:
         self.outcomes = list(outcomes)
         self.calls = 0
 
-    async def allow(self, job, *, original_decision="", category="data_analysis"):
+    async def allow(self, job, *, original_decision=""):
         self.calls += 1
         outcome = self.outcomes.pop(0)
 
@@ -405,7 +405,7 @@ def test_llm_reviewed_job_bypasses_guard_on_retry(isolated_database, monkeypatch
     # IndexError, which is exactly the failure signal we want.
     guard = _wire_guard(monkeypatch, fake_private, fake_channel, outcomes=[])
 
-    def fake_evaluate_job(filter_text, result, category=None):
+    def fake_evaluate_job(filter_text, result):
         # evaluate_job is called via asyncio.to_thread(...), i.e.
         # synchronously in a worker thread -- it must be a plain
         # function, not a coroutine function.

@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 import sqlite3
+import uuid
 
 
 # The audit log lives in a SQLite database file next to docker-compose.yml
@@ -68,6 +69,9 @@ JOB_HEADERS = [
     "Gemini Decision",
     "Notification Status",
     "Final Decision",
+    "Category ID",
+    "Category Selection Method",
+    "Category Candidates",
     "Filter Time (ms)",
 ]
 
@@ -114,6 +118,9 @@ COLUMN_MAP = {
     "gemini_decision": "Gemini Decision",
     "notification_status": "Notification Status",
     "final_decision": "Final Decision",
+    "category_id": "Category ID",
+    "category_selection_method": "Category Selection Method",
+    "category_candidates": "Category Candidates",
     "filter_time_ms": "Filter Time (ms)",
 }
 
@@ -143,21 +150,6 @@ ERROR_HEADERS = [
     "Error",
 ]
 
-CATEGORY_DECISION_HEADERS = [
-    "Timestamp",
-    "Job UUID",
-    "Category ID",
-    "Category Name",
-    "Decision",
-    "Reason",
-    "Keyword Decision",
-    "AI Used",
-    "LLM Decision",
-    "LLM Confidence",
-    "Evidence JSON",
-]
-
-
 NOTIFICATION_GUARD_HEADERS = [
     "Timestamp",
     "Job UUID",
@@ -169,6 +161,43 @@ NOTIFICATION_GUARD_HEADERS = [
     "Model",
     "Response Time (ms)",
     "Error",
+]
+
+USER_HEADERS = [
+    "User ID",
+    "Telegram User ID",
+    "Username",
+    "First Name",
+    "Is Active",
+    "Created At",
+    "Updated At",
+]
+
+CATEGORY_HEADERS = [
+    "Category ID",
+    "Name",
+    "Description",
+    "Enabled",
+    "Created At",
+]
+
+USER_CATEGORY_HEADERS = [
+    "User ID",
+    "Category ID",
+    "Created At",
+]
+
+USER_NOTIFICATION_HEADERS = [
+    "Notification ID",
+    "Job UUID",
+    "User ID",
+    "Telegram User ID",
+    "Category ID",
+    "Status",
+    "Attempts",
+    "Last Error",
+    "Created At",
+    "Updated At",
 ]
 
 
@@ -185,7 +214,14 @@ _CREATE_TABLES = (
     f'CREATE TABLE IF NOT EXISTS notifications ({_column_defs(NOTIFICATION_HEADERS)});',
     f'CREATE TABLE IF NOT EXISTS errors ({_column_defs(ERROR_HEADERS)});',
     f'CREATE TABLE IF NOT EXISTS notification_guard ({_column_defs(NOTIFICATION_GUARD_HEADERS)});',
-    f'CREATE TABLE IF NOT EXISTS category_decisions ({_column_defs(CATEGORY_DECISION_HEADERS)});',
+    f'CREATE TABLE IF NOT EXISTS users ({_column_defs(USER_HEADERS, primary_key=0)});',
+    f'CREATE TABLE IF NOT EXISTS categories ({_column_defs(CATEGORY_HEADERS, primary_key=0)});',
+    f'CREATE TABLE IF NOT EXISTS user_categories ({_column_defs(USER_CATEGORY_HEADERS)});',
+    f'CREATE UNIQUE INDEX IF NOT EXISTS idx_user_categories '
+    f'ON user_categories ("User ID", "Category ID");',
+    f'CREATE TABLE IF NOT EXISTS user_notifications ({_column_defs(USER_NOTIFICATION_HEADERS, primary_key=0)});',
+    f'CREATE UNIQUE INDEX IF NOT EXISTS idx_user_notifications_job_user '
+    f'ON user_notifications ("Job UUID", "User ID");',
 )
 
 
@@ -291,6 +327,22 @@ class DBLogger:
 
         for ddl in _CREATE_TABLES:
             self._conn.execute(ddl)
+
+        self._ensure_current_columns()
+
+        # Seed the category registry into SQLite. The registry is the
+        # source of truth for available category definitions; SQLite
+        # stores the user-facing selectable catalog.
+        from app.categories.registry import enabled_categories
+        for profile in enabled_categories():
+            self.ensure_category(
+                profile.id,
+                profile.name,
+                profile.description,
+                enabled=True,
+                save=False,
+            )
+        self.save()
 
     def _table_names(self):
         return {
@@ -453,6 +505,18 @@ class DBLogger:
         if legacy_name is not None and legacy_name != current:
             self._merge_legacy_rows(table, legacy_name, headers)
 
+    def _ensure_current_columns(self):
+        """Add newly introduced columns to an already-current SQLite DB."""
+        for table, headers in (
+            ("jobs", JOB_HEADERS),
+        ):
+            existing = set(self._table_columns(table))
+            for header in headers:
+                if header not in existing:
+                    self._conn.execute(
+                        f'ALTER TABLE "{table}" ADD COLUMN "{header}" TEXT'
+                    )
+
     def _migrate_schema(self):
         """Bring any pre-existing tables up to the current schema (see
         _LEGACY_TABLE_NAMES). A no-op for a database that already
@@ -591,6 +655,9 @@ class DBLogger:
             "",
             "",
             "",
+            filter_result.get("category_id", ""),
+            filter_result.get("category_selection_method", ""),
+            filter_result.get("category_candidates", ""),
             filter_time_ms,
         ]
 
@@ -773,50 +840,6 @@ class DBLogger:
         if save:
             self.save()
 
-    def log_category_decision(
-        self,
-        job_uuid,
-        category_id,
-        category_name,
-        decision,
-        reason,
-        keyword_decision="",
-        ai_used=False,
-        llm_decision="",
-        llm_confidence="",
-        evidence_json="",
-        save=True,
-    ):
-        columns = ", ".join(f'"{header}"' for header in CATEGORY_DECISION_HEADERS)
-        placeholders = ", ".join("?" for _ in CATEGORY_DECISION_HEADERS)
-
-        self._conn.execute(
-            f"INSERT INTO category_decisions ({columns}) VALUES ({placeholders})",
-            [
-                datetime.now().isoformat(),
-                job_uuid,
-                category_id,
-                category_name,
-                decision,
-                reason,
-                keyword_decision,
-                ai_used,
-                llm_decision,
-                llm_confidence,
-                evidence_json,
-            ],
-        )
-
-        if save:
-            self.save()
-
-    def get_category_decisions(self, job_uuid):
-        cursor = self._conn.execute(
-            'SELECT * FROM category_decisions WHERE "Job UUID" = ? ORDER BY rowid',
-            (job_uuid,),
-        )
-        return [self._row_to_dict(cursor, row) for row in cursor.fetchall()]
-
     def log_notification(
         self,
         job_uuid,
@@ -920,6 +943,137 @@ class DBLogger:
             ],
         )
 
+        if save:
+            self.save()
+
+
+    # ------------------------------------------------------------------
+    # User/category routing
+    # ------------------------------------------------------------------
+
+    def ensure_category(self, category_id, name, description="", enabled=True, save=True):
+        self._conn.execute(
+            'INSERT OR IGNORE INTO categories '
+            '("Category ID", "Name", "Description", "Enabled", "Created At") '
+            'VALUES (?, ?, ?, ?, ?)',
+            (category_id, name, description, "1" if enabled else "0",
+             datetime.now().isoformat()),
+        )
+        if save:
+            self.save()
+
+    def ensure_user(self, telegram_user_id, username="", first_name="", save=True):
+        now = datetime.now().isoformat()
+        cursor = self._conn.execute(
+            'SELECT "User ID" FROM users WHERE "Telegram User ID" = ?',
+            (str(telegram_user_id),),
+        )
+        row = cursor.fetchone()
+        if row:
+            self._conn.execute(
+                'UPDATE users SET "Username" = ?, "First Name" = ?, '
+                '"Is Active" = "1", "Updated At" = ? WHERE "User ID" = ?',
+                (username or "", first_name or "", now, row[0]),
+            )
+            user_id = row[0]
+        else:
+            user_id = str(uuid.uuid4())
+            self._conn.execute(
+                'INSERT INTO users '
+                '("User ID", "Telegram User ID", "Username", "First Name", '
+                '"Is Active", "Created At", "Updated At") VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (user_id, str(telegram_user_id), username or "", first_name or "",
+                 "1", now, now),
+            )
+        if save:
+            self.save()
+        return user_id
+
+    def set_user_category(self, user_id, category_id, enabled=True, save=True):
+        if enabled:
+            self._conn.execute(
+                'INSERT OR IGNORE INTO user_categories '
+                '("User ID", "Category ID", "Created At") VALUES (?, ?, ?)',
+                (str(user_id), category_id, datetime.now().isoformat()),
+            )
+        else:
+            self._conn.execute(
+                'DELETE FROM user_categories WHERE "User ID" = ? '
+                'AND "Category ID" = ?',
+                (str(user_id), category_id),
+            )
+        if save:
+            self.save()
+
+    def get_category_subscribers(self, category_id):
+        cursor = self._conn.execute(
+            'SELECT u."User ID", u."Telegram User ID" '
+            'FROM users u JOIN user_categories uc '
+            'ON u."User ID" = uc."User ID" '
+            'WHERE uc."Category ID" = ? AND u."Is Active" = "1"',
+            (category_id,),
+        )
+        return [
+            {"user_id": row[0], "telegram_user_id": row[1]}
+            for row in cursor.fetchall()
+        ]
+
+    def queue_user_notifications(self, job_uuid, category_id, save=True):
+        subscribers = self.get_category_subscribers(category_id)
+        now = datetime.now().isoformat()
+        queued = 0
+
+        for subscriber in subscribers:
+            cursor = self._conn.execute(
+                'INSERT OR IGNORE INTO user_notifications '
+                '("Notification ID", "Job UUID", "User ID", "Telegram User ID", '
+                '"Category ID", "Status", "Attempts", "Last Error", '
+                '"Created At", "Updated At") '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (
+                    str(uuid.uuid4()),
+                    job_uuid,
+                    str(subscriber["user_id"]),
+                    str(subscriber["telegram_user_id"]),
+                    category_id,
+                    "Pending",
+                    "0",
+                    "",
+                    now,
+                    now,
+                ),
+            )
+            if cursor.rowcount:
+                queued += 1
+
+        if save:
+            self.save()
+        return queued
+
+    def get_pending_user_notifications(self, limit=100):
+        cursor = self._conn.execute(
+            'SELECT * FROM user_notifications '
+            'WHERE "Status" = "Pending" ORDER BY rowid LIMIT ?',
+            (int(limit),),
+        )
+        return [self._row_to_dict(cursor, row) for row in cursor.fetchall()]
+
+    def update_user_notification(self, notification_id, status,
+                                 attempts=None, last_error="", save=True):
+        sets = ['"Status" = ?', '"Updated At" = ?']
+        values = [status, datetime.now().isoformat()]
+        if attempts is not None:
+            sets.append('"Attempts" = ?')
+            values.append(str(attempts))
+        if last_error is not None:
+            sets.append('"Last Error" = ?')
+            values.append(last_error)
+        values.append(str(notification_id))
+        self._conn.execute(
+            f'UPDATE user_notifications SET {", ".join(sets)} '
+            f'WHERE "Notification ID" = ?',
+            values,
+        )
         if save:
             self.save()
 

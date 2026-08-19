@@ -24,9 +24,6 @@ import pytest
 
 from app.filters import keyword_filter
 from app.llm import gemini
-from app.categories.registry import get_category
-
-_DEFAULT_SYSTEM_PROMPT = get_category("data_analysis").llm_prompt.SYSTEM_PROMPT
 
 
 TEXT = """
@@ -93,11 +90,11 @@ def test_gemini_uses_system_instruction_not_string_concatenation(monkeypatch):
     assert call["model"] == "gemini-3.5-flash"
 
     assert call["config"] is not None
-    assert call["config"].system_instruction == _DEFAULT_SYSTEM_PROMPT
+    assert call["config"].system_instruction == gemini.SYSTEM_PROMPT
     assert call["config"].response_mime_type == "application/json"
 
     # The system prompt must NOT be concatenated into contents.
-    assert _DEFAULT_SYSTEM_PROMPT not in call["contents"]
+    assert gemini.SYSTEM_PROMPT not in call["contents"]
     # contents must still carry the actual job text somewhere inside
     # the built prompt (build_prompt() wraps it in <JobDescription>).
     assert "Power BI dashboard" in call["contents"]

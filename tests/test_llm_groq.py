@@ -12,9 +12,6 @@ import pytest
 
 from app.filters import keyword_filter
 from app.llm import groq
-from app.categories.registry import get_category
-
-_DEFAULT_SYSTEM_PROMPT = get_category("data_analysis").llm_prompt.SYSTEM_PROMPT
 
 
 TEXT = """
@@ -95,7 +92,7 @@ def test_groq_request_has_system_and_user_roles(monkeypatch):
 
     roles = [m["role"] for m in call["messages"]]
     assert roles == ["system", "user"]
-    assert call["messages"][0]["content"] == _DEFAULT_SYSTEM_PROMPT
+    assert call["messages"][0]["content"] == groq.SYSTEM_PROMPT
     assert "Power BI dashboard" in call["messages"][1]["content"]
 
 

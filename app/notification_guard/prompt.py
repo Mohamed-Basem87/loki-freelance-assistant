@@ -1,3 +1,4 @@
-"""Backward-compatible access to the default Data Analysis guard prompt."""
+"""Backward-compatible Data Analysis Guard prompt exports."""
+from app.categories.data_analysis.guard_prompt import SYSTEM_PROMPT, build_prompt
 
-from app.categories.data_analysis.guard_prompt import *  # noqa: F401,F403
+__all__ = ["SYSTEM_PROMPT", "build_prompt"]

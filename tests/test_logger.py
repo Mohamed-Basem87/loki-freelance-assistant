@@ -81,7 +81,7 @@ def _create_legacy_db(path):
         "1", "0",
         "Power BI(3/data_analysis)", "Excel(2/data_analysis)", "", "",
         "0", "",
-        "1", "0", "", "Sent", "Accepted", "12.5",
+        "1", "0", "", "Sent", "Accepted", "", "", "", "12.5",
     ]
     assert len(values) == len(JOB_HEADERS)
 
@@ -218,7 +218,7 @@ def test_initialize_is_idempotent_on_current_schema(tmp_path):
         "", "", "accept", "core_positive_clean", "data_analysis", "",
         "1", "0", "1", "4", "0", "1", "0",
         "Power BI(3/data_analysis)", "Excel(2/data_analysis)", "", "",
-        "0", "", "1", "0", "", "Sent", "Accepted", "9.0",
+        "0", "", "1", "0", "", "Sent", "Accepted", "", "", "", "9.0",
     ]
     conn.execute(
         f'INSERT INTO jobs ({_quoted(JOB_HEADERS)}) VALUES ({_placeholders(len(values))})',
@@ -281,7 +281,7 @@ def test_orphaned_migration_table_is_recovered_on_next_initialize(tmp_path):
         "", "", "accept", "core_positive_clean", "data_analysis", "",
         "1", "0", "1", "4", "0", "1", "0",
         "Power BI(3/data_analysis)", "Excel(2/data_analysis)", "", "",
-        "0", "", "1", "0", "", "Sent", "Accepted", "9.0",
+        "0", "", "1", "0", "", "Sent", "Accepted", "", "", "", "9.0",
     ]
     conn.execute(
         f'INSERT INTO "_migrating_jobs" ({_quoted(JOB_HEADERS)}) '
