@@ -55,6 +55,16 @@ SUPPORTING_NEGATIVE_DOWNGRADE_THRESHOLD = 14
 # notification.
 MIN_SUPPORTING_POSITIVE_FOR_LONE_CORE = 5
 
+# Branch-specific threshold for title_core_positive: when the title
+# contains a core-positive keyword but the body shows heavy
+# supporting-negative evidence (education, CRUD, desktop-app context),
+# downgrade to needs_gemini instead of auto-notifying.
+#
+# Set to 10 (daily audit 2026-08-19): catches two confirmed FPs
+# (40654831 Learning Assessment SNW=7, 40655423 C++ Desktop App
+# SNW=6) with ~5 total jobs affected and low collateral risk.
+TITLE_POSITIVE_SUPPORTING_NEGATIVE_THRESHOLD = 10
+
 
 # ------------------------------------------------------------------
 # Keyword matching helpers
@@ -231,6 +241,15 @@ def keyword_filter(text: str, title: str = ""):
         if has_core_negative:
             decision = "needs_gemini"
             reason = "title_positive_but_body_core_negative"
+        elif supporting_negative_weight >= TITLE_POSITIVE_SUPPORTING_NEGATIVE_THRESHOLD:
+            # Heavy supporting-negative evidence (education, CRUD,
+            # desktop-app context) can outweigh a title positive when
+            # the body reads more like non-DA work. Uses a lower
+            # threshold (10) than the body-level check (14) because
+            # title positives can be incidental (e.g. "Excel" as an
+            # export format).
+            decision = "needs_gemini"
+            reason = "title_core_positive_but_heavy_supporting_negative"
         else:
             decision = "notify_directly"
             reason = "title_core_positive"

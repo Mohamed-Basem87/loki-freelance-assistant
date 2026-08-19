@@ -1010,6 +1010,81 @@ WINDOW_2026_08_14_CASES = [
     },
 ]
 
+# ------------------------------------------------------------------
+# Regression checks for the title_core_positive supporting-negative
+# gap (daily audit 2026-08-19). When the title contains a
+# core-positive keyword but the body shows heavy supporting-negative
+# evidence (education, CRUD, desktop-app context), the job should
+# route to needs_gemini instead of notify_directly.
+# ------------------------------------------------------------------
+TITLE_CORE_POSITIVE_CASES = [
+    {
+        "name": "Bilingual Learning Assessment (real job 40654831)",
+        "title": "Bilingual Learning Styles Assessment",
+        "text": (
+            # Body has "data analysis" + "excel" as core positives, but
+            # education context (learning, students, student) gives SNW=7.
+            # With TITLE_POSITIVE_SUPPORTING_NEGATIVE_THRESHOLD=10, this
+            # should NOT auto-notify. The job is a VARK quiz app for
+            # students, not data analysis work.
+            "Bilingual Learning Styles Assessment. "
+            "Build a VARK learning-styles assessment for a school. "
+            "The assessment should include questions about visual, "
+            "auditory, reading/writing, and kinesthetic preferences. "
+            "Exportable results compatible with Excel for data analysis. "
+            "Must support both English and Spanish. Students will take "
+            "the assessment online and receive personalized learning "
+            "style recommendations."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "C++ Desktop App (real job 40655423)",
+        "title": "C++ Developer for Desktop Application",
+        "text": (
+            # Body has "excel" as lone core positive (SPW=7 >= 5 passes
+            # lone-core check). SNW=6 (desktop application=4, crud=2).
+            # With TITLE_POSITIVE_SUPPORTING_NEGATIVE_THRESHOLD=10, this
+            # should NOT auto-notify. The job is a C++ CRUD app that
+            # mentions Excel as an export format.
+            "C++ Developer for Desktop Application. "
+            "Build an employee-record management system in C++ with a "
+            "web-view GUI. Features: CRUD operations, credential check, "
+            "SQLite database, JSON config, export the full table to "
+            "Excel-compatible CSV. Must work offline on Windows."
+        ),
+        "expected": "needs_gemini",
+    },
+    {
+        "name": "Title core positive + low SNW still notifies",
+        "title": "Power BI Sales Dashboard",
+        "text": (
+            # Title has "powerbi" core positive. Body has minimal
+            # supporting-negative evidence (SNW < 10). Should still
+            # route to notify_directly.
+            "Power BI Sales Dashboard. "
+            "Build an interactive Power BI dashboard for sales data. "
+            "Include DAX measures, drillthrough, and executive summary. "
+            "Data from SQL Server."
+        ),
+        "expected": "notify_directly",
+    },
+    {
+        "name": "Title core positive + body core negative still routes to Gemini",
+        "title": "Excel Data Entry Automation",
+        "text": (
+            # Title has "excel" core positive. Body has "data entry"
+            # core negative. Should route to needs_gemini via
+            # title_positive_but_body_core_negative (existing rule).
+            "Excel Data Entry Automation. "
+            "Build a tool that reads data from online sources and enters "
+            "it into Excel spreadsheets automatically. Must handle "
+            "dropdown menus and form fields."
+        ),
+        "expected": "needs_gemini",
+    },
+]
+
 
 ALL_REGRESSION_CASES = (
     AUTOMATION_CASES
@@ -1023,6 +1098,7 @@ ALL_REGRESSION_CASES = (
     + WINDOW_2026_08_13_B_CASES
     + WINDOW_2026_08_13_C_CASES
     + WINDOW_2026_08_14_CASES
+    + TITLE_CORE_POSITIVE_CASES
 )
 
 
