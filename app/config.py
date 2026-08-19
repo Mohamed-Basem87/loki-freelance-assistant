@@ -115,6 +115,9 @@ _SOURCE_DISPLAY_NAMES: list[tuple[str, str]] = [
     ("mostaql", "مستقل"),
     ("nafezly", "نفذلي"),
     ("kafiil", "كفيل"),
+    ("مستقل", "مستقل"),
+    ("نفذلي", "نفذلي"),
+    ("كفيل", "كفيل"),
 ]
 
 
