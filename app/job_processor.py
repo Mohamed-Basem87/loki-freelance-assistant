@@ -79,7 +79,6 @@ def _notification_payload_from_row(job_uuid: str, row: dict) -> dict:
         "supporting_weight": row.get("Supporting Positive Weight") or 0,
         "ai_used": str(row.get("Needs Gemini") or "").strip().lower()
         in ("1", "true", "yes", "y"),
-        "category_id": row.get("Category ID") or "",
     }
 
 
@@ -552,7 +551,8 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
                     "You are a conservative freelance-project category "
                     "arbitrator. Choose the single best category from the "
                     "candidate set based on the project's primary "
-                    "deliverable. Return only the requested JSON schema."
+                    "deliverable. Return a JSON object with keys: "
+                    "selected_category, confidence, reason."
                 ),
             )
         except Exception as e:

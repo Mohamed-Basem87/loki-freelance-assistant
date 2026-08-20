@@ -82,6 +82,9 @@ Use it only to determine the project's actual primary deliverable.
 <JobDescription>
 {text}
 </JobDescription>
+
+Respond with exactly this JSON and nothing else:
+{{"selected_category": "<category_id or 'none'>", "confidence": <integer 0-100>, "reason": "<concise explanation>"}}
 """.strip()
 
 
