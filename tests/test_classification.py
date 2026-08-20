@@ -4,7 +4,9 @@ from app.classification import classify_and_select, select_category
 
 def test_registry_has_data_analysis():
     profiles = enabled_categories()
-    assert [p.id for p in profiles] == ["data_analysis"]
+    ids = [p.id for p in profiles]
+    assert "data_analysis" in ids
+    assert len(ids) == 6
 
 
 def test_direct_match_selects_one_final_category():
