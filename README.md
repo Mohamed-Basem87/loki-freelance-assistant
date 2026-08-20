@@ -397,9 +397,8 @@ The main configuration is in `.env`.
                                                                   notification
                                                                   destination
 
-  `BOT_CHANNEL_ID`                        No                      Optional public/channel
-                                                                  notification
-                                                                  destination
+  `BOT_CHANNEL_ID`                        No                      Optional Telegram channel
+                                                                  subscriber destination
 
   `GEMINI_API_KEYS`                       Yes                     Comma-separated Gemini
                                                                   API keys
@@ -503,7 +502,6 @@ app/
 ├── message_processor.py
 ├── normalize.py
 ├── notifier.py
-├── channel_notifier.py
 ├── parser.py
 ├── routing.py
 ├── state.py
@@ -528,11 +526,12 @@ Data Analysis is the current registered category. The architecture is
 ready for additional category profiles, but those profiles still need to
 be authored and registered.
 
-### 2. Existing fixed notification destinations remain
+### 2. Fixed private notifications and subscriber destinations are separate
 
-The new subscriber delivery path is additive. Existing fixed
-private/channel notifications remain in the application while the
-user-subscription system is introduced.
+The owner's fixed private destination remains unchanged and receives every
+accepted job. If `BOT_CHANNEL_ID` is configured, that channel is registered
+as a subscriber destination and receives only `BOT_CHANNEL_CATEGORY_ID`
+(default: `data_analysis`) through the same durable subscriber queue.
 
 ### 3. Total LLM outage remains fail-closed
 

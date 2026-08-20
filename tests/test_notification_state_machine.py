@@ -6,18 +6,17 @@ process_job() / _resume_pending_notifications_unlocked() /
 retry_incomplete_notifications() interaction (not a fake standing in
 for any of them):
 
-    Pending -> Private SENT -> Channel FAILED -> Retry -> Channel SENT
-    -> Complete
+    Pending -> Private SENT -> Complete
 
-and the analogous suppression path:
+and the analogous retry/suppression paths:
 
-    Pending -> Private SUPPRESSED -> Channel unresolved -> Retry
-    -> Channel SUPPRESSED -> Suppressed
+    Pending -> Private FAILED -> Retry -> Private SENT -> Complete
 
-Both protect the same thing the audit called out: that the already-
-resolved leg is durably recorded and is never revisited (resent, or
-re-suppressed by asking the guard again) once the retry sweep picks
-the job back up.
+    Pending -> Private SUPPRESSED -> Suppressed
+
+Both protect the same thing the audit called out: that the notification
+status is durably recorded and survives process crashes, with the retry
+sweep picking up any incomplete workflow.
 """
 
 import asyncio
@@ -67,36 +66,24 @@ def _build_direct_job(url):
     }
 
 
-def test_full_lifecycle_pending_sent_failed_retry_complete(
+def test_full_lifecycle_pending_sent_complete(
     isolated_database, monkeypatch
 ):
+    """A Pending notification that succeeds on the first attempt must
+    transition straight to Complete."""
     log = isolated_database
 
     private_calls = []
-    channel_calls = []
     pending_status_seen = {}
 
     async def fake_private(**kwargs):
-        # By the time the private leg is attempted, the row must
-        # already have been durably marked "Pending" -- persisted
-        # BEFORE the external side effect, per process_job()'s own
-        # comment: "If Loki crashes before the first send, the next
-        # recovery can resume the workflow."
         row = await logger.run(logger.get_job, kwargs["job_uuid"])
         pending_status_seen["status"] = row["Notification Status"]
 
         private_calls.append(kwargs["job_uuid"])
         return True
 
-    channel_attempts = {"n": 0}
-
-    async def fake_channel(**kwargs):
-        channel_calls.append(kwargs["job_uuid"])
-        channel_attempts["n"] += 1
-        return channel_attempts["n"] >= 2  # fails once, then succeeds
-
     monkeypatch.setattr(job_processor, "send_notification", fake_private)
-    monkeypatch.setattr(job_processor, "send_channel_notification", fake_channel)
 
     job = _build_direct_job(url="https://example.invalid/lifecycle-allow")
     job_uuid = _make_job_uuid("-100801", "lifecycle-1")
@@ -108,57 +95,76 @@ def test_full_lifecycle_pending_sent_failed_retry_complete(
     assert pending_status_seen["status"] == "Pending"
 
     row = log.get_job(job_uuid)
-    assert row["Notification Status"] == "Telegram: Sent; Telegram Channel: Failed"
-    assert private_calls == [job_uuid]
-    assert channel_calls == [job_uuid]
-
-    retried = asyncio.run(retry_incomplete_notifications())
-
-    assert retried == 1
-    # The already-successful private leg must never be resent.
-    assert private_calls == [job_uuid]
-    assert channel_calls == [job_uuid, job_uuid]
-
-    row = log.get_job(job_uuid)
     assert row["Notification Status"] == "Complete"
+    assert private_calls == [job_uuid]
 
     # A further sweep must be a complete no-op: Complete rows are not
     # even selected by get_incomplete_notification_jobs().
     retried_again = asyncio.run(retry_incomplete_notifications())
     assert retried_again == 0
     assert private_calls == [job_uuid]
-    assert channel_calls == [job_uuid, job_uuid]
 
 
-def test_full_lifecycle_pending_suppressed_retry_suppressed(
+def test_full_lifecycle_pending_failed_retry_sent_complete(
     isolated_database, monkeypatch
 ):
     """
-    The suppression analog. The private leg is suppressed by the
-    guard on the first pass (recorded durably as "Telegram:
-    Suppressed", not "Failed" -- see _was_suppressed_by_guard); the
-    channel leg is left unresolved by that same pass (simulating a
-    restart between the two legs, exactly like
-    _resume_pending_notifications_unlocked is designed to resume).
-    The retry sweep must resolve the channel leg using the persisted
-    guard decision -- ending in "Suppressed", not "Failed" and not
-    re-sent.
+    A notification that fails on the first attempt must be retried by
+    the sweep and succeed on the second attempt.
+    """
+    log = isolated_database
+
+    private_attempts = {"n": 0}
+
+    async def fake_private(**kwargs):
+        private_attempts["n"] += 1
+        return private_attempts["n"] >= 2  # fails first, then succeeds
+
+    monkeypatch.setattr(job_processor, "send_notification", fake_private)
+
+    job = _build_direct_job(url="https://example.invalid/lifecycle-retry")
+    job_uuid = _make_job_uuid("-100803", "lifecycle-retry-1")
+
+    asyncio.run(
+        process_job(job=job, job_id="lifecycle-retry-1", identity_source="-100803")
+    )
+
+    row = log.get_job(job_uuid)
+    assert row["Notification Status"] == "Telegram: Failed"
+    assert private_attempts["n"] == 1
+
+    retried = asyncio.run(retry_incomplete_notifications())
+
+    assert retried == 1
+    assert private_attempts["n"] == 2
+
+    row = log.get_job(job_uuid)
+    assert row["Notification Status"] == "Complete"
+
+    # A further sweep must be a complete no-op.
+    retried_again = asyncio.run(retry_incomplete_notifications())
+    assert retried_again == 0
+    assert private_attempts["n"] == 2
+
+
+def test_full_lifecycle_pending_suppressed(
+    isolated_database, monkeypatch
+):
+    """
+    The suppression path. The guard denies the notification, which is
+    recorded durably as "Telegram: Suppressed" (via _was_suppressed_by_guard).
+    The job must end up "Suppressed" and the sweep must not touch it
+    again.
     """
     log = isolated_database
 
     private_calls = []
-    channel_calls = []
 
     async def fake_private(**kwargs):
         private_calls.append(kwargs["job_uuid"])
         return False  # denied
 
-    async def fake_channel(**kwargs):
-        channel_calls.append(kwargs["job_uuid"])
-        return False  # denied
-
     monkeypatch.setattr(job_processor, "send_notification", fake_private)
-    monkeypatch.setattr(job_processor, "send_channel_notification", fake_channel)
 
     job_uuid = _make_job_uuid("-100802", "lifecycle-suppress-1")
 
@@ -210,30 +216,14 @@ def test_full_lifecycle_pending_suppressed_retry_suppressed(
         )
     )
 
-    # Simulate the outcome of an earlier pass that resolved the
-    # private leg (denied + suppressed via the persisted decision)
-    # and then stopped -- e.g. a restart before the channel leg was
-    # ever attempted. This is exactly the durable row shape
-    # _resume_pending_notifications_unlocked is designed to resume.
-    log.update_job(
-        job_uuid,
-        notification_status="Telegram: Suppressed",
-        save=True,
-    )
-
     row = log.get_job(job_uuid)
-    assert row["Notification Status"] == "Telegram: Suppressed"
+    assert row["Notification Status"] == "Pending"
     assert private_calls == []
-    assert channel_calls == []
 
     retried = asyncio.run(retry_incomplete_notifications())
 
     assert retried == 1
-    assert private_calls == [], (
-        "private is already resolved (Suppressed) -- it must never be "
-        "attempted at all, let alone resent"
-    )
-    assert channel_calls == [job_uuid]
+    assert private_calls == [job_uuid]
 
     row = log.get_job(job_uuid)
     assert row["Notification Status"] == "Suppressed"

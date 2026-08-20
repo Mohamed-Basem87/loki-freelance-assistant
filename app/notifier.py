@@ -21,6 +21,7 @@ async def send_notification(
     url: str = "",
     budget: str = "",
     categories=None,
+    category_id: str = "",
     core_hit_count: int = 0,
     supporting_weight: int = 0,
     ai_used: bool = False,

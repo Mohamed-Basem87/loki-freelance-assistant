@@ -168,6 +168,7 @@ USER_HEADERS = [
     "Telegram User ID",
     "Username",
     "First Name",
+    "Destination Type",
     "Is Active",
     "Created At",
     "Updated At",
@@ -510,6 +511,7 @@ class DBLogger:
         """Add newly introduced columns to an already-current SQLite DB."""
         for table, headers in (
             ("jobs", JOB_HEADERS),
+            ("users", USER_HEADERS),
             ("user_notifications", USER_NOTIFICATION_HEADERS),
         ):
             existing = set(self._table_columns(table))
@@ -547,9 +549,9 @@ class DBLogger:
         log_notification_guard, save, ...) on the single dedicated
         logger thread and await its result.
 
-        Callers (job_processor, message_processor, notifier,
-        channel_notifier, the Telegram handlers, the FreeHub worker,
-        the notification guard) must use this instead of calling the
+        Callers (job_processor, message_processor, notifier, the Telegram
+        handlers, the FreeHub worker, the subscriber worker, and the
+        notification guard) must use this instead of calling the
         methods directly -- routing everything through the one worker
         thread makes every read/write strictly serial and keeps all
         blocking database I/O off the event loop.
@@ -735,9 +737,11 @@ class DBLogger:
 
     def get_incomplete_notification_jobs(self):
         """
-        Return every Jobs row whose notification workflow is durably
-        recorded as started but not yet "Complete" -- i.e. "Pending"
-        or containing a "Failed" leg for either channel.
+        Return every Jobs row whose private notification workflow is
+        durably recorded as started but not yet "Complete" -- i.e.
+        "Pending" or containing a failed Telegram leg. Category
+        subscriber delivery is durable in user_notifications and is
+        retried by the subscriber worker independently.
 
         Nothing in the codebase previously swept this set: a
         transient Telegram rate limit, a blocked chat ID, or a
@@ -974,7 +978,8 @@ class DBLogger:
         if row:
             self._conn.execute(
                 'UPDATE users SET "Username" = ?, "First Name" = ?, '
-                '"Is Active" = "1", "Updated At" = ? WHERE "User ID" = ?',
+                '"Destination Type" = "user", "Is Active" = "1", "Updated At" = ? '
+                'WHERE "User ID" = ?',
                 (username or "", first_name or "", now, row[0]),
             )
             user_id = row[0]
@@ -983,13 +988,53 @@ class DBLogger:
             self._conn.execute(
                 'INSERT INTO users '
                 '("User ID", "Telegram User ID", "Username", "First Name", '
-                '"Is Active", "Created At", "Updated At") VALUES (?, ?, ?, ?, ?, ?, ?)',
+                '"Destination Type", "Is Active", "Created At", "Updated At") '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                 (user_id, str(telegram_user_id), username or "", first_name or "",
-                 "1", now, now),
+                 "user", "1", now, now),
             )
         if save:
             self.save()
         return user_id
+
+    def ensure_channel_destination(self, telegram_chat_id, title="", save=True):
+        """Register a Telegram channel as a normal subscription destination."""
+        now = datetime.now().isoformat()
+        chat_id = str(telegram_chat_id)
+        cursor = self._conn.execute(
+            'SELECT "User ID" FROM users WHERE "Telegram User ID" = ?',
+            (chat_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            destination_id = row[0]
+            self._conn.execute(
+                'UPDATE users SET "Username" = ?, "First Name" = ?, '
+                '"Destination Type" = "channel", "Is Active" = "1", "Updated At" = ? '
+                'WHERE "User ID" = ?',
+                (title or "", title or "", now, destination_id),
+            )
+        else:
+            destination_id = str(uuid.uuid4())
+            self._conn.execute(
+                'INSERT INTO users '
+                '("User ID", "Telegram User ID", "Username", "First Name", '
+                '"Destination Type", "Is Active", "Created At", "Updated At") '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (destination_id, chat_id, title or "", title or "",
+                 "channel", "1", now, now),
+            )
+        if save:
+            self.save()
+        return destination_id
+
+    def get_destination(self, telegram_chat_id):
+        cursor = self._conn.execute(
+            'SELECT * FROM users WHERE "Telegram User ID" = ?',
+            (str(telegram_chat_id),),
+        )
+        row = cursor.fetchone()
+        return self._row_to_dict(cursor, row) if row else None
 
     def set_user_category(self, user_id, category_id, enabled=True, save=True):
         if enabled:
@@ -1009,14 +1054,18 @@ class DBLogger:
 
     def get_category_subscribers(self, category_id):
         cursor = self._conn.execute(
-            'SELECT u."User ID", u."Telegram User ID" '
+            'SELECT u."User ID", u."Telegram User ID", u."Destination Type" '
             'FROM users u JOIN user_categories uc '
             'ON u."User ID" = uc."User ID" '
             'WHERE uc."Category ID" = ? AND u."Is Active" = "1"',
             (category_id,),
         )
         return [
-            {"user_id": row[0], "telegram_user_id": row[1]}
+            {
+                "user_id": row[0],
+                "telegram_user_id": row[1],
+                "destination_type": row[2] or "user",
+            }
             for row in cursor.fetchall()
         ]
 
@@ -1061,10 +1110,13 @@ class DBLogger:
         return [row[0] for row in cursor.fetchall()]
 
     def set_user_active(self, telegram_user_id, active, save=True):
+        self.set_destination_active(telegram_user_id, active, save=save)
+
+    def set_destination_active(self, telegram_chat_id, active, save=True):
         self._conn.execute(
             'UPDATE users SET "Is Active" = ?, "Updated At" = ? '
             'WHERE "Telegram User ID" = ?',
-            ("1" if active else "0", datetime.now().isoformat(), str(telegram_user_id)),
+            ("1" if active else "0", datetime.now().isoformat(), str(telegram_chat_id)),
         )
         if save:
             self.save()
@@ -1082,12 +1134,15 @@ class DBLogger:
         """Claim a batch for delivery; all DB access is serialized."""
         now = datetime.now().isoformat()
         cursor = self._conn.execute(
-            'SELECT * FROM user_notifications '
-            'WHERE ("Status" = "Pending" OR "Status" = "Failed") '
-            'AND CAST("Attempts" AS INTEGER) < 5 '
-            'AND ("Next Attempt At" IS NULL OR "Next Attempt At" = "" '
-            'OR "Next Attempt At" <= ?) '
-            'ORDER BY rowid LIMIT ?',
+            'SELECT un.*, u."Destination Type" AS "Destination Type" '
+            'FROM user_notifications un '
+            'JOIN users u ON u."User ID" = un."User ID" '
+            'WHERE (un."Status" = "Pending" OR un."Status" = "Failed") '
+            'AND u."Is Active" = "1" '
+            'AND CAST(un."Attempts" AS INTEGER) < 5 '
+            'AND (un."Next Attempt At" IS NULL OR un."Next Attempt At" = "" '
+            'OR un."Next Attempt At" <= ?) '
+            'ORDER BY un.rowid LIMIT ?',
             (now, int(limit)),
         )
         rows = [self._row_to_dict(cursor, row) for row in cursor.fetchall()]

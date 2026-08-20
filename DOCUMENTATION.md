@@ -102,16 +102,20 @@ freehub_worker.py     │
             │
       ┌─────┴──────────────┐
       ▼                    ▼
-fixed notification     user routing
-destinations                │
-                            ▼
-                    user_notifications
-                            │
-                            ▼
-                   user_notification_worker
-                            │
-                            ▼
-                       Telegram Bot API
+private notification    user routing
+      │                    │
+      ▼                    ▼
+ BOT_CHAT_ID         user_notifications
+                           │
+                           ▼
+                  user_notification_worker
+                           │
+                           ▼
+                      Telegram Bot API
+                           │
+                    ┌──────┴──────┐
+                    ▼             ▼
+               subscribers   optional DA channel
 ```
 
 The central boundary remains:
@@ -187,9 +191,8 @@ configuration is loaded separately by
                                                                   notification
                                                                   destination
 
-  `BOT_CHANNEL_ID`                        No                      Optional public/channel
-                                                                  notification
-                                                                  destination
+  `BOT_CHANNEL_ID`                        No                      Optional Telegram channel
+                                                                  subscriber destination
 
   `GEMINI_API_KEYS`                       Yes                     Comma-separated Gemini
                                                                   API keys
@@ -292,8 +295,9 @@ application.
   `app/notifier.py`                   Existing fixed private notification
                                       path
 
-  `app/channel_notifier.py`           Existing public/channel
-                                      notification path
+  `app/user_bot.py`                   User commands, category subscriptions,
+                                      subscriber queue delivery, and optional
+                                      channel registration
 
   `app/state.py`                      Persistent Telegram/FreeHub state
 
@@ -726,7 +730,7 @@ can be retried.
 ## Fixed notification recovery
 
 The existing notification retry sweep continues to handle the original
-private/channel notification state machine.
+private notification state machine and durable subscriber queue.
 
 ## LLM failure
 
@@ -844,11 +848,15 @@ prompt.
 The architecture is ready for additional categories. Their
 domain-specific profiles still need to be created and registered.
 
-### Existing fixed notifications remain
+### Private and channel notification roles
 
-The user-subscription delivery path is additive. Existing fixed
-private/channel notification behavior remains active during the
-migration.
+The owner's private notification path remains fixed and unchanged: every
+accepted job is sent to `BOT_CHAT_ID`. Public category channels are no
+longer a separate fixed notification path. When `BOT_CHANNEL_ID` is
+configured, the bot verifies that it is an administrator, registers the
+channel in the `users` table as a `channel` destination, and subscribes it
+to `BOT_CHANNEL_CATEGORY_ID` (default: `data_analysis`). Delivery then uses
+the same durable `user_notifications` queue as normal subscribers.
 
 ### Classification outage is fail-closed
 

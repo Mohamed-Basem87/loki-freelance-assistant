@@ -7,8 +7,7 @@ scheme changed from job["source"] directly to a stable
 identity_source; historical rows logged under the old scheme must
 still be recognized as duplicates). No app.config dependency issues
 here beyond what's already covered by conftest.py (importing
-app.job_processor pulls in app.notifier/app.channel_notifier ->
-app.config).
+app.job_processor pulls in app.notifier -> app.config).
 
 The isolated_workbook fixture and REJECT_TEXT fixture text mirror
 test_pipeline.py exactly -- all process_job() calls below use text the
@@ -429,23 +428,15 @@ def test_pending_notification_is_resumed_without_reprocessing(
         save=True,
     )
 
-    sends = {"private": 0, "channel": 0}
+    sends = {"private": 0}
 
     async def fake_private(**kwargs):
         sends["private"] += 1
         return True
 
-    async def fake_channel(**kwargs):
-        sends["channel"] += 1
-        return True
-
     monkeypatch.setattr(
         "app.job_processor.send_notification",
         fake_private,
-    )
-    monkeypatch.setattr(
-        "app.job_processor.send_channel_notification",
-        fake_channel,
     )
 
     asyncio.run(
@@ -456,7 +447,7 @@ def test_pending_notification_is_resumed_without_reprocessing(
         )
     )
 
-    assert sends == {"private": 1, "channel": 1}
+    assert sends["private"] == 1
     row = log.get_job(job_uuid)
     assert row["Notification Status"] == "Complete"
 
@@ -512,25 +503,18 @@ def test_retry_sweep_resumes_a_previously_failed_notification(
         log, job_uuid, "retry-1", "Test Channel", status="Telegram: Failed"
     )
 
-    sends = {"private": 0, "channel": 0}
+    sends = {"private": 0}
 
     async def fake_private(**kwargs):
         sends["private"] += 1
         return True
 
-    async def fake_channel(**kwargs):
-        sends["channel"] += 1
-        return True
-
     monkeypatch.setattr("app.job_processor.send_notification", fake_private)
-    monkeypatch.setattr(
-        "app.job_processor.send_channel_notification", fake_channel
-    )
 
     retried = asyncio.run(retry_incomplete_notifications())
 
     assert retried == 1
-    assert sends == {"private": 1, "channel": 1}
+    assert sends["private"] == 1
 
     row = log.get_job(job_uuid)
     assert row["Notification Status"] == "Complete"
@@ -557,7 +541,7 @@ def test_retry_sweep_cannot_duplicate_a_live_notification(
 
     # Use a real accepted job shape so process_job() enters the
     # notification workflow.
-    sends = {"private": 0, "channel": 0}
+    sends = {"private": 0}
     private_started = asyncio.Event()
     release_private = asyncio.Event()
 
@@ -567,14 +551,7 @@ def test_retry_sweep_cannot_duplicate_a_live_notification(
         await release_private.wait()
         return True
 
-    async def fake_channel(**kwargs):
-        sends["channel"] += 1
-        return True
-
     monkeypatch.setattr("app.job_processor.send_notification", fake_private)
-    monkeypatch.setattr(
-        "app.job_processor.send_channel_notification", fake_channel
-    )
 
     async def scenario():
         live = asyncio.create_task(
@@ -594,7 +571,7 @@ def test_retry_sweep_cannot_duplicate_a_live_notification(
 
     asyncio.run(scenario())
 
-    assert sends == {"private": 1, "channel": 1}
+    assert sends == {"private": 1}
     row = log.get_job(job_uuid)
     assert row["Notification Status"] == "Complete"
 
@@ -624,9 +601,6 @@ def test_retry_sweep_ignores_complete_and_suppressed_jobs(
         return True
 
     monkeypatch.setattr("app.job_processor.send_notification", fake_private)
-    monkeypatch.setattr(
-        "app.job_processor.send_channel_notification", fake_private
-    )
 
     retried = asyncio.run(retry_incomplete_notifications())
 
@@ -671,9 +645,6 @@ def test_retry_sweep_marks_guard_rejected_job_suppressed_not_failed(
         return False
 
     monkeypatch.setattr("app.job_processor.send_notification", denying_send)
-    monkeypatch.setattr(
-        "app.job_processor.send_channel_notification", denying_send
-    )
 
     retried = asyncio.run(retry_incomplete_notifications())
     assert retried == 1
@@ -785,7 +756,6 @@ def test_accepted_job_without_notification_status_resumes_notification(
         return True
 
     monkeypatch.setattr("app.job_processor.send_notification", fake_send)
-    monkeypatch.setattr("app.job_processor.send_channel_notification", fake_send)
 
     asyncio.run(
         process_job(

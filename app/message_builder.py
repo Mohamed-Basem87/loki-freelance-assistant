@@ -78,12 +78,10 @@ def build_job_message(
     channel_style: bool = False,
 ) -> str:
     """
-    Build the HTML-formatted job notification message shared by both
-    the direct (personal chat) and channel notifiers. `channel_style`
-    switches between the two previously-independent formats (hashtag
-    categories + no AI/Direct header vs. plain categories + header),
-    which is the only real difference between what notifier.py and
-    channel_notifier.py used to build separately.
+    Build the HTML-formatted job notification message shared by the
+    direct private notifier and subscriber destinations. `channel_style`
+    selects the public/subscriber presentation used by category
+    subscribers, including the configured public channel.
 
     The full message (not just `description`) is bounded to Telegram's
     message-length limit -- title/budget/reason can all be arbitrarily

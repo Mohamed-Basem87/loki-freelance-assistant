@@ -88,7 +88,6 @@ async def run_guard_test(
     integration = NotificationGuardIntegration(guard)
 
     private = integration.wrap_private(fake_private)
-    channel = integration.wrap_channel(fake_channel)
 
     kwargs = {
         "job_uuid": "job-1",
@@ -100,24 +99,21 @@ async def run_guard_test(
     }
 
     private_result = await private(**kwargs)
-    channel_result = await channel(**kwargs)
 
     return (
         guard,
         private_result,
-        channel_result,
     )
 
 
 def test_direct_notification_allowed(isolated_database):
 
-    guard, private, channel = asyncio.run(
+    guard, private = asyncio.run(
         run_guard_test(True)
     )
 
     assert guard.calls == 1
     assert private is True
-    assert channel is True
 
     assert guard.jobs[0]["job"]["job_uuid"] == "job-1"
     assert guard.jobs[0]["original_decision"] == "Accepted"
@@ -125,20 +121,19 @@ def test_direct_notification_allowed(isolated_database):
 
 def test_direct_notification_rejected(isolated_database):
 
-    guard, private, channel = asyncio.run(
+    guard, private = asyncio.run(
         run_guard_test(False)
     )
 
     assert guard.calls == 1
     assert private is False
-    assert channel is False
 
     assert guard.jobs[0]["job"]["job_uuid"] == "job-1"
 
 
 def test_llm_review_bypasses_guard(isolated_database):
 
-    guard, private, channel = asyncio.run(
+    guard, private = asyncio.run(
         run_guard_test(
             False,
             ai_used=True,
@@ -147,4 +142,3 @@ def test_llm_review_bypasses_guard(isolated_database):
 
     assert guard.calls == 0
     assert private is True
-    assert channel is True

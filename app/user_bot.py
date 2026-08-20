@@ -9,7 +9,7 @@ from telegram.error import Forbidden, RetryAfter, TelegramError
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 from app.categories.registry import enabled_categories
-from app.config import BOT_TOKEN
+from app.config import BOT_CHANNEL_CATEGORY_ID, BOT_CHANNEL_ID, BOT_TOKEN
 from app.logger import logger
 from app.message_builder import build_job_message
 
@@ -147,9 +147,58 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _render_categories(query, internal_id)
 
 
+async def register_configured_channel(application: Application):
+    """Verify and register the configured public channel as a subscriber."""
+    if BOT_CHANNEL_ID is None:
+        return
+
+    valid_ids = {profile.id for profile in enabled_categories()}
+    if BOT_CHANNEL_CATEGORY_ID not in valid_ids:
+        raise RuntimeError(
+            f"BOT_CHANNEL_CATEGORY_ID '{BOT_CHANNEL_CATEGORY_ID}' is not an enabled category"
+        )
+
+    bot_user = await application.bot.get_me()
+    chat = await application.bot.get_chat(BOT_CHANNEL_ID)
+    member = await application.bot.get_chat_member(BOT_CHANNEL_ID, bot_user.id)
+
+    if member.status not in {"administrator", "creator"}:
+        raise RuntimeError(
+            f"Bot is not an admin of BOT_CHANNEL_ID={BOT_CHANNEL_ID} "
+            f"(status={member.status})"
+        )
+
+    can_post = getattr(member, "can_post_messages", None)
+    if can_post is False:
+        raise RuntimeError(
+            f"Bot is an administrator of BOT_CHANNEL_ID={BOT_CHANNEL_ID} "
+            "but does not have permission to post messages"
+        )
+
+    destination_id = await logger.run(
+        logger.ensure_channel_destination,
+        BOT_CHANNEL_ID,
+        getattr(chat, "title", "") or "",
+        True,
+    )
+    await logger.run(
+        logger.set_user_category,
+        destination_id,
+        BOT_CHANNEL_CATEGORY_ID,
+        True,
+        True,
+    )
+
+    print(
+        f"[SUBSCRIBER CHANNEL] Registered '{getattr(chat, 'title', '')}' "
+        f"({BOT_CHANNEL_ID}) under category '{BOT_CHANNEL_CATEGORY_ID}'"
+    )
+
+
 async def post_init(application: Application):
     # Recover notifications that were in-flight when Loki stopped.
     await logger.run(logger.reset_sending_user_notifications)
+    await register_configured_channel(application)
 
 
 def build_user_notification(job_row, category_id):
@@ -236,7 +285,7 @@ async def _send_one(notification):
     except Forbidden:
         # User blocked the bot or otherwise made the chat unavailable.
         await logger.run(
-            logger.set_user_active,
+            logger.set_destination_active,
             telegram_user_id,
             False,
             False,

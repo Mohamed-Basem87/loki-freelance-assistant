@@ -90,16 +90,6 @@ class NotificationGuardIntegration:
 
         return wrapped
 
-    def wrap_channel(self, original):
-
-        async def wrapped(**kwargs):
-
-            if not await self._allow(kwargs):
-                return False
-
-            return await original(**kwargs)
-
-        return wrapped
     def wrap_routing(self, original):
 
         async def wrapped(job_uuid, category_id):
@@ -143,14 +133,8 @@ def install():
         )
     )
 
-    job_processor.send_channel_notification = (
-        integration.wrap_channel(
-            job_processor.send_channel_notification
-        )
-    )
-
-    # Subscriber routing is a third notification destination. It must
-    # use the same Guard decision as private/channel delivery.
+    # Subscriber routing is the category-based delivery path. It must
+    # use the same Guard decision as the private notification.
     job_processor.queue_for_category = integration.wrap_routing(
         job_processor.queue_for_category
     )

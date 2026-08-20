@@ -442,20 +442,12 @@ def test_recovery_and_live_seeing_the_same_message_is_processed_once(
     logger.initialize()
 
     private_sends = {"count": 0}
-    channel_sends = {"count": 0}
 
     async def fake_private(**kwargs):
         private_sends["count"] += 1
         return True
 
-    async def fake_channel(**kwargs):
-        channel_sends["count"] += 1
-        return True
-
     monkeypatch.setattr("app.job_processor.send_notification", fake_private)
-    monkeypatch.setattr(
-        "app.job_processor.send_channel_notification", fake_channel
-    )
 
     class FakeChat:
         title = "Race Channel"
@@ -498,9 +490,6 @@ def test_recovery_and_live_seeing_the_same_message_is_processed_once(
         assert row["Notification Status"] == "Complete"
         assert private_sends["count"] == 1, (
             "no duplicate private notification for the same message"
-        )
-        assert channel_sends["count"] == 1, (
-            "no duplicate channel notification for the same message"
         )
     finally:
         logger.close()

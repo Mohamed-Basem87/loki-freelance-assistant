@@ -3,7 +3,7 @@ from telegram import Bot
 from app.config import BOT_TOKEN
 
 
-# Shared across notifier.py and channel_notifier.py -- both send to
-# the same bot account, so there's no reason to hold two separate
-# Bot/HTTP-client instances for the same token.
+# Shared bot instance used by the private notifier and subscriber worker.
+# Public channels are subscriber destinations, so there is no separate
+# direct channel notifier.
 bot = Bot(BOT_TOKEN)

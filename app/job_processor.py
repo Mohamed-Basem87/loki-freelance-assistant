@@ -4,7 +4,6 @@ import time
 import uuid
 import weakref
 
-from app.channel_notifier import send_channel_notification
 from app.categories.registry import get_category
 from app.classification import classify_and_select
 from app.llm.manager import arbitrate_category
@@ -75,6 +74,7 @@ def _notification_payload_from_row(job_uuid: str, row: dict) -> dict:
         # a value; the notification remains otherwise identical.
         "budget": "",
         "categories": categories,
+        "category_id": row.get("Category ID") or "",
         "core_hit_count": row.get("Core Positive Hit Count") or 0,
         "supporting_weight": row.get("Supporting Positive Weight") or 0,
         "ai_used": str(row.get("Needs Gemini") or "").strip().lower()
@@ -82,12 +82,8 @@ def _notification_payload_from_row(job_uuid: str, row: dict) -> dict:
     }
 
 
-def _merge_notification_status(
-    current: str,
-    platform: str,
-    status: str,
-) -> str:
-    """Replace one platform's durable notification status in-place."""
+def _merge_notification_status(current: str, platform: str, status: str) -> str:
+    """Replace one private notification platform status in-place."""
     entries = {}
     for part in (current or "").split(";"):
         part = part.strip()
@@ -96,11 +92,9 @@ def _merge_notification_status(
             entries[key] = value
 
     entries[platform] = status
-
-    order = ("Telegram", "Telegram Channel")
     return "; ".join(
         f"{key}: {entries[key]}"
-        for key in order
+        for key in ("Telegram",)
         if key in entries
     )
 
@@ -113,20 +107,8 @@ async def _record_notification_result(
     suppressed: bool = False,
 ) -> str:
     leg_status = "Sent" if sent else ("Suppressed" if suppressed else "Failed")
-
-    status = _merge_notification_status(
-        current_status,
-        platform,
-        leg_status,
-    )
-
-    await logger.run(
-        logger.update_job,
-        job_uuid,
-        notification_status=status,
-        save=True,
-    )
-
+    status = _merge_notification_status(current_status, platform, leg_status)
+    await logger.run(logger.update_job, job_uuid, notification_status=status, save=True)
     return status
 
 
@@ -147,20 +129,12 @@ async def _was_suppressed_by_guard(job_uuid: str) -> bool:
 
 
 async def _resume_pending_notifications_unlocked(job_uuid: str, row: dict):
-    """
-    Resume a notification workflow that was durably recorded as
-    pending or partially complete before an unclean shutdown, or that
-    the periodic retry sweep (retry_incomplete_notifications) picked
-    up after a prior send attempt failed.
+    """Resume the owner's private notification workflow.
 
-    Notification delivery itself is an external side effect and
-    cannot be made transactionally atomic with the audit log. We
-    therefore persist the pending state before delivery and persist
-    each successful (or permanently suppressed) channel immediately
-    afterwards. This turns the large end-of-job crash window into a
-    small per-send window and, after a restart or a retry sweep pass,
-    avoids re-sending channels whose outcome was already durably
-    recorded.
+    Category subscribers, including the configured public DA channel, are
+    delivered independently by the durable user_notification queue. This
+    keeps the owner's private inbox unchanged: every accepted job still
+    goes directly to BOT_CHAT_ID.
     """
     status = row.get("Notification Status") or ""
     if status in ("Complete", "Suppressed"):
@@ -168,13 +142,18 @@ async def _resume_pending_notifications_unlocked(job_uuid: str, row: dict):
 
     payload = _notification_payload_from_row(job_uuid, row)
 
-    private_resolved = "Telegram: Sent" in status or "Telegram: Suppressed" in status
-    channel_resolved = (
-        "Telegram Channel: Sent" in status or "Telegram Channel: Suppressed" in status
-    )
+    # Re-queue the category subscription fan-out on every recovery pass.
+    # user_notifications has a UNIQUE (Job UUID, User ID) constraint, so
+    # this is idempotent and closes the crash window between durable job
+    # state and subscriber queue creation.
+    category_id = row.get("Category ID") or ""
+    if category_id:
+        await queue_for_category(job_uuid, category_id)
 
+    private_resolved = (
+        "Telegram: Sent" in status or "Telegram: Suppressed" in status
+    )
     private_suppressed = "Telegram: Suppressed" in status
-    channel_suppressed = "Telegram Channel: Suppressed" in status
 
     if not private_resolved:
         sent_direct = await send_notification(**payload)
@@ -197,33 +176,8 @@ async def _resume_pending_notifications_unlocked(job_uuid: str, row: dict):
         private_resolved = sent_direct or suppressed
         private_suppressed = suppressed and not sent_direct
 
-    if not channel_resolved:
-        sent_channel = await send_channel_notification(**payload)
-        suppressed = (
-            False if sent_channel else await _was_suppressed_by_guard(job_uuid)
-        )
-
-        await logger.run(
-            logger.log_notification,
-            job_uuid,
-            "Telegram Channel",
-            "Sent" if sent_channel else ("Suppressed" if suppressed else "Failed"),
-            save=False,
-        )
-        status = await _record_notification_result(
-            job_uuid,
-            status,
-            "Telegram Channel",
-            sent_channel,
-            suppressed=suppressed,
-        )
-        channel_resolved = sent_channel or suppressed
-        channel_suppressed = suppressed and not sent_channel
-
-    if private_resolved and channel_resolved:
-        final_status = (
-            "Suppressed" if (private_suppressed or channel_suppressed) else "Complete"
-        )
+    if private_resolved:
+        final_status = "Suppressed" if private_suppressed else "Complete"
         await logger.run(
             logger.update_job,
             job_uuid,
@@ -629,12 +583,10 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
 
     if should_notify:
         final_category_id = result.get("category_id", "")
-        if final_category_id:
-            await queue_for_category(job_uuid, final_category_id)
 
         # Persist the fact that this job requires notification BEFORE
-        # creating the external side effect. If Loki crashes before
-        # the first send, the next recovery can resume the workflow.
+        # creating either the subscriber queue or the private external
+        # side effect. Recovery can therefore re-establish both paths.
         await logger.run(
             logger.update_job,
             job_uuid,
@@ -652,6 +604,7 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
                 "Decision Reason": decision_reason,
                 "URL": job["url"],
                 "Categories": ", ".join(result["categories"]),
+                "Category ID": final_category_id,
                 "Core Positive Hit Count": result["core_positive_hit_count"],
                 "Supporting Positive Weight": result[
                     "supporting_positive_weight"

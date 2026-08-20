@@ -136,18 +136,14 @@ class ScriptedGuard:
         return outcome
 
 
-def _wire_guard(monkeypatch, fake_private, fake_channel, outcomes):
+def _wire_guard(monkeypatch, fake_private, outcomes):
     """
-    Set app.job_processor.send_notification/send_channel_notification
-    to `fake_private`/`fake_channel`, then wrap *those* with a
-    NotificationGuardIntegration backed by a ScriptedGuard -- exactly
-    the composition app.notification_guard.integration.install()
-    builds in production (guard wraps the real notifier functions).
-    Order matters: the guard must wrap the fakes, not the other way
-    around, or process_job()'s calls would bypass the guard entirely.
+    Set app.job_processor.send_notification to `fake_private`, then wrap
+    that with a NotificationGuardIntegration backed by a ScriptedGuard
+    -- exactly the composition app.notification_guard.integration.install()
+    builds in production (guard wraps the real notifier function).
     """
     monkeypatch.setattr(job_processor, "send_notification", fake_private)
-    monkeypatch.setattr(job_processor, "send_channel_notification", fake_channel)
 
     guard = ScriptedGuard(outcomes)
     integration = NotificationGuardIntegration(guard)
@@ -156,11 +152,6 @@ def _wire_guard(monkeypatch, fake_private, fake_channel, outcomes):
         job_processor,
         "send_notification",
         integration.wrap_private(job_processor.send_notification),
-    )
-    monkeypatch.setattr(
-        job_processor,
-        "send_channel_notification",
-        integration.wrap_channel(job_processor.send_channel_notification),
     )
 
     return guard
@@ -174,21 +165,13 @@ def _wire_guard(monkeypatch, fake_private, fake_channel, outcomes):
 def test_guard_allow_decision_survives_retry_sweep(isolated_database, monkeypatch):
     log = isolated_database
 
-    calls = {"private": 0, "channel": 0}
-    channel_attempts = {"n": 0}
+    calls = {"private": 0}
 
     async def fake_private(**kwargs):
         calls["private"] += 1
         return True
 
-    async def fake_channel(**kwargs):
-        calls["channel"] += 1
-        channel_attempts["n"] += 1
-        # Fails the first time (during process_job()), succeeds on the
-        # retry-sweep attempt.
-        return channel_attempts["n"] >= 2
-
-    guard = _wire_guard(monkeypatch, fake_private, fake_channel, outcomes=[True])
+    guard = _wire_guard(monkeypatch, fake_private, outcomes=[True])
 
     job = _build_direct_job()
     job_uuid = _make_job_uuid("-100901", "allow-retry-1")
@@ -197,23 +180,8 @@ def test_guard_allow_decision_survives_retry_sweep(isolated_database, monkeypatc
         process_job(job=job, job_id="allow-retry-1", identity_source="-100901")
     )
 
-    assert guard.calls == 1, "the guard must be evaluated exactly once for both legs"
-    assert calls == {"private": 1, "channel": 1}
-
-    row = log.get_job(job_uuid)
-    assert row["Notification Status"] == "Telegram: Sent; Telegram Channel: Failed"
-
-    retried = asyncio.run(retry_incomplete_notifications())
-
-    assert retried == 1
-    assert calls == {"private": 1, "channel": 2}, (
-        "the already-successful private leg must never be resent; the "
-        "channel leg must be retried"
-    )
-    assert guard.calls == 1, (
-        "the retried channel attempt must reuse the original guard "
-        "decision instead of asking the provider again"
-    )
+    assert guard.calls == 1, "the guard must be evaluated exactly once"
+    assert calls == {"private": 1}
 
     row = log.get_job(job_uuid)
     assert row["Notification Status"] == "Complete"
@@ -229,27 +197,18 @@ def test_guard_suppression_decision_survives_retry_sweep(
 ):
     """
     The private leg is suppressed by the guard (and durably recorded
-    as such) before an unrelated crash/restart leaves the channel leg
-    unresolved -- exactly the "resume a partially-complete workflow"
-    scenario _resume_pending_notifications_unlocked already handles.
-    The retry sweep must resolve the channel leg using the SAME
-    persisted do_not_notify decision, never asking the guard's
-    provider again, and the job must end up "Suppressed", not
-    "Failed" or re-sent.
+    as such). The job must end up "Suppressed", not "Failed" or
+    re-sent.
     """
     log = isolated_database
 
-    calls = {"private": 0, "channel": 0}
+    calls = {"private": 0}
 
     async def fake_private(**kwargs):
         calls["private"] += 1
         return True
 
-    async def fake_channel(**kwargs):
-        calls["channel"] += 1
-        return True
-
-    guard = _wire_guard(monkeypatch, fake_private, fake_channel, outcomes=[False])
+    guard = _wire_guard(monkeypatch, fake_private, outcomes=[False])
 
     job_uuid = _make_job_uuid("-100902", "suppress-retry-1")
 
@@ -279,8 +238,7 @@ def test_guard_suppression_decision_survives_retry_sweep(
 
     # Simulate the private leg already having gone through the guard
     # once (denied -> Suppressed) in an earlier pass, with the guard's
-    # own persisted decision left behind -- and the channel leg never
-    # having been attempted (e.g. the process restarted in between).
+    # own persisted decision left behind -- and the process restarted.
     guard_job = {
         "job_uuid": job_uuid,
         "source": "Test Channel",
@@ -302,7 +260,7 @@ def test_guard_suppression_decision_survives_retry_sweep(
     retried = asyncio.run(retry_incomplete_notifications())
 
     assert retried == 1
-    assert calls == {"private": 0, "channel": 0}, (
+    assert calls == {"private": 0}, (
         "a suppressed leg must never reach the underlying sender"
     )
     assert guard.calls == 1, (
@@ -329,21 +287,16 @@ def test_guard_error_is_not_treated_as_a_durable_decision(
 ):
     log = isolated_database
 
-    calls = {"private": 0, "channel": 0}
+    calls = {"private": 0}
 
     async def fake_private(**kwargs):
         calls["private"] += 1
         return True
 
-    async def fake_channel(**kwargs):
-        calls["channel"] += 1
-        return True
-
-    # First evaluation (private leg) errors; second (channel leg, same
-    # invocation -- the persisted "error" is not reusable, so it's
-    # evaluated fresh) succeeds with ALLOW.
+    # First evaluation errors; since "error" is not a genuine
+    # do_not_notify, the retry re-evaluates fresh and succeeds.
     guard = _wire_guard(
-        monkeypatch, fake_private, fake_channel, outcomes=["error", True]
+        monkeypatch, fake_private, outcomes=["error", True]
     )
 
     job = _build_direct_job(url="https://example.invalid/guard-error")
@@ -353,31 +306,23 @@ def test_guard_error_is_not_treated_as_a_durable_decision(
         process_job(job=job, job_id="guard-error-1", identity_source="-100903")
     )
 
-    assert guard.calls == 2, (
-        "an errored evaluation must not be reused for the other leg -- "
-        "it must be evaluated fresh"
+    assert guard.calls == 1, (
+        "first evaluation attempted (errored)"
     )
-    # Private was denied by the fail-closed error response; channel
-    # was allowed by the second (successful) evaluation.
-    assert calls == {"private": 0, "channel": 1}
+    # Private was denied by the fail-closed error response.
+    assert calls == {"private": 0}
 
     row = log.get_job(job_uuid)
-    # Private failed outright (denied, and "error" is not a genuine
-    # do_not_notify, so it's retryable, not "Suppressed").
     assert "Telegram: Failed" in row["Notification Status"]
-    assert "Telegram Channel: Sent" in row["Notification Status"]
 
-    # Retry sweep: private is retried. The most recent persisted
-    # decision is now "notify" (from the channel's successful
-    # evaluation), so the retry reuses THAT -- correctly -- without
-    # calling the guard's provider a third time.
+    # Retry sweep: private is retried. The error is not a durable
+    # decision, so the guard is re-evaluated and allows.
     retried = asyncio.run(retry_incomplete_notifications())
 
     assert retried == 1
-    assert calls == {"private": 1, "channel": 1}
+    assert calls == {"private": 1}
     assert guard.calls == 2, (
-        "the retry must reuse the persisted 'notify' decision, not "
-        "call the guard's provider again"
+        "the retry must re-evaluate the guard since 'error' is not durable"
     )
 
     row = log.get_job(job_uuid)
@@ -392,27 +337,18 @@ def test_guard_error_is_not_treated_as_a_durable_decision(
 def test_llm_reviewed_job_bypasses_guard_on_retry(isolated_database, monkeypatch):
     log = isolated_database
 
-    calls = {"private": 0, "channel": 0}
-    channel_attempts = {"n": 0}
+    calls = {"private": 0}
 
     async def fake_private(**kwargs):
         calls["private"] += 1
         return True
 
-    async def fake_channel(**kwargs):
-        calls["channel"] += 1
-        channel_attempts["n"] += 1
-        return channel_attempts["n"] >= 2
-
     # No outcomes are ever consumed if the bypass works correctly --
     # an empty list makes any accidental guard.allow() call raise
     # IndexError, which is exactly the failure signal we want.
-    guard = _wire_guard(monkeypatch, fake_private, fake_channel, outcomes=[])
+    guard = _wire_guard(monkeypatch, fake_private, outcomes=[])
 
     def fake_arbitrate_category(filter_text, candidates, system_prompt):
-        # arbitrate_category is called via asyncio.to_thread(...), i.e.
-        # synchronously in a worker thread -- it must be a plain
-        # function, not a coroutine function.
         return {
             "selected_category": candidates[0]["id"],
             "reason": "LLM accepted",
@@ -429,15 +365,6 @@ def test_llm_reviewed_job_bypasses_guard_on_retry(isolated_database, monkeypatch
     )
 
     assert guard.calls == 0
-    row = log.get_job(job_uuid)
-    assert row["Notification Status"] == "Telegram: Sent; Telegram Channel: Failed"
-
-    retried = asyncio.run(retry_incomplete_notifications())
-
-    assert retried == 1
-    assert guard.calls == 0, "retrying an LLM-reviewed job must never invoke the guard"
-    assert calls == {"private": 1, "channel": 2}
-
     row = log.get_job(job_uuid)
     assert row["Notification Status"] == "Complete"
 
