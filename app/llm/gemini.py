@@ -2,8 +2,7 @@ from google import genai
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
 
 from app.config import GEMINI_API_KEYS
-from app.llm.prompt import SYSTEM_PROMPT
-from app.llm.utils import build_prompt, parse_response
+from app.llm.utils import build_prompt, build_arbitration_prompt, parse_response, parse_arbitration_response
 
 
 CLIENTS = [
@@ -60,8 +59,11 @@ def _generate_response(client: genai.Client, contents: str, system_instruction: 
     )
 
 
-def evaluate_job(text: str, filter_result: dict):
+def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
 
+    if system_prompt is None:
+        from app.categories.data_analysis.llm_prompt import SYSTEM_PROMPT
+        system_prompt = SYSTEM_PROMPT
     prompt = build_prompt(text, filter_result)
 
     last_exception = None
@@ -75,7 +77,7 @@ def evaluate_job(text: str, filter_result: dict):
             response = _generate_response(
                 client,
                 prompt,
-                SYSTEM_PROMPT,
+                system_prompt,
             )
 
             return parse_response(response.text)
@@ -97,4 +99,28 @@ def evaluate_job(text: str, filter_result: dict):
     if last_exception:
         raise last_exception
 
+    raise RuntimeError("No Gemini API keys are configured.")
+
+
+def evaluate_category_arbitration(
+    text: str,
+    candidates: list[dict],
+    system_prompt: str,
+):
+    prompt = build_arbitration_prompt(text, candidates)
+    allowed = {item["id"] for item in candidates}
+    last_exception = None
+
+    for index, client in enumerate(CLIENTS, start=1):
+        print(f"Using Gemini API key #{index} for category arbitration")
+        try:
+            response = _generate_response(client, prompt, system_prompt)
+            return parse_arbitration_response(response.text, allowed)
+        except Exception as e:
+            last_exception = e
+            print(f"Gemini arbitration key #{index} failed: {e}")
+            continue
+
+    if last_exception:
+        raise last_exception
     raise RuntimeError("No Gemini API keys are configured.")

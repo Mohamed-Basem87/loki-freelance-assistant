@@ -26,6 +26,9 @@ from app.job_processor import _make_job_uuid, process_job
 from app.logger import logger
 
 
+from app.categories.data_analysis.profile import PROFILE
+
+
 REJECT_TEXT = "Need someone to create SQL queries for a reporting system."
 
 
@@ -400,6 +403,7 @@ def test_pending_notification_is_resumed_without_reprocessing(
     result = keyword_filter(
         f"{job['title']}\n{job['description']}",
         title=job["title"],
+        profile=PROFILE,
     )
     assert result["notify_directly"] is True
 
@@ -462,7 +466,7 @@ def _seed_notify_ready_job(log, job_uuid, job_id, source, status="Pending"):
 
     title = "Power BI Dashboard Needed"
     description = "Need a Power BI dashboard built from sales data."
-    result = keyword_filter(f"{title}\n{description}", title=title)
+    result = keyword_filter(f"{title}\n{description}", title=title, profile=PROFILE)
     assert result["notify_directly"] is True
 
     log.create_job(
@@ -698,7 +702,7 @@ def test_incomplete_job_row_is_resumed_after_processing_crash(isolated_workbook)
     from app.filters import keyword_filter
 
     filter_text = f"{job['title']}\n{job['description']}"
-    result = keyword_filter(filter_text, title=job["title"])
+    result = keyword_filter(filter_text, title=job["title"], profile=PROFILE)
 
     created = log.create_job_if_absent(
         job_uuid=_make_job_uuid(identity_source, job_id),
@@ -753,7 +757,7 @@ def test_accepted_job_without_notification_status_resumes_notification(
     from app.filters import keyword_filter
 
     filter_text = f"{job['title']}\n{job['description']}"
-    result = keyword_filter(filter_text, title=job["title"])
+    result = keyword_filter(filter_text, title=job["title"], profile=PROFILE)
 
     assert log.create_job_if_absent(
         job_uuid=job_uuid,

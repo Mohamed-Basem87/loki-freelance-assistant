@@ -24,6 +24,9 @@ from app.logger import logger
 from app.message_processor import process_message
 
 
+from app.categories.data_analysis.profile import PROFILE
+
+
 REJECT_TEXT = "Need someone to create SQL queries for a reporting system."
 
 # Regression fixture for Fix 1/Fix 5 (see
@@ -179,7 +182,8 @@ def test_reason_collapse_is_preserved_through_the_pipeline(isolated_workbook):
     from app.filters import keyword_filter
 
     classifier_result = keyword_filter(
-        INSUFFICIENT_SIGNAL_TEXT, title=INSUFFICIENT_SIGNAL_TEXT
+        INSUFFICIENT_SIGNAL_TEXT, title=INSUFFICIENT_SIGNAL_TEXT,
+        profile=PROFILE,
     )
     assert classifier_result["matched"] is True
     assert classifier_result["decision"] == "reject"

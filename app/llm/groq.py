@@ -2,8 +2,7 @@ from groq import Groq
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
 
 from app.config import GROQ_API_KEY
-from app.llm.prompt import SYSTEM_PROMPT
-from app.llm.utils import build_prompt, parse_response
+from app.llm.utils import build_prompt, build_arbitration_prompt, parse_response, parse_arbitration_response
 
 
 CLIENT = Groq(api_key=GROQ_API_KEY)
@@ -37,14 +36,14 @@ def _is_transient(exception: Exception) -> bool:
     wait=wait_fixed(1),
     reraise=True,
 )
-def _generate_response(model: str, prompt: str):
+def _generate_response(model: str, prompt: str, system_prompt: str):
 
     return CLIENT.chat.completions.create(
         model=model,
         messages=[
             {
                 "role": "system",
-                "content": SYSTEM_PROMPT,
+                "content": system_prompt,
             },
             {
                 "role": "user",
@@ -55,8 +54,11 @@ def _generate_response(model: str, prompt: str):
     )
 
 
-def evaluate_job(text: str, filter_result: dict):
+def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
 
+    if system_prompt is None:
+        from app.categories.data_analysis.llm_prompt import SYSTEM_PROMPT
+        system_prompt = SYSTEM_PROMPT
     prompt = build_prompt(text, filter_result)
 
     last_exception = None
@@ -67,7 +69,7 @@ def evaluate_job(text: str, filter_result: dict):
 
         try:
 
-            response = _generate_response(model, prompt)
+            response = _generate_response(model, prompt, system_prompt)
 
             return parse_response(
                 response.choices[0].message.content
@@ -84,4 +86,30 @@ def evaluate_job(text: str, filter_result: dict):
     if last_exception:
         raise last_exception
 
+    raise RuntimeError("No Groq models are configured.")
+
+def evaluate_category_arbitration(
+    text: str,
+    candidates: list[dict],
+    system_prompt: str,
+):
+    prompt = build_arbitration_prompt(text, candidates)
+    allowed = {item["id"] for item in candidates}
+    last_exception = None
+
+    for model in GROQ_MODELS:
+        print(f"Using Groq model for category arbitration: {model}")
+        try:
+            response = _generate_response(model, prompt, system_prompt)
+            return parse_arbitration_response(
+                response.choices[0].message.content,
+                allowed,
+            )
+        except Exception as e:
+            print(f"Groq arbitration model '{model}' failed: {e}")
+            last_exception = e
+            continue
+
+    if last_exception:
+        raise last_exception
     raise RuntimeError("No Groq models are configured.")

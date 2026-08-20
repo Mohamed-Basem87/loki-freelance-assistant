@@ -23,7 +23,9 @@ import os
 import pytest
 
 from app.filters import keyword_filter
+from app.categories.data_analysis.profile import PROFILE
 from app.llm import gemini
+from app.categories.data_analysis.llm_prompt import SYSTEM_PROMPT
 
 
 TEXT = """
@@ -32,7 +34,7 @@ The dashboard should include KPIs, charts, slicers,
 and DAX measures.
 """
 
-FILTER_RESULT = keyword_filter(TEXT, title="Power BI Dashboard Needed")
+FILTER_RESULT = keyword_filter(TEXT, title="Power BI Dashboard Needed", profile=PROFILE)
 
 _VALID_RESPONSE_JSON = json.dumps(
     {
@@ -90,11 +92,11 @@ def test_gemini_uses_system_instruction_not_string_concatenation(monkeypatch):
     assert call["model"] == "gemini-3.5-flash"
 
     assert call["config"] is not None
-    assert call["config"].system_instruction == gemini.SYSTEM_PROMPT
+    assert call["config"].system_instruction == SYSTEM_PROMPT
     assert call["config"].response_mime_type == "application/json"
 
     # The system prompt must NOT be concatenated into contents.
-    assert gemini.SYSTEM_PROMPT not in call["contents"]
+    assert SYSTEM_PROMPT not in call["contents"]
     # contents must still carry the actual job text somewhere inside
     # the built prompt (build_prompt() wraps it in <JobDescription>).
     assert "Power BI dashboard" in call["contents"]

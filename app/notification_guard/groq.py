@@ -12,7 +12,7 @@ from app.notification_guard.config import (
     NOTIFICATION_GUARD_MODELS,
     NOTIFICATION_GUARD_MAX_RETRIES,
 )
-from app.notification_guard.prompt import SYSTEM_PROMPT, build_prompt
+from app.notification_guard.prompt import build_prompt
 
 
 CLIENTS = [
@@ -52,13 +52,14 @@ def _generate_response(
     model: str,
     title: str,
     description: str,
+    system_prompt: str,
 ):
     return client.chat.completions.create(
         model=model,
         messages=[
             {
                 "role": "system",
-                "content": SYSTEM_PROMPT,
+                "content": system_prompt,
             },
             {
                 "role": "user",
@@ -87,6 +88,7 @@ class GroqNotificationGuard:
         self,
         title: str,
         description: str,
+        system_prompt: str,
     ) -> bool:
 
         last_exception = None
@@ -106,6 +108,7 @@ class GroqNotificationGuard:
                         model,
                         title,
                         description,
+                        system_prompt,
                     )
 
                     content = (

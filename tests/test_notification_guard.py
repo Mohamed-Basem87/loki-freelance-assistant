@@ -48,11 +48,12 @@ class FakeGuard:
         self.calls = 0
         self.jobs = []
 
-    async def allow(self, job, *, original_decision=""):
+    async def allow(self, job, *, original_decision="", category_id=""):
         self.calls += 1
         self.jobs.append({
             "job": job,
             "original_decision": original_decision,
+            "category_id": category_id,
         })
 
         await log_guard_decision(

@@ -31,6 +31,8 @@ from app.notification_guard.integration import NotificationGuardIntegration
 from app.notification_guard.logger import log_guard_decision
 
 
+from app.categories.data_analysis.profile import PROFILE
+
 @pytest.fixture()
 def isolated_database():
     tmp_dir = tempfile.mkdtemp(prefix="freelance_assistant_test_")
@@ -103,7 +105,7 @@ class ScriptedGuard:
         self.outcomes = list(outcomes)
         self.calls = 0
 
-    async def allow(self, job, *, original_decision=""):
+    async def allow(self, job, *, original_decision="", category_id=""):
         self.calls += 1
         outcome = self.outcomes.pop(0)
 
@@ -254,7 +256,9 @@ def test_guard_suppression_decision_survives_retry_sweep(
     from app.filters import keyword_filter
 
     result = keyword_filter(
-        f"{DIRECT_TITLE}\n{DIRECT_DESCRIPTION}", title=DIRECT_TITLE
+        f"{DIRECT_TITLE}\n{DIRECT_DESCRIPTION}",
+        title=DIRECT_TITLE,
+        profile=PROFILE,
     )
     assert result["notify_directly"] is True
 
@@ -405,17 +409,17 @@ def test_llm_reviewed_job_bypasses_guard_on_retry(isolated_database, monkeypatch
     # IndexError, which is exactly the failure signal we want.
     guard = _wire_guard(monkeypatch, fake_private, fake_channel, outcomes=[])
 
-    def fake_evaluate_job(filter_text, result):
-        # evaluate_job is called via asyncio.to_thread(...), i.e.
+    def fake_arbitrate_category(filter_text, candidates, system_prompt):
+        # arbitrate_category is called via asyncio.to_thread(...), i.e.
         # synchronously in a worker thread -- it must be a plain
         # function, not a coroutine function.
         return {
-            "decision": "accept",
+            "selected_category": candidates[0]["id"],
             "reason": "LLM accepted",
             "confidence": 0.9,
         }
 
-    monkeypatch.setattr(job_processor, "evaluate_job", fake_evaluate_job)
+    monkeypatch.setattr(job_processor, "arbitrate_category", fake_arbitrate_category)
 
     job = _build_llm_reviewed_job()
     job_uuid = _make_job_uuid("-100904", "llm-bypass-1")
@@ -436,3 +440,54 @@ def test_llm_reviewed_job_bypasses_guard_on_retry(isolated_database, monkeypatch
 
     row = log.get_job(job_uuid)
     assert row["Notification Status"] == "Complete"
+
+
+def test_guard_suppression_blocks_subscriber_routing(isolated_database, monkeypatch):
+    """Guard denial must suppress subscriber fan-out as well as fixed destinations."""
+    calls = {"routing": 0}
+
+    async def fake_routing(job_uuid, category_id):
+        calls["routing"] += 1
+        return 1
+
+    guard = ScriptedGuard([False])
+    integration = NotificationGuardIntegration(guard)
+
+    # Seed the durable job row used by the routing wrapper.
+    isolated_database.create_job(
+        job_uuid="guard-route-1",
+        job_id="guard-route-1",
+        source="Test Channel",
+        title=DIRECT_TITLE,
+        description=DIRECT_DESCRIPTION,
+        raw_message=f"{DIRECT_TITLE}\n{DIRECT_DESCRIPTION}",
+        filter_text=f"{DIRECT_TITLE}\n{DIRECT_DESCRIPTION}",
+        company="",
+        url="https://example.invalid/guard-route",
+        filter_result={
+            "decision": "notify_directly",
+            "reason": "direct",
+            "categories": ["power_bi"],
+            "negative_categories": [],
+        },
+        filter_time_ms=0,
+        save=True,
+    )
+    isolated_database.update_job(
+        "guard-route-1",
+        final_decision="Accepted",
+        category_id="data_analysis",
+        save=True,
+    )
+
+    wrapped = integration.wrap_routing(fake_routing)
+    queued = asyncio.run(wrapped("guard-route-1", "data_analysis"))
+
+    assert queued == 0
+    assert calls["routing"] == 0
+    assert guard.calls == 1
+
+    # The durable rejection is reused rather than evaluated again.
+    queued_again = asyncio.run(wrapped("guard-route-1", "data_analysis"))
+    assert queued_again == 0
+    assert guard.calls == 1

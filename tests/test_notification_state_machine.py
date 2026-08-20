@@ -39,6 +39,8 @@ DIRECT_TITLE = "Power BI Dashboard Needed"
 DIRECT_DESCRIPTION = "Need a Power BI dashboard built from sales data."
 
 
+from app.categories.data_analysis.profile import PROFILE
+
 @pytest.fixture()
 def isolated_database():
     tmp_dir = tempfile.mkdtemp(prefix="freelance_assistant_test_")
@@ -164,7 +166,9 @@ def test_full_lifecycle_pending_suppressed_retry_suppressed(
     from app.notification_guard.logger import log_guard_decision
 
     result = keyword_filter(
-        f"{DIRECT_TITLE}\n{DIRECT_DESCRIPTION}", title=DIRECT_TITLE
+        f"{DIRECT_TITLE}\n{DIRECT_DESCRIPTION}",
+        title=DIRECT_TITLE,
+        profile=PROFILE,
     )
     assert result["notify_directly"] is True
 

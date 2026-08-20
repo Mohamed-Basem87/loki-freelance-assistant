@@ -76,6 +76,7 @@ class NotificationGuardIntegration:
                 "decision",
                 "",
             ),
+            category_id=kwargs.get("category_id", ""),
         )
 
     def wrap_private(self, original):
@@ -99,6 +100,33 @@ class NotificationGuardIntegration:
             return await original(**kwargs)
 
         return wrapped
+    def wrap_routing(self, original):
+
+        async def wrapped(job_uuid, category_id):
+            if not category_id:
+                return 0
+
+            row = await db_logger.run(db_logger.get_job, job_uuid)
+            if row is None:
+                return 0
+
+            allowed = await self._allow({
+                "job_uuid": job_uuid,
+                "source": row.get("Source", ""),
+                "title": row.get("Title", ""),
+                "description": row.get("Description", ""),
+                "decision": row.get("Final Decision", "Accepted"),
+                "ai_used": str(row.get("Needs Gemini") or "").strip().lower() in ("1", "true", "yes", "y"),
+                "category_id": category_id,
+            })
+
+            if not allowed:
+                return 0
+
+            return await original(job_uuid, category_id)
+
+        return wrapped
+
 
 
 def install():
@@ -119,6 +147,12 @@ def install():
         integration.wrap_channel(
             job_processor.send_channel_notification
         )
+    )
+
+    # Subscriber routing is a third notification destination. It must
+    # use the same Guard decision as private/channel delivery.
+    job_processor.queue_for_category = integration.wrap_routing(
+        job_processor.queue_for_category
     )
 
     return integration

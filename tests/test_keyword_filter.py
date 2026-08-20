@@ -18,6 +18,7 @@ call path.
 import pytest
 
 from app.filters import keyword_filter
+from app.categories.data_analysis.profile import PROFILE as DATA_ANALYSIS_PROFILE
 
 
 # ------------------------------------------------------------------
@@ -160,7 +161,7 @@ def test_keyword_filter_returns_well_formed_result(case):
     value beyond "it didn't crash", since it directly encodes the
     decision-table invariants documented in app/filters.py.
     """
-    result = keyword_filter(case["text"], title=case["title"])
+    result = keyword_filter(case["text"], title=case["title"], profile=DATA_ANALYSIS_PROFILE)
 
     assert result["decision"] in {"reject", "notify_directly", "needs_gemini"}
     assert result["notify_directly"] == (result["decision"] == "notify_directly")
@@ -193,6 +194,7 @@ Help us build Power BI dashboards and Excel reports.
 No pay, but great learning experience!
 """,
         title="Unpaid Internship - Power BI",
+        profile=DATA_ANALYSIS_PROFILE,
     )
 
     assert result["hard_reject"] is True, (
@@ -1108,7 +1110,7 @@ ALL_REGRESSION_CASES = (
     ids=[c["name"] for c in ALL_REGRESSION_CASES],
 )
 def test_classifier_regression_cases(case):
-    result = keyword_filter(case["text"], title=case["title"])
+    result = keyword_filter(case["text"], title=case["title"], profile=DATA_ANALYSIS_PROFILE)
 
     assert result["decision"] == case["expected"], (
         f"{case['name']}: expected {case['expected']}, "

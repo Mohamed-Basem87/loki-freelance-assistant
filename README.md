@@ -125,8 +125,8 @@ A category profile owns:
 -   supporting keyword definitions
 -   negative and hard-reject definitions
 -   category-specific thresholds/rules
--   LLM prompt context
--   Notification Guard prompt context
+-   arbitration context used by the shared category-arbitration LLM
+-   Notification Guard prompt module used for category-aware safety checks
 
 The shared engine remains responsible for executing the tiered rules.
 
@@ -171,103 +171,29 @@ Job
                     Data Analysis
 ```
 
-The current system intentionally does not perform one LLM call per
-category.
-
-### Current LLM category-arbitration state
-
-The architecture already carries a single final-category contract, but
-the **multi-category arbitration prompt has not yet been introduced**.
-
-With the current deployment, Data Analysis is the only enabled category,
-so an ambiguous Data Analysis result continues through the existing DA
-LLM prompt.
-
-The planned multi-category behavior is:
+The system performs **one category-arbitration LLM call per ambiguous
+job**, regardless of how many candidate categories remain. The provider
+receives the candidate category definitions and must return exactly one
+candidate ID or `none`.
 
 ``` text
 Deterministic classification
           │
           ▼
-      ambiguous
+ direct / ambiguous candidates
           │
           ▼
- ONE Gemini/Groq call
+ ONE Gemini/Groq arbitration call
           │
           ▼
- model returns ONE category
-          │
-          ▼
-      final category
-```
-
-This avoids spending a separate LLM call on every category.
-
-## Deterministic Classification
-
-The tiered classifier is deliberately not a simple additive score.
-
-It considers:
-
--   core positive evidence
--   supporting positive evidence
--   negative evidence
--   hard rejects
--   title evidence
--   mixed positive/negative signals
--   lone-core protection
--   supporting-evidence thresholds
--   downgrade rules
--   explicit decision branches
-
-The shared engine is in `app/filters.py`.
-
-The current Data Analysis vocabulary lives in:
-
-``` text
-app/categories/data_analysis/keywords.py
-```
-
-The old `app/keywords.py` compatibility layer remains available for
-existing imports.
-
-## LLM Subsystem
-
-The main LLM path is:
-
-``` text
-Gemini
-  │
-  ├── configured API keys
-  └── bounded retries
-        │
-        ▼
-      Groq fallback
-        │
-        └── model rotation
-```
-
-LLM responses are validated before being accepted by the application.
-
-The Data Analysis LLM context is isolated in:
-
-``` text
-app/categories/data_analysis/llm_prompt.py
-```
-
-The shared provider implementations remain:
-
-``` text
-app/llm/gemini.py
-app/llm/groq.py
-app/llm/manager.py
-app/llm/utils.py
+ one final category (or none)
 ```
 
 ## Notification Guard
 
 The Notification Guard is an optional safety layer for jobs accepted
-directly by the deterministic classifier.
+directly by the deterministic classifier. Its prompt is selected from
+the job's final category profile.
 
 ``` text
 Direct acceptance
@@ -282,9 +208,12 @@ delivery
 ```
 
 LLM-reviewed jobs bypass the Guard because they already received an LLM
-review.
+review. Subscriber routing uses the same Guard decision as the fixed
+private/channel destinations, while remaining independent of channel
+send success.
 
-The current DA Guard prompt is isolated in:
+Each category's Guard prompt is isolated in its category directory.
+The current Data Analysis Guard prompt is:
 
 ``` text
 app/categories/data_analysis/guard_prompt.py
@@ -593,29 +522,19 @@ DOCUMENTATION.md
 
 ## Current Known Limitations
 
-### 1. Multi-category LLM arbitration is not implemented yet
-
-The category abstraction and single-final-category contract are in
-place, but the LLM prompt still uses the existing Data Analysis review
-behavior.
-
-The next classification enhancement is one shared arbitration prompt
-that receives the available category definitions and returns exactly one
-category for an ambiguous job.
-
-### 2. Multiple categories are not currently active
+### 1. Multiple categories are not currently active
 
 Data Analysis is the current registered category. The architecture is
 ready for additional category profiles, but those profiles still need to
 be authored and registered.
 
-### 3. Existing fixed notification destinations remain
+### 2. Existing fixed notification destinations remain
 
 The new subscriber delivery path is additive. Existing fixed
 private/channel notifications remain in the application while the
 user-subscription system is introduced.
 
-### 4. Total LLM outage remains fail-closed
+### 3. Total LLM outage remains fail-closed
 
 If the configured LLM providers cannot complete a required review, the
 current classification path fails closed rather than retrying

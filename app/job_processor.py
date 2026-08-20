@@ -5,8 +5,9 @@ import uuid
 import weakref
 
 from app.channel_notifier import send_channel_notification
+from app.categories.registry import get_category
 from app.classification import classify_and_select
-from app.llm.manager import evaluate_job
+from app.llm.manager import arbitrate_category
 from app.logger import logger
 from app.routing import queue_for_category
 from app.notifier import send_notification
@@ -78,6 +79,7 @@ def _notification_payload_from_row(job_uuid: str, row: dict) -> dict:
         "supporting_weight": row.get("Supporting Positive Weight") or 0,
         "ai_used": str(row.get("Needs Gemini") or "").strip().lower()
         in ("1", "true", "yes", "y"),
+        "category_id": row.get("Category ID") or "",
     }
 
 
@@ -409,43 +411,33 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
         title=job["title"],
     )
 
-    # Until the category-arbitration prompt is introduced, the active
-    # registry contains only Data Analysis. The shared engine already
-    # evaluates every enabled category; this preserves the existing DA
-    # LLM path while carrying the final-category contract through the
-    # pipeline.
     category_results = classification["categories"]
-    if classification["category_id"]:
-        selected_category_id = classification["category_id"]
-    else:
-        selected_category_id = classification["llm_candidate_category_id"]
+    candidate_ids = [
+        category_id
+        for category_id, item in category_results.items()
+        if item["result"]["decision"] in {"notify_directly", "needs_gemini"}
+    ]
 
-    if selected_category_id is None and category_results:
-        # Use the first result only for the existing audit fields when
-        # there is no deterministic/LLM candidate. The final category
-        # remains empty, which is important: no category means no user
-        # routing.
-        selected_category_id = None
+    selected_category_id = classification["category_id"]
+    arbitration_required = classification["needs_category_arbitration"]
 
     if selected_category_id and selected_category_id in category_results:
-        result = category_results[selected_category_id]["result"]
+        result = dict(category_results[selected_category_id]["result"])
+    elif arbitration_required and candidate_ids:
+        result = dict(category_results[candidate_ids[0]]["result"])
     elif category_results:
-        result = next(iter(category_results.values()))["result"]
+        # No candidate means every enabled category rejected the job.
+        # Keep the first result only for the existing audit fields; the
+        # final category remains empty and no notification is possible.
+        result = dict(next(iter(category_results.values()))["result"])
     else:
         result = {}
 
-    result = dict(result)
-    result["category_id"] = (
-        classification["category_id"] or ""
-    )
+    result["category_id"] = selected_category_id or ""
     result["category_selection_method"] = (
-        "keyword_direct"
-        if classification["category_id"]
-        else ("llm_pending" if classification["needs_category_arbitration"] else "")
+        "keyword_direct" if selected_category_id else ""
     )
-    result["category_candidates"] = ", ".join(
-        classification["candidate_category_ids"]
-    )
+    result["category_candidates"] = ", ".join(candidate_ids)
 
     filter_time = round(
         (time.perf_counter() - start) * 1000,
@@ -517,83 +509,112 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
     decision_reason = ""
     should_notify = False
 
-    if result["hard_reject"]:
-        decision_reason = "Hard Reject"
+    if not category_results:
+        decision_reason = "No Enabled Categories"
 
-    elif not result["matched"]:
-        decision_reason = "No Matching Keywords"
+    elif not candidate_ids:
+        # Preserve the classifier's original audit reason when every
+        # enabled category rejects the job. This keeps the historical
+        # single-category reasons (Hard Reject / No Matching Keywords /
+        # the classifier's own reason such as insufficient_signal) while
+        # still remaining meaningful with multiple categories.
+        rejection_result = next(iter(category_results.values()))["result"]
+        if rejection_result.get("hard_reject"):
+            decision_reason = "Hard Reject"
+        elif not rejection_result.get("matched"):
+            decision_reason = "No Matching Keywords"
+        else:
+            decision_reason = rejection_result.get("reason") or "No Matching Categories"
 
-    elif result["notify_directly"]:
-        final_decision = "Accepted"
-        decision_reason = result["reason"]
-        should_notify = True
+    elif arbitration_required:
+        arbitration_start = time.perf_counter()
+        candidates = []
+        for category_id in candidate_ids:
+            profile = get_category(category_id)
+            if profile is None:
+                raise RuntimeError(f"Enabled category disappeared: {category_id}")
+            candidates.append({
+                "id": profile.id,
+                "name": profile.name,
+                "description": profile.description,
+                "arbitration_context": profile.arbitration_context,
+                "result": category_results[category_id]["result"],
+            })
 
-    elif result["needs_gemini"]:
-        gemini_start = time.perf_counter()
-
+        # One provider call for the complete candidate set. Never loop
+        # over candidates and call the LLM once per category.
         try:
-            gemini = await asyncio.to_thread(
-                evaluate_job,
+            arbitration = await asyncio.to_thread(
+                arbitrate_category,
                 filter_text,
-                result,
+                candidates,
+                (
+                    "You are a conservative freelance-project category "
+                    "arbitrator. Choose the single best category from the "
+                    "candidate set based on the project's primary "
+                    "deliverable. Return only the requested JSON schema."
+                ),
             )
-
         except Exception as e:
             await logger.run(
                 logger.log_error,
-                "LLM",
+                "LLM Arbitration",
                 e,
                 job_uuid,
                 save=False,
             )
-
             final_decision = "Rejected"
             decision_reason = "LLM Error"
-
         else:
-            gemini_time = round(
-                (time.perf_counter() - gemini_start) * 1000,
+            arbitration_time = round(
+                (time.perf_counter() - arbitration_start) * 1000,
                 2,
             )
+            selected = arbitration["selected_category"]
+            decision_reason = arbitration["reason"]
 
-            final_decision = (
-                "Accepted"
-                if gemini["decision"] == "accept"
-                else "Rejected"
-            )
-            decision_reason = gemini["reason"]
-            should_notify = gemini["decision"] == "accept"
-
-            # The current DA prompt still returns only accept/reject, so
-            # the sole active category remains the final category when
-            # the LLM accepts. The future category-arbitration prompt
-            # will replace this with the category returned by the LLM.
-            if gemini["decision"] == "accept" and selected_category_id:
-                result["category_id"] = selected_category_id
+            if selected == "none":
+                final_decision = "Rejected"
+                decision_reason = decision_reason or "LLM Arbitration: No Category"
+            else:
+                # parse_arbitration_response already constrains this to
+                # the candidate set; keep a second local check as a
+                # defense against future provider/parser changes.
+                if selected not in candidate_ids:
+                    raise RuntimeError(
+                        f"Arbitration selected non-candidate category: {selected}"
+                    )
+                selected_category_id = selected
+                result = dict(category_results[selected]["result"])
+                result["category_id"] = selected
                 result["category_selection_method"] = "llm"
+                result["category_candidates"] = ", ".join(candidate_ids)
+                final_decision = "Accepted"
+                should_notify = True
 
             await logger.run(
                 logger.update_job,
                 job_uuid,
-                gemini_decision=gemini["decision"],
+                gemini_decision=selected,
                 save=False,
             )
-
             await logger.run(
                 logger.log_gemini,
                 job_uuid=job_uuid,
-                decision_before=result["decision"],
-                reason_before=result["reason"],
+                decision_before=result.get("decision", ""),
+                reason_before=result.get("reason", ""),
                 prompt_tokens="",
                 completion_tokens="",
-                response_time_ms=gemini_time,
-                decision=gemini["decision"],
-                confidence=gemini["confidence"],
+                response_time_ms=arbitration_time,
+                decision=selected,
+                confidence=arbitration["confidence"],
                 save=False,
             )
 
-    else:
-        decision_reason = result["reason"] or "Below Gemini Threshold"
+    elif selected_category_id:
+        final_decision = "Accepted"
+        decision_reason = result.get("reason") or "Direct Category Match"
+        should_notify = True
 
     await logger.run(
         logger.update_job,

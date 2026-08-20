@@ -1,9 +1,11 @@
 import asyncio
+import importlib
 import time
 
 from app.notification_guard.config import NOTIFICATION_GUARD_ENABLED
 from app.notification_guard.groq import GroqNotificationGuard
 from app.notification_guard.logger import log_guard_decision
+from app.categories.registry import get_category
 
 
 class NotificationGuard:
@@ -23,6 +25,7 @@ class NotificationGuard:
         job: dict,
         *,
         original_decision="",
+        category_id="",
     ) -> bool:
         """
         Return True only when the job is allowed to reach the notifier.
@@ -42,10 +45,18 @@ class NotificationGuard:
 
         try:
 
+            profile = get_category(category_id)
+            if profile is None:
+                raise ValueError(f"Unknown category for notification guard: {category_id}")
+
+            prompt_module = importlib.import_module(profile.guard_prompt_module)
+            system_prompt = prompt_module.SYSTEM_PROMPT
+
             allowed = await asyncio.to_thread(
                 self.provider.evaluate,
                 job.get("title", ""),
                 job.get("description", ""),
+                system_prompt,
             )
 
             response_time_ms = round(

@@ -11,7 +11,9 @@ import os
 import pytest
 
 from app.filters import keyword_filter
+from app.categories.data_analysis.profile import PROFILE
 from app.llm import groq
+from app.categories.data_analysis.llm_prompt import SYSTEM_PROMPT
 
 
 TEXT = """
@@ -20,7 +22,7 @@ The dashboard should include KPIs, charts, slicers,
 and DAX measures.
 """
 
-FILTER_RESULT = keyword_filter(TEXT, title="Power BI Dashboard Needed")
+FILTER_RESULT = keyword_filter(TEXT, title="Power BI Dashboard Needed", profile=PROFILE)
 
 _VALID_RESPONSE_JSON = json.dumps(
     {
@@ -92,7 +94,7 @@ def test_groq_request_has_system_and_user_roles(monkeypatch):
 
     roles = [m["role"] for m in call["messages"]]
     assert roles == ["system", "user"]
-    assert call["messages"][0]["content"] == groq.SYSTEM_PROMPT
+    assert call["messages"][0]["content"] == SYSTEM_PROMPT
     assert "Power BI dashboard" in call["messages"][1]["content"]
 
 

@@ -1,8 +1,6 @@
 import re
 
-from app.categories.data_analysis.profile import PROFILE as DATA_ANALYSIS_PROFILE
 from app.normalize import normalize
-
 
 
 # ------------------------------------------------------------------
@@ -12,56 +10,6 @@ from app.normalize import normalize
 # else is boolean presence/absence of core signals. Keep them here,
 # not scattered through the logic, so tuning is a one-line change.
 # ------------------------------------------------------------------
-
-# Minimum total supporting-positive weight required to send a job to
-# Gemini when NO core signal (positive or negative) was found at all.
-# Below this, the job is rejected outright as "not enough signal to
-# bother a human/LLM with".
-SUPPORTING_POSITIVE_MIN_FOR_GEMINI = DATA_ANALYSIS_PROFILE.supporting_positive_min_for_gemini
-
-# If a core-positive keyword is present with no core-negative keyword,
-# but the supporting-negative evidence is unusually heavy (i.e. the
-# posting also reads a lot like a full software project), downgrade
-# from an automatic notification to a Gemini review instead of trusting
-# the core-positive signal blindly.
-#
-# Left at 14 (not lowered, see prior draft). Re-checked against the
-# 876-job audit: once the vocabulary additions below are in place, the
-# one false positive that motivated the lower threshold ("Flask Web App
-# With Auth") reaches a supporting-negative weight of exactly 14 on
-# vocabulary alone -- the >= comparison catches it right at the
-# original threshold. The vocabulary change was the actual fix; the
-# threshold move added no measurable coverage on top of it, so it's not
-# justified as an independent change.
-SUPPORTING_NEGATIVE_DOWNGRADE_THRESHOLD = DATA_ANALYSIS_PROFILE.supporting_negative_downgrade_threshold
-
-# If exactly ONE core-positive keyword fired (no second core hit to
-# corroborate it) and there is no supporting-positive evidence backing
-# it up either, treat it as too thin to auto-notify on. Two or more
-# core-positive hits are exempt from this check — they already
-# corroborate each other, which is a stronger position than one core
-# hit plus some supporting words.
-#
-# Raised 4 -> 5 (daily audit 2026-08-07): "Cross-Platform Production
-# Scheduler App" (40631599, a desktop scheduling-app build) and
-# "Patient report program." (40628458, a report-generation program for
-# an optometry office) both auto-notified on a lone "excel" core hit
-# with supporting-positive weight exactly 4 - software-build FPs at
-# the boundary. Under the FP>FN rule, a lone core hit backed by only
-# ~4 supporting weight goes to Gemini for review rather than a blind
-# notification.
-MIN_SUPPORTING_POSITIVE_FOR_LONE_CORE = DATA_ANALYSIS_PROFILE.min_supporting_positive_for_lone_core
-
-# Branch-specific threshold for title_core_positive: when the title
-# contains a core-positive keyword but the body shows heavy
-# supporting-negative evidence (education, CRUD, desktop-app context),
-# downgrade to needs_gemini instead of auto-notifying.
-#
-# Set to 10 (daily audit 2026-08-19): catches two confirmed FPs
-# (40654831 Learning Assessment SNW=7, 40655423 C++ Desktop App
-# SNW=6) with ~5 total jobs affected and low collateral risk.
-TITLE_POSITIVE_SUPPORTING_NEGATIVE_THRESHOLD = DATA_ANALYSIS_PROFILE.title_positive_supporting_negative_threshold
-
 
 # ------------------------------------------------------------------
 # Keyword matching helpers
@@ -166,7 +114,7 @@ def _has_core_hit(text: str, tier_items: list) -> bool:
 # Main entry point
 # ------------------------------------------------------------------
 
-def keyword_filter(text: str, title: str = "", profile=DATA_ANALYSIS_PROFILE):
+def keyword_filter(text: str, title: str = "", profile=None):
     """
     Classify a job posting using a tiered decision table instead of an
     additive score. See module docstring in keywords.py for the tier
@@ -182,7 +130,7 @@ def keyword_filter(text: str, title: str = "", profile=DATA_ANALYSIS_PROFILE):
     rule fired.
     """
     if profile is None:
-        profile = DATA_ANALYSIS_PROFILE
+        raise ValueError("keyword_filter requires an explicit CategoryProfile")
 
     (
         positive_core,
