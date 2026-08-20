@@ -669,6 +669,8 @@ NEGATIVE_KEYWORDS = {
             "skills assessment": 6,
             "copy and paste": 6,
             "screenshot text to excel": 6,
+            "macro automation": 6,
+            "تصميم شيت": 6,
         },
         "supporting": {
             "browser automation": 4,
