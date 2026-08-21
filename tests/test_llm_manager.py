@@ -33,6 +33,48 @@ and DAX measures.
 FILTER_RESULT = keyword_filter(TEXT, title="Power BI Dashboard Needed", profile=PROFILE)
 
 
+
+def test_arbitration_builds_system_prompt_from_candidate_category_prompts(monkeypatch):
+    captured = {}
+
+    def fake_gemini(text, candidates, system_prompt):
+        captured["system_prompt"] = system_prompt
+        return {
+            "selected_category": "data_analysis",
+            "confidence": 90,
+            "reason": "The primary deliverable is analytics.",
+        }
+
+    monkeypatch.setattr(manager, "gemini_arbitrate", fake_gemini)
+    monkeypatch.setattr(manager, "groq_arbitrate", lambda *args: pytest.fail("Groq should not run"))
+
+    candidates = [
+        {
+            "id": "data_analysis",
+            "name": "Data Analysis",
+            "description": "Analytics and BI.",
+            "arbitration_context": "Primary deliverable is analysis.",
+            "result": {"reason": "mixed", "categories": [], "negative_categories": []},
+        },
+        {
+            "id": "backend",
+            "name": "Backend Development",
+            "description": "Backend services.",
+            "arbitration_context": "Primary deliverable is backend work.",
+            "result": {"reason": "mixed", "categories": [], "negative_categories": []},
+        },
+    ]
+
+    result = manager.arbitrate_category("Build an analytics API", candidates)
+
+    assert result["selected_category"] == "data_analysis"
+    prompt = captured["system_prompt"]
+    assert "CATEGORY: Data Analysis (data_analysis)" in prompt
+    assert "CATEGORY: Backend Development (backend)" in prompt
+    assert "Only accept projects that are genuinely centered on Data Analysis" in prompt
+    assert "Only accept projects that are genuinely centered on Backend Development" in prompt
+
+
 def test_gemini_success_short_circuits_groq(monkeypatch):
     calls = {"gemini": 0, "groq": 0}
 

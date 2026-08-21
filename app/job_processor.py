@@ -494,20 +494,15 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
                 "result": category_results[category_id]["result"],
             })
 
-        # One provider call for the complete candidate set. Never loop
-        # over candidates and call the LLM once per category.
+        # One provider call for the complete candidate set. The shared LLM
+        # manager builds the system policy from each candidate's live
+        # category-specific llm_prompt.py, so those profiles directly govern
+        # production arbitration without making one provider call per category.
         try:
             arbitration = await asyncio.to_thread(
                 arbitrate_category,
                 filter_text,
                 candidates,
-                (
-                    "You are a conservative freelance-project category "
-                    "arbitrator. Choose the single best category from the "
-                    "candidate set based on the project's primary "
-                    "deliverable. Return a JSON object with keys: "
-                    "selected_category, confidence, reason."
-                ),
             )
         except Exception as e:
             await logger.run(

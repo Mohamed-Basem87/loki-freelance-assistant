@@ -99,6 +99,34 @@ def test_channel_style_message_stays_valid_html_when_truncated():
     _assert_balanced_b_tags(message)
 
 
+
+def test_channel_style_uses_final_category_name_in_header():
+    message = build_job_message(
+        title="FastAPI service",
+        description="Build a REST API.",
+        source="Test Channel",
+        reason="Backend project.",
+        category_name="Backend Development",
+        channel_style=True,
+    )
+
+    assert "🚀 <b>New Backend Development Opportunity</b>" in message
+    assert "Data Analysis Opportunity" not in message
+
+
+def test_channel_style_escapes_category_name():
+    message = build_job_message(
+        title="Test Job",
+        description="Test description.",
+        source="Test Channel",
+        reason="Test reason.",
+        category_name="AI/ML <Special>",
+        channel_style=True,
+    )
+
+    assert "AI/ML &lt;Special&gt;" in message
+
+
 def test_channel_style_uses_abbreviated_arabic_source_names():
     """
     Public channel notifications should display abbreviated Arabic

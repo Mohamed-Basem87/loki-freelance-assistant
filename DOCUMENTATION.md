@@ -373,7 +373,9 @@ app/categories/
     └── guard_prompt.py
 ```
 
-The Data Analysis profile is the first active category.
+All currently registered categories are active. The current registry includes
+Data Analysis, AI/ML Data Science, Backend Development, Frontend Development,
+Mobile App Development, and Game Development.
 
 A future category follows the same pattern:
 
@@ -463,8 +465,10 @@ Gemini / Groq fallback
 exactly one category
 ```
 
-The current repository still uses the existing DA LLM prompt because
-only Data Analysis is registered.
+Ambiguous jobs use one shared multi-category arbitration request. The shared
+arbitration system policy is assembled from the `SYSTEM_PROMPT` of each
+candidate category's `llm_prompt.py`, so category-specific LLM scope rules are
+active in production without making one provider request per category.
 
 # 9. LLM Subsystem
 
@@ -836,17 +840,19 @@ multi-category LLM arbitration prompt is introduced.
 
 # 20. Known Limitations
 
-### Multi-category LLM arbitration is pending
+### Multi-category LLM arbitration
 
-The profile abstraction and one-final-category contract are implemented,
-but the shared LLM prompt that selects one category from multiple
-category definitions has not yet replaced the current DA-specific LLM
-prompt.
+Ambiguous jobs are resolved with one provider request. The arbitration
+manager composes its system policy from the candidate categories'
+`llm_prompt.py` files, while the shared arbitration prompt remains
+responsible for the final JSON contract and candidate-ID validation.
 
-### Only Data Analysis is currently registered
+### Registered categories
 
-The architecture is ready for additional categories. Their
-domain-specific profiles still need to be created and registered.
+The current registry contains six active categories: Data Analysis,
+AI/ML Data Science, Backend Development, Frontend Development, Mobile App
+Development, and Game Development. New categories should provide the same
+profile, keyword, LLM prompt, and guard prompt components before registration.
 
 ### Private and channel notification roles
 

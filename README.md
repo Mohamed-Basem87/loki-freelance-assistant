@@ -21,7 +21,7 @@ Current capabilities include:
 -   **FreeHub polling** through the existing FreeHub worker.
 -   **English/Arabic normalization** before classification.
 -   **Tiered keyword classification** using reusable category profiles.
--   **Data Analysis** as the first active category profile.
+-   **Six active category profiles**: Data Analysis, AI/ML Data Science, Backend Development, Frontend Development, Mobile App Development, and Game Development.
 -   **Gemini review with Groq fallback** for borderline classification.
 -   **Optional Notification Guard** for jobs accepted directly by the
     deterministic classifier.
@@ -520,11 +520,12 @@ DOCUMENTATION.md
 
 ## Current Known Limitations
 
-### 1. Multiple categories are not currently active
+### 1. Active categories
 
-Data Analysis is the current registered category. The architecture is
-ready for additional category profiles, but those profiles still need to
-be authored and registered.
+The current registry contains six active categories: Data Analysis, AI/ML
+Data Science, Backend Development, Frontend Development, Mobile App
+Development, and Game Development. New categories should provide the same
+profile, keyword, LLM prompt, and guard prompt components before registration.
 
 ### 2. Fixed private notifications and subscriber destinations are separate
 

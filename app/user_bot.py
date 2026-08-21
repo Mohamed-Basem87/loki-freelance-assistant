@@ -225,6 +225,12 @@ def build_user_notification(job_row, category_id):
         if profile is not None:
             categories = [profile.id]
 
+    profile = next(
+        (p for p in enabled_categories() if p.id == category_id),
+        None,
+    )
+    category_name = profile.name if profile is not None else ""
+
     return build_job_message(
         title=job_row.get("Title") or "",
         description=job_row.get("Description") or "",
@@ -233,6 +239,7 @@ def build_user_notification(job_row, category_id):
         url=job_row.get("URL") or "",
         budget="",
         categories=categories,
+        category_name=category_name,
         ai_used=(job_row.get("Category Selection Method") == "llm"),
         channel_style=True,
     )

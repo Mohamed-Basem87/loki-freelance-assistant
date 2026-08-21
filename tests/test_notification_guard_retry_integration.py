@@ -348,7 +348,7 @@ def test_llm_reviewed_job_bypasses_guard_on_retry(isolated_database, monkeypatch
     # IndexError, which is exactly the failure signal we want.
     guard = _wire_guard(monkeypatch, fake_private, outcomes=[])
 
-    def fake_arbitrate_category(filter_text, candidates, system_prompt):
+    def fake_arbitrate_category(filter_text, candidates, system_prompt=None):
         return {
             "selected_category": candidates[0]["id"],
             "reason": "LLM accepted",

@@ -74,6 +74,7 @@ def build_job_message(
     url: str = "",
     budget: str = "",
     categories=None,
+    category_name: str = "",
     ai_used: bool = False,
     channel_style: bool = False,
 ) -> str:
@@ -98,7 +99,10 @@ def build_job_message(
     display_source = source_display_name(source) if channel_style else source
 
     if channel_style:
-        header = "🚀 <b>New Data Analysis Opportunity</b>\n\n"
+        display_category = category_name.strip() or "Freelance"
+        header = (
+            f"🚀 <b>New {escape(display_category)} Opportunity</b>\n\n"
+        )
         header += f"📄 <b>{escape(title)}</b>\n"
         header += f"🏢 <b>Platform</b>\n{escape(display_source)}"
     else:
