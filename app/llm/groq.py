@@ -61,6 +61,7 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
         system_prompt = SYSTEM_PROMPT
     prompt = build_prompt(text, filter_result)
 
+    failures = []
     last_exception = None
 
     for model in GROQ_MODELS:
@@ -79,12 +80,19 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
 
             print(f"Groq model '{model}' failed: {e}")
 
+            failures.append(f"{model}: {e}")
             last_exception = e
 
             continue
 
-    if last_exception:
-        raise last_exception
+    if failures:
+        # Persist every model's failure -- the surviving error is what
+        # job_processor logs to the errors table, and per-model detail
+        # is the only way to diagnose an outage after the fact (the old
+        # code kept only the last model's error, hiding the rest).
+        raise RuntimeError(
+            "All Groq models failed. " + " | ".join(failures)
+        ) from last_exception
 
     raise RuntimeError("No Groq models are configured.")
 
@@ -95,6 +103,7 @@ def evaluate_category_arbitration(
 ):
     prompt = build_arbitration_prompt(text, candidates)
     allowed = {item["id"] for item in candidates}
+    failures = []
     last_exception = None
 
     for model in GROQ_MODELS:
@@ -107,9 +116,13 @@ def evaluate_category_arbitration(
             )
         except Exception as e:
             print(f"Groq arbitration model '{model}' failed: {e}")
+            failures.append(f"{model}: {e}")
             last_exception = e
             continue
 
-    if last_exception:
-        raise last_exception
+    if failures:
+        raise RuntimeError(
+            "All Groq models failed for category arbitration. "
+            + " | ".join(failures)
+        ) from last_exception
     raise RuntimeError("No Groq models are configured.")

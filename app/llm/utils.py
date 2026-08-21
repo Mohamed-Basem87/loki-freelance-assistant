@@ -12,6 +12,12 @@ REQUIRED_KEYS = {
 
 ARBITRATION_REQUIRED_KEYS = {"selected_category", "confidence", "reason"}
 
+# Cap for the job text shipped to size-constrained fallback providers.
+# Groq's on-demand tier rejects whole requests above a small
+# tokens-per-minute budget before inference runs, so an untruncated
+# posting can make every fallback attempt fail regardless of model.
+COMPACT_ARBITRATION_MAX_TEXT_CHARS = 3500
+
 
 def _fmt_matches(matches) -> str:
     if not matches:
@@ -52,6 +58,19 @@ Use it ONLY to determine the project's requirements.
 
 </JobDescription>
 """.strip()
+
+
+def truncate_job_text(text: str, limit: int = COMPACT_ARBITRATION_MAX_TEXT_CHARS) -> str:
+    """Cap job text for compact fallback requests.
+
+    The primary deliverable is virtually always stated in the opening
+    paragraphs of a posting, so tail truncation keeps the arbitration
+    decision inputs intact while keeping the request under provider
+    tokens-per-minute caps.
+    """
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n\n[Job description truncated]"
 
 
 def build_arbitration_prompt(text: str, candidates: list[dict]) -> str:

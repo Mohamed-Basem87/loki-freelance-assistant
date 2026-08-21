@@ -66,6 +66,7 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
         system_prompt = SYSTEM_PROMPT
     prompt = build_prompt(text, filter_result)
 
+    failures = []
     last_exception = None
 
     for index, client in enumerate(CLIENTS, start=1):
@@ -84,6 +85,7 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
 
         except Exception as e:
 
+            failures.append(f"key #{index}: {e}")
             last_exception = e
 
             # Always try the remaining keys, regardless of *why* this
@@ -96,8 +98,14 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
             print("Trying next key..." if index < len(CLIENTS) else "No more Gemini keys.")
             continue
 
-    if last_exception:
-        raise last_exception
+    if failures:
+        # Persist every key's failure, not just the last one -- the
+        # surviving error is what job_processor logs to the errors
+        # table, and per-key detail is the only way to diagnose an
+        # outage (quota vs malformed response vs auth) after the fact.
+        raise RuntimeError(
+            "All Gemini API keys failed. " + " | ".join(failures)
+        ) from last_exception
 
     raise RuntimeError("No Gemini API keys are configured.")
 
@@ -109,6 +117,7 @@ def evaluate_category_arbitration(
 ):
     prompt = build_arbitration_prompt(text, candidates)
     allowed = {item["id"] for item in candidates}
+    failures = []
     last_exception = None
 
     for index, client in enumerate(CLIENTS, start=1):
@@ -117,10 +126,14 @@ def evaluate_category_arbitration(
             response = _generate_response(client, prompt, system_prompt)
             return parse_arbitration_response(response.text, allowed)
         except Exception as e:
+            failures.append(f"key #{index}: {e}")
             last_exception = e
             print(f"Gemini arbitration key #{index} failed: {e}")
             continue
 
-    if last_exception:
-        raise last_exception
+    if failures:
+        raise RuntimeError(
+            "All Gemini API keys failed for category arbitration. "
+            + " | ".join(failures)
+        ) from last_exception
     raise RuntimeError("No Gemini API keys are configured.")
