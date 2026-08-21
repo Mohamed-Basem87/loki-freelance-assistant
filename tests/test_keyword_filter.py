@@ -211,13 +211,13 @@ No pay, but great learning experience!
 # ------------------------------------------------------------------
 AUTOMATION_CASES = [
     {
-        "name": "Data entry job (mixed core)",
+        "name": "Data entry job (explicit phrase hard-rejected)",
         "title": "Excel Data Entry from Online",
         "text": (
             "I need someone to do data entry from online sources into an "
             "Excel file. Accuracy matters."
         ),
-        "expected": "needs_gemini",
+        "expected": "reject",
     },
     {
         "name": "Browser automation tool",
@@ -1072,18 +1072,18 @@ TITLE_CORE_POSITIVE_CASES = [
         "expected": "notify_directly",
     },
     {
-        "name": "Title core positive + body core negative still routes to Gemini",
+        "name": "Excel data-entry automation hard-rejected despite excel title",
         "title": "Excel Data Entry Automation",
         "text": (
-            # Title has "excel" core positive. Body has "data entry"
-            # core negative. Should route to needs_gemini via
-            # title_positive_but_body_core_negative (existing rule).
+            # Title has "excel" core positive, but the explicit
+            # "data entry" phrase is now a DA hard-reject (daily audit
+            # 2026-08-21): Gemini consistently ruled none for these.
             "Excel Data Entry Automation. "
             "Build a tool that reads data from online sources and enters "
             "it into Excel spreadsheets automatically. Must handle "
             "dropdown menus and form fields."
         ),
-        "expected": "needs_gemini",
+        "expected": "reject",
     },
 ]
 

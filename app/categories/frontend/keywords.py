@@ -156,6 +156,8 @@ POSITIVE_KEYWORDS = {
             "وورد بيرس": 7,
             "موقع إلكتروني": 6,
             "مواقع إلكترونية": 6,
+            "تصميم موقع": 6,
+            "متجر إلكتروني": 7,
             "تطوير مواقع": 6,
             "تصميم مواقع": 6,
             "مطور مواقع": 6,
@@ -188,13 +190,13 @@ POSITIVE_KEYWORDS = {
 
     "testing": {
         "core": {
-            "jest": 6,
             "cypress": 7,
             "playwright": 7,
             "selenium": 6,
             "vitest": 6,
         },
         "supporting": {
+            "jest": 3,
             "unit test": 3,
             "integration test": 3,
             "e2e": 3,
@@ -402,8 +404,6 @@ NEGATIVE_KEYWORDS = {
             "large language model": 7,
             "openai": 7,
             "gpt": 6,
-            "chatgpt": 6,
-            "transformer": 6,
             "data science": 8,
             "data scientist": 8,
             "predictive model": 7,
@@ -412,6 +412,8 @@ NEGATIVE_KEYWORDS = {
             "recommendation engine": 7,
         },
         "supporting": {
+            "chatgpt": 3,
+            "transformer": 3,
             "regression": 3,
             "classification": 3,
             "clustering": 3,

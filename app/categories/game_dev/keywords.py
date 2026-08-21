@@ -82,10 +82,10 @@ POSITIVE_KEYWORDS = {
     "programming_languages": {
         "core": {
             "gdscript": 9,
-            "blueprint": 8,
             "visual scripting": 7,
         },
         "supporting": {
+            "blueprint": 3,
             "c++": 3,
             "c#": 3,
             "lua": 3,
@@ -403,8 +403,6 @@ NEGATIVE_KEYWORDS = {
             "large language model": 7,
             "openai": 7,
             "gpt": 6,
-            "chatgpt": 6,
-            "transformer": 6,
             "data science": 8,
             "data scientist": 8,
             "predictive model": 7,
@@ -413,6 +411,8 @@ NEGATIVE_KEYWORDS = {
             "recommendation engine": 7,
         },
         "supporting": {
+            "chatgpt": 3,
+            "transformer": 3,
             "regression": 3,
             "classification": 3,
             "clustering": 3,

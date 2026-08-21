@@ -67,13 +67,14 @@ def _build_direct_job(source="Test Channel", url="https://example.invalid/job"):
     }
 
 
-# needs_gemini text (from tests/test_keyword_filter.py's
-# AUTOMATION_CASES), used for the LLM-reviewed bypass test -- must
-# route through Gemini, never notify_directly, so ai_used ends up True.
-LLM_REVIEWED_TITLE = "Excel Data Entry from Online"
+# needs_gemini text, used for the LLM-reviewed bypass test -- must
+# route through Gemini, never notify_directly, so ai_used ends up
+# True. Two competing category cores (mobile_app vs backend) keep this
+# arbitration-bound regardless of single-category vocabulary tweaks.
+LLM_REVIEWED_TITLE = "Build a Flutter Mobile App with Laravel Backend Dashboard"
 LLM_REVIEWED_DESCRIPTION = (
-    "I need someone to do data entry from online sources into an "
-    "Excel file. Accuracy matters."
+    "I need a cross-platform Flutter app for Android and iOS with a "
+    "Laravel REST API backend and an admin dashboard."
 )
 
 

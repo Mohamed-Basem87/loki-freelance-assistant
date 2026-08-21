@@ -83,7 +83,6 @@ POSITIVE_KEYWORDS = {
             "firebase": 7,
             "supabase": 6,
             "push notification": 7,
-            "notifications": 4,
             "in-app purchase": 7,
             "subscription": 4,
             "app monetization": 6,
@@ -102,6 +101,7 @@ POSITIVE_KEYWORDS = {
             "shared preferences": 4,
         },
         "supporting": {
+            "notifications": 3,
             "sqlite": 3,
             "camera": 3,
             "splash screen": 3,
@@ -373,8 +373,6 @@ NEGATIVE_KEYWORDS = {
             "large language model": 7,
             "openai": 7,
             "gpt": 6,
-            "chatgpt": 6,
-            "transformer": 6,
             "data science": 8,
             "data scientist": 8,
             "predictive model": 7,
@@ -383,6 +381,8 @@ NEGATIVE_KEYWORDS = {
             "recommendation engine": 7,
         },
         "supporting": {
+            "chatgpt": 3,
+            "transformer": 3,
             "regression": 3,
             "classification": 3,
             "clustering": 3,
