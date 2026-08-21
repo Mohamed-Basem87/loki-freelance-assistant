@@ -97,12 +97,12 @@ POSITIVE_KEYWORDS = {
             "fingerprint": 4,
             "offline storage": 5,
             "local database": 4,
-            "sqlite": 4,
             "realm": 5,
             "core data": 6,
             "shared preferences": 4,
         },
         "supporting": {
+            "sqlite": 3,
             "camera": 3,
             "splash screen": 3,
             "onboarding": 3,
@@ -430,13 +430,11 @@ NEGATIVE_KEYWORDS = {
 # Hard rejects: unrelated work rejected when no positive signal exists.
 HARD_REJECT_KEYWORDS = {
     "graphic design",
-    "logo",
     "photoshop",
     "illustrator",
     "video editing",
     "motion graphics",
     "translation",
-    "seo",
     "digital marketing",
     "internship",
     "intern",

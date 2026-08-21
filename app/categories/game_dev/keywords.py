@@ -81,12 +81,12 @@ POSITIVE_KEYWORDS = {
 
     "programming_languages": {
         "core": {
-            "c++": 7,
             "gdscript": 9,
             "blueprint": 8,
             "visual scripting": 7,
         },
         "supporting": {
+            "c++": 3,
             "c#": 3,
             "lua": 3,
             "haxe": 3,
@@ -144,8 +144,6 @@ POSITIVE_KEYWORDS = {
             "game publishing": 6,
             "steam": 5,
             "itch.io": 6,
-            "google play": 4,
-            "app store": 4,
             "playstation": 5,
             "xbox": 5,
             "nintendo": 5,
@@ -156,6 +154,8 @@ POSITIVE_KEYWORDS = {
             "metaverse": 5,
         },
         "supporting": {
+            "google play": 3,
+            "app store": 3,
             "switch": 3,
             "multiplayer": 3,
             "online multiplayer": 4,
@@ -460,13 +460,11 @@ NEGATIVE_KEYWORDS = {
 # Hard rejects: unrelated work rejected when no positive signal exists.
 HARD_REJECT_KEYWORDS = {
     "graphic design",
-    "logo",
     "photoshop",
     "illustrator",
     "video editing",
     "motion graphics",
     "translation",
-    "seo",
     "digital marketing",
     "internship",
     "intern",

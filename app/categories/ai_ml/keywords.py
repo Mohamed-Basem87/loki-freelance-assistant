@@ -211,6 +211,8 @@ POSITIVE_KEYWORDS = {
             "stable diffusion": 7,
             "midjourney": 6,
             "dall-e": 6,
+            "comfyui": 6,
+            "comfy ui": 6,
             "gan": 7,
             "generative adversarial": 7,
             "vae": 6,
@@ -513,13 +515,11 @@ NEGATIVE_KEYWORDS = {
 # Hard rejects: unrelated work rejected when no positive signal exists.
 HARD_REJECT_KEYWORDS = {
     "graphic design",
-    "logo",
     "photoshop",
     "illustrator",
     "video editing",
     "motion graphics",
     "translation",
-    "seo",
     "digital marketing",
     "internship",
     "intern",
