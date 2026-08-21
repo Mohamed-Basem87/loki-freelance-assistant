@@ -242,6 +242,14 @@ POSITIVE_KEYWORDS = {
 # Negative evidence: other software domains to avoid overlap.
 NEGATIVE_KEYWORDS = {
 
+    "community_content": {
+        "core": {
+            "community manager": 8,
+            "community management": 8,
+        },
+        "supporting": {},
+    },
+
     "frontend": {
         "core": {
             "react": 8,

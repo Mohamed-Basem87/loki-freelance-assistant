@@ -81,13 +81,13 @@ POSITIVE_KEYWORDS = {
 
     "programming_languages": {
         "core": {
-            "c#": 7,
             "c++": 7,
             "gdscript": 9,
             "blueprint": 8,
             "visual scripting": 7,
         },
         "supporting": {
+            "c#": 3,
             "lua": 3,
             "haxe": 3,
             "rust": 3,
@@ -149,7 +149,6 @@ POSITIVE_KEYWORDS = {
             "playstation": 5,
             "xbox": 5,
             "nintendo": 5,
-            "switch": 4,
             "vr game": 7,
             "ar game": 7,
             "virtual reality game": 7,
@@ -157,6 +156,7 @@ POSITIVE_KEYWORDS = {
             "metaverse": 5,
         },
         "supporting": {
+            "switch": 3,
             "multiplayer": 3,
             "online multiplayer": 4,
             "matchmaking": 3,

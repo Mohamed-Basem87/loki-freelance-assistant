@@ -89,7 +89,6 @@ POSITIVE_KEYWORDS = {
             "app monetization": 6,
             "admob": 7,
             "ads integration": 5,
-            "camera": 4,
             "gps": 4,
             "location services": 5,
             "biometric": 5,
@@ -104,6 +103,7 @@ POSITIVE_KEYWORDS = {
             "shared preferences": 4,
         },
         "supporting": {
+            "camera": 3,
             "splash screen": 3,
             "onboarding": 3,
             "deep linking": 4,
@@ -124,6 +124,13 @@ POSITIVE_KEYWORDS = {
 
 # Negative evidence: other software domains to avoid overlap.
 NEGATIVE_KEYWORDS = {
+
+    "security_testing": {
+        "core": {
+            "bug bounty": 14,
+        },
+        "supporting": {},
+    },
 
     "frontend": {
         "core": {

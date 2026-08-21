@@ -194,6 +194,21 @@ POSITIVE_KEYWORDS = {
 # Negative evidence: other software domains to avoid overlap.
 NEGATIVE_KEYWORDS = {
 
+    "writing_content": {
+        "core": {
+            "copywriter": 14,
+        },
+        "supporting": {},
+    },
+
+    "nocode_platforms": {
+        "core": {
+            "power apps": 8,
+            "power platform": 8,
+        },
+        "supporting": {},
+    },
+
     "frontend": {
         "core": {
             "react": 8,

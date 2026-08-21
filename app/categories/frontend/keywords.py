@@ -146,6 +146,7 @@ POSITIVE_KEYWORDS = {
             "elementor": 7,
             "divi": 6,
             "framer": 7,
+            "منصة سلة": 7,
         },
         "supporting": {
             "theme": 3,
