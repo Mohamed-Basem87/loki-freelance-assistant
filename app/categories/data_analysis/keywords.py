@@ -783,6 +783,7 @@ HARD_REJECT_KEYWORDS = {
     "ومدخل بيانات",
     "بمدخل بيانات",
     "لمدخل بيانات",
+    "lead generating", "lead generators", "lead generator", "جلب العملاء", "letter writing", "request letter",
 }
 
 

@@ -491,6 +491,7 @@ HARD_REJECT_KEYWORDS = {
     "متدرب",
     "متطوع",
     "بدون مقابل",
+    "lead generating", "lead generators", "lead generator", "جلب العملاء", "letter writing", "request letter",
 }
 
 

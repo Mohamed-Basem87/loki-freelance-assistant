@@ -116,7 +116,6 @@ POSITIVE_KEYWORDS = {
             "pixel perfect": 8,
             "pixel-perfect": 8,
             "pixel by pixel": 8,
-            "exact match": 7,
             "design to code": 8,
             "mockup to code": 8,
             "design implementation": 8,
@@ -126,6 +125,7 @@ POSITIVE_KEYWORDS = {
             "ui from prototype": 8,
         },
         "supporting": {
+            "exact match": 3,
             "ui": 3,
             "ux": 3,
             "user interface": 3,
@@ -162,8 +162,12 @@ POSITIVE_KEYWORDS = {
             "ورد بريس": 7,
             "شوبيفاي": 7,
             "ووكومرس": 7,
-            "e-commerce": 6,
-            "ecommerce": 6,
+            "e-commerce website": 7,
+            "e-commerce site": 7,
+            "e-commerce store": 7,
+            "ecommerce website": 7,
+            "ecommerce site": 7,
+            "ecommerce store": 7,
             "multi vendor": 6,
             "متعددة التجار": 6,
             "متعدد التجار": 6,
@@ -186,6 +190,8 @@ POSITIVE_KEYWORDS = {
             "webapp": 6,
         },
         "supporting": {
+            "e-commerce": 4,
+            "ecommerce": 4,
             "theme": 3,
             "plugin": 3,
             "template": 3,
@@ -211,13 +217,10 @@ POSITIVE_KEYWORDS = {
         },
     },
 
+    # QA-tool names are deliberately absent from core: in production they
+    # mark scraping/automation gigs, not frontend builds.
     "testing": {
-        "core": {
-            "cypress": 7,
-            "playwright": 7,
-            "selenium": 6,
-            "vitest": 6,
-        },
+        "core": {},
         "supporting": {
             "jest": 3,
             "unit test": 3,
@@ -508,6 +511,7 @@ HARD_REJECT_KEYWORDS = {
     "متدرب",
     "متطوع",
     "بدون مقابل",
+    "lead generating", "lead generators", "lead generator", "جلب العملاء", "letter writing", "request letter",
 }
 
 
