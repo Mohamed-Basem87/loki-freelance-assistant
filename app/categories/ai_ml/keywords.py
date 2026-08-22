@@ -217,7 +217,6 @@ POSITIVE_KEYWORDS = {
             "generative adversarial": 7,
             "vae": 6,
             "variational autoencoder": 6,
-            "lora": 6,
             "qlora": 6,
             "prompt engineering": 7,
             "prompt design": 6,
@@ -226,6 +225,7 @@ POSITIVE_KEYWORDS = {
             "autonomous agent": 7,
         },
         "supporting": {
+            "lora": 3,
             "fine-tuning": 3,
             "fine tuning": 3,
             "fine-tune": 3,
@@ -322,7 +322,6 @@ NEGATIVE_KEYWORDS = {
             "nestjs": 7,
             "ruby on rails": 7,
             "ruby": 5,
-            "go": 4,
             "golang": 4,
             "rust": 4,
             "rest api": 6,

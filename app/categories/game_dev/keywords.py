@@ -249,7 +249,6 @@ NEGATIVE_KEYWORDS = {
             "nestjs": 7,
             "ruby on rails": 7,
             "ruby": 5,
-            "go": 4,
             "golang": 4,
             "rust": 4,
             "rest api": 6,

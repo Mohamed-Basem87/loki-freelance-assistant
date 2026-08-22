@@ -84,7 +84,6 @@ POSITIVE_KEYWORDS = {
             "supabase": 6,
             "push notification": 7,
             "in-app purchase": 7,
-            "subscription": 4,
             "app monetization": 6,
             "admob": 7,
             "ads integration": 5,
@@ -101,6 +100,7 @@ POSITIVE_KEYWORDS = {
             "shared preferences": 4,
         },
         "supporting": {
+            "subscription": 3,
             "notifications": 3,
             "sqlite": 3,
             "camera": 3,
@@ -134,9 +134,6 @@ NEGATIVE_KEYWORDS = {
 
     "frontend": {
         "core": {
-            "react": 8,
-            "reactjs": 8,
-            "react.js": 8,
             "nextjs": 8,
             "next.js": 8,
             "vue": 8,
@@ -202,7 +199,6 @@ NEGATIVE_KEYWORDS = {
             "nestjs": 7,
             "ruby on rails": 7,
             "ruby": 5,
-            "go": 4,
             "golang": 4,
             "rust": 4,
             "rest api": 6,
