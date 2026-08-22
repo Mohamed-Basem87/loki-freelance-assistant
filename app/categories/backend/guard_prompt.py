@@ -27,27 +27,84 @@ development, such as:
 - DevOps and deployment
 - Cloud infrastructure (AWS, GCP, Azure)
 
-REJECT when the PRIMARY DELIVERABLE is:
+IMPORTANT FULL-STACK DISTINCTION:
 
-- Frontend development (UI implementation, responsive design)
+A full-stack or web platform build whose deliverable includes
+substantial server-side work -- databases, APIs, business logic,
+payments, user accounts, admin panels -- IS a genuine backend job and
+MUST be approved even when the posting also mentions frontend work.
+
+For example:
+
+ACCEPT:
+"Build a full-featured betting platform with real-time odds, user
+accounts, wallet and payment processing."
+
+ACCEPT:
+"Develop an automated voucher/gift-card platform that splits purchased
+cards into denominations and emails codes."
+
+ACCEPT:
+"Build an administrative and collections system for our financing
+business: clients, installments, overdue tracking, reports."
+
+The presence of a UI does not disqualify these jobs; judge whether
+real server-side engineering is part of what the client is paying for.
+
+REJECT when the PRIMARY DELIVERABLE is operational or clerical rather
+than engineering. Common patterns:
+
+REJECT:
+"Upload my ready PHP script to cPanel and configure the database."
+-- installation/deployment of existing software, no development.
+
+REJECT:
+"Turn our engineering notes into developer-ready SOAP API
+documentation." -- technical writing.
+
+REJECT:
+"Migrate our 7 users from Google Workspace to Microsoft 365 with
+Intune and Entra ID." -- IT consulting/administration.
+
+REJECT:
+"Set up a QuickBooks virtual terminal so my team can process card
+payments." -- third-party tool configuration.
+
+REJECT:
+"Turn our spreadsheet workflow into a Power Apps model-driven order
+system." -- low-code platform configuration, not code development.
+
+Also REJECT when the PRIMARY DELIVERABLE is:
+
+- Frontend-only development (UI implementation, responsive design,
+  CMS site builds with no custom server-side work)
 - Mobile app development (iOS/Android)
 - Game development
 - Data analysis or business intelligence
 - Machine learning or AI model development
-- Enterprise software (ERP, CRM, SaaS) unless purely backend
 - Graphic design or UI/UX design
-- Education or tutoring
+- Research, content writing, or education/tutoring
 - Any other non-backend-related task
 
-The distinction is the PRIMARY DELIVERABLE:
-- Building APIs, databases, or server-side logic = ACCEPT.
-- Building UI/frontend = REJECT.
-- Building mobile apps = REJECT.
-- Building games = REJECT.
-- Designing systems (without implementation) = REJECT.
+A job does NOT become acceptable merely because it mentions APIs,
+databases, Python, cloud, automation, "platform", or "system".
+Always identify the MAIN OUTCOME the client is paying for.
 
-If the description is ambiguous, conservative, or primarily
-non-backend-related, reject it.
+Ask yourself:
+"What will the freelancer ultimately deliver to the client?"
+
+If the answer includes engineered server-side software -- APIs,
+databases, business logic, integrations built in code -- approve it.
+
+If the answer is installing/configuring existing tools, documentation,
+consulting, administration, or a non-backend deliverable, reject it.
+
+Tools and technologies mentioned as secondary requirements do not
+determine the category. Judge the actual work and final deliverable.
+
+If the description is ambiguous after this analysis, lean toward
+rejecting only when the deliverable clearly falls outside building
+server-side software; otherwise approve.
 
 Return ONLY valid JSON with exactly this structure:
 

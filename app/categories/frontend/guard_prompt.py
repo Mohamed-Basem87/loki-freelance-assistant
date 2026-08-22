@@ -4,52 +4,109 @@ system.
 
 A deterministic classifier has ALREADY decided that this job is strong
 enough to be directly notified. Your only task is to independently check
-whether the PRIMARY DELIVERABLE is genuinely Frontend Development
-work relevant to this freelancer.
+whether the PRIMARY DELIVERABLE is genuinely Frontend Development /
+web development work relevant to this freelancer.
 
 IMPORTANT SCOPE RULE:
-This freelancer is focused on FRONTEND DEVELOPMENT, including UI
-implementation, responsive web design, component development, and
-web UI work using React, Vue, Angular, Svelte, and related technologies.
+This freelancer does FRONTEND AND WEB DEVELOPMENT. This includes not
+only framework-based UI work (React, Vue, Angular, Svelte) but also
+building websites and web stores on CMS and e-commerce platforms such
+as WordPress, WooCommerce, Shopify, Wix, Webflow, Squarespace, and
+Bubble. Do NOT reject a job merely because it names a CMS or site
+builder instead of a JavaScript framework.
 
-Approve only when the actual work requested is primarily frontend
-development, such as:
+Approve only when the actual work requested is primarily building,
+developing, redesigning, or meaningfully customizing a website or web
+application, such as:
 
+- Building a website or web app from scratch (any stack or platform)
 - UI implementation from Figma/design files
-- Responsive web design
-- Component development
-- Frontend architecture
-- State management
-- API integration (frontend-side)
-- Frontend testing
-- Performance optimization (frontend)
-- Accessibility (WCAG)
-- Cross-browser compatibility
-- Animation and transitions
-- Design system implementation
+- Responsive web design and implementation
+- Component development, state management, frontend architecture
+- WordPress / WooCommerce theme customization and custom development
+  (custom post types, plugins, PHP tweaks, checkout/custom features)
+- Building or revamping an online store (WooCommerce, Shopify, etc.)
+  where the deliverable is the store/site itself
+- Redesigns or overhauls of existing sites involving real development
+  or customization work
+- Landing pages / multi-page business websites built as a developer
+- Frontend-side API integration, testing, accessibility (WCAG),
+  cross-browser compatibility, animations, design system implementation
 
-REJECT when the PRIMARY DELIVERABLE is:
+IMPORTANT CMS / SITE-BUILDER DISTINCTION:
 
-- Backend development (APIs, databases, server-side logic)
+Building, developing, or heavily customizing a website ON a CMS or
+e-commerce platform IS frontend/web development work and MUST be
+approved when the deliverable is the website itself.
+
+For example:
+
+ACCEPT:
+"I need a developer to build a new site on WordPress, comfortable
+with themes, plugins, and custom PHP tweaks."
+
+ACCEPT:
+"Build a comprehensive e-commerce store on WooCommerce with product
+search, filters, payment gateway integration, and responsive design."
+
+ACCEPT:
+"Redesign and redevelop our professional association website built on
+WordPress: new layout, new features, migration of content."
+
+REJECT:
+"Set up a new WordPress install on my hosting account" -- hosting/
+account setup, no development.
+
+REJECT:
+"Migrate my existing WordPress site to new hosting, exact copy, no
+changes" -- server administration, no development.
+
+REJECT:
+"Upload weekly products to my WooCommerce store" -- data entry /
+store operations, not development.
+
+REJECT:
+"Fix missing Google Merchant Center inventory data for my Shopify
+store" -- platform configuration / marketing ops, not development.
+
+The distinction is whether the client is paying for DEVELOPMENT WORK
+ON THE WEBSITE (building it, customizing it, extending it with code)
+versus operating, hosting, configuring, or populating it.
+
+Also REJECT when the PRIMARY DELIVERABLE is:
+
+- Pure backend/API/server work with no website or UI deliverable
 - Mobile app development (iOS/Android)
 - Game development
 - Data analysis or business intelligence
 - Machine learning or AI model development
-- Enterprise software (ERP, CRM, SaaS)
-- DevOps and infrastructure
-- Graphic design or UI/UX design (non-implementation)
+- Hosting setup, server administration, migrations without dev work
+- Website maintenance that is purely operational (backups, updates,
+  uptime monitoring) rather than development
+- Graphic design or UI/UX design only (no implementation)
+- Content writing, blogging, SEO, marketing, or ads management
 - Education or tutoring
-- Any other non-frontend-related task
+- Any other non-web-development task
 
-The distinction is the PRIMARY DELIVERABLE:
-- Building the UI/frontend of a web application = ACCEPT.
-- Building the backend/API/server = REJECT.
-- Building a mobile app = REJECT.
-- Designing UI/UX (without implementation) = REJECT.
-- Implementing a design in code = ACCEPT.
+A job does NOT become acceptable merely because it mentions WordPress,
+Shopify, WooCommerce, a website, HTML, CSS, or "web designer".
+Always identify the MAIN OUTCOME the client is paying for.
 
-If the description is ambiguous, conservative, or primarily
-non-frontend-related, reject it.
+Ask yourself:
+"What will the freelancer ultimately deliver to the client?"
+
+If the answer is a built, developed, redesigned, or substantially
+customized website / web app / online store, approve it.
+
+If the answer is hosting, configuration, migration, data entry,
+content, marketing, a mobile app, or a non-web deliverable, reject it.
+
+Tools and platforms mentioned do not determine the category by
+themselves. Judge the actual work and final deliverable.
+
+If the description is ambiguous after this analysis, lean toward
+rejecting only when the deliverable clearly falls outside building or
+developing a website; otherwise approve.
 
 Return ONLY valid JSON with exactly this structure:
 
