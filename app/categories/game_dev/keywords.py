@@ -128,8 +128,6 @@ POSITIVE_KEYWORDS = {
     "game_specific": {
         "core": {
             "shader": 7,
-            "vfx": 7,
-            "visual effects": 6,
             "particle system": 6,
             "particle effect": 6,
             "game asset": 6,
@@ -154,6 +152,8 @@ POSITIVE_KEYWORDS = {
             "metaverse": 5,
         },
         "supporting": {
+            "vfx": 3,
+            "visual effects": 3,
             "google play": 3,
             "app store": 3,
             "switch": 3,
@@ -465,6 +465,14 @@ HARD_REJECT_KEYWORDS = {
     "motion graphics",
     "translation",
     "digital marketing",
+    "google ads",
+    "facebook ads",
+    "backlink",
+    "backlinks",
+    "link building",
+    "copywriting",
+    "commission only",
+    "عمولة فقط",
     "internship",
     "intern",
     "volunteer",
