@@ -174,7 +174,6 @@ POSITIVE_KEYWORDS = {
             "موقع إلكتروني": 6,
             "مواقع إلكترونية": 6,
             "تصميم موقع": 6,
-            "متجر إلكتروني": 7,
             "تطوير مواقع": 6,
             "تصميم مواقع": 6,
             "مطور مواقع": 6,
@@ -190,6 +189,9 @@ POSITIVE_KEYWORDS = {
             "webapp": 6,
         },
         "supporting": {
+            # Store mention alone is not web-dev evidence (customer service,
+            # store management, product-entry gigs all name their store).
+            "متجر إلكتروني": 4,
             "e-commerce": 4,
             "ecommerce": 4,
             "theme": 3,
@@ -485,6 +487,8 @@ NEGATIVE_KEYWORDS = {
 
 # Hard rejects: unrelated work rejected when no positive signal exists.
 HARD_REJECT_KEYWORDS = {
+    # Data-entry gigs reach frontend only via incidental html/format vocab.
+    "data entry",
     "graphic design",
     "photoshop",
     "illustrator",

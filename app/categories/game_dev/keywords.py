@@ -54,6 +54,7 @@ POSITIVE_KEYWORDS = {
             "game system": 7,
             "game loop": 7,
             "game architecture": 8,
+            "roblox": 8,
             "تصميم لعبة": 8,
             "برمجة ألعاب": 8,
             "تطوير ألعاب": 8,
@@ -180,6 +181,14 @@ POSITIVE_KEYWORDS = {
 
 # Negative evidence: other software domains to avoid overlap.
 NEGATIVE_KEYWORDS = {
+
+    # Community/server-setup gigs name the game but deliver no game dev.
+    "community_ops": {
+        "core": {
+            "discord": 6,
+        },
+        "supporting": {},
+    },
 
     "frontend": {
         "core": {
@@ -487,6 +496,8 @@ HARD_REJECT_KEYWORDS = {
     "متطوع",
     "بدون مقابل",
     "lead generating", "lead generators", "lead generator", "جلب العملاء", "letter writing", "request letter",
+    # STL deliverables are CAD/3D-printing work, not game development.
+    "stl",
 }
 
 

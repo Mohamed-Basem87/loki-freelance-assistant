@@ -69,6 +69,12 @@ POSITIVE_KEYWORDS = {
             "تطبيق ايفون": 8,
             "تطبيق ios": 8,
             "تطبيق iphone": 7,
+            # Arabic transliteration of "App Store" (publishing gigs).
+            "ابلستور": 8,
+            # Voice-chat / voice-room social apps.
+            "تواصل صوتي": 8,
+            "غرف صوتية": 7,
+            "دردشة صوتية": 7,
         },
         "supporting": {
             "app development": 4,
@@ -128,6 +134,17 @@ NEGATIVE_KEYWORDS = {
     "security_testing": {
         "core": {
             "bug bounty": 14,
+        },
+        "supporting": {},
+    },
+
+    # Hardware/mechanical product design that merely mentions an app.
+    "hardware_design": {
+        "core": {
+            "cad": 8,
+            "solidworks": 8,
+            "feasibility study": 6,
+            "feasibility": 5,
         },
         "supporting": {},
     },

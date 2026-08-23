@@ -192,6 +192,14 @@ POSITIVE_KEYWORDS = {
 # Negative evidence: other software domains to avoid overlap.
 NEGATIVE_KEYWORDS = {
 
+    # Recruitment/staffing ads are employment offers, not project gigs.
+    "recruitment": {
+        "core": {
+            "staff augmentation": 8,
+        },
+        "supporting": {},
+    },
+
     "writing_content": {
         "core": {
             "copywriter": 14,
@@ -465,6 +473,9 @@ NEGATIVE_KEYWORDS = {
 
 # Hard rejects: unrelated work rejected when no positive signal exists.
 HARD_REJECT_KEYWORDS = {
+    # Data-entry gigs reach backend only via incidental db/tool vocabulary.
+    "data entry",
+    "إدخال بيانات",
     "graphic design",
     "photoshop",
     "illustrator",

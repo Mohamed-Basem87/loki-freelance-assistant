@@ -157,7 +157,6 @@ POSITIVE_KEYWORDS = {
             "anomaly detection": 7,
             "recommendation system": 7,
             "recommendation engine": 7,
-            "a/b testing": 7,
             "experiment design": 7,
             "causal inference": 7,
             "survival analysis": 7,
@@ -191,7 +190,8 @@ POSITIVE_KEYWORDS = {
             "wandb": 7,
             "neptune": 6,
             "kubeflow": 7,
-            "airflow": 6,
+            # Full name only: bare "airflow" also matches HVAC/CAD prose.
+            "apache airflow": 6,
             "prefect": 6,
             "dagster": 6,
         },
