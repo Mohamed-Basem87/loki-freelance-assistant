@@ -50,9 +50,7 @@ def _source_keyboard(selected_sources):
 async def _render_sources(query, user_id, *, edit=True):
     selected = await logger.run(logger.get_user_sources, user_id)
     text = (
-        "Choose the sources you want to receive.
-
-"
+        "Choose the sources you want to receive.\n\n"
         "If you select none, you'll receive jobs from all sources."
     )
     markup = _source_keyboard(selected)
@@ -122,9 +120,7 @@ async def sources_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user.first_name or "",
     )
     await update.message.reply_text(
-        "Choose the sources you want to receive.
-
-"
+        "Choose the sources you want to receive.\n\n"
         "If you select none, you'll receive jobs from all sources.",
         reply_markup=_source_keyboard(
             await logger.run(logger.get_user_sources, internal_id)
