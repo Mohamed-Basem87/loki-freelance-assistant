@@ -69,8 +69,17 @@ POSITIVE_KEYWORDS = {
             "تطبيق ايفون": 8,
             "تطبيق ios": 8,
             "تطبيق iphone": 7,
-            # Arabic transliteration of "App Store" (publishing gigs).
+            # Arabic transliterations of "App Store" / store names
+            # (publishing gigs). Corpus evidence: نشر تطبيق على ابل ستور,
+            # رفع تطبيق على متجر أبل, رف تطبيق طبي (متجر بلي).
             "ابلستور": 8,
+            "ابل ستور": 8,
+            "اب ستور": 8,
+            "متجر أبل": 8,
+            "متجر بلي": 8,
+            # Generic Arabic phrase for "a mobile/web application" --
+            # corpus: انشاء وبرمجة تطبيق للعقود, تطبيق إلكتروني خياطة.
+            "تطبيق إلكتروني": 8,
             # Voice-chat / voice-room social apps.
             "تواصل صوتي": 8,
             "غرف صوتية": 7,
@@ -101,7 +110,6 @@ POSITIVE_KEYWORDS = {
             "fingerprint": 4,
             "offline storage": 5,
             "local database": 4,
-            "realm": 5,
             "core data": 6,
             "shared preferences": 4,
         },
@@ -130,6 +138,17 @@ POSITIVE_KEYWORDS = {
 
 # Negative evidence: other software domains to avoid overlap.
 NEGATIVE_KEYWORDS = {
+
+    # App-store review/rating manipulation gigs (buying reviews and
+    # ratings) -- not development work. Kept as a negative core rather
+    # than hard reject so a genuine build that legitimately mentions a
+    # reviews feature still reaches arbitration instead of dying here.
+    "aso_reviews": {
+        "core": {
+            "مراجعات وتقييمات": 8,
+        },
+        "supporting": {},
+    },
 
     "security_testing": {
         "core": {
@@ -469,6 +488,8 @@ HARD_REJECT_KEYWORDS = {
     "متطوع",
     "بدون مقابل",
     "lead generating", "lead generators", "lead generator", "جلب العملاء", "letter writing", "request letter",
+    # Review/rating manipulation phrasing (رفع تقييم تطبيق أبل ستور).
+    "رفع تقييم",
 }
 
 

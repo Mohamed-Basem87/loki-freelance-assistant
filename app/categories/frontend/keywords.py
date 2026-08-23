@@ -148,8 +148,6 @@ POSITIVE_KEYWORDS = {
             "divi": 6,
             "framer": 7,
             "duda": 7,
-            "منصة سلة": 7,
-            "متجر سلة": 7,
             "ثيم سلة": 6,
             "ثيمات سلة": 6,
             "ووردبريس": 7,
@@ -192,6 +190,11 @@ POSITIVE_KEYWORDS = {
             # Store mention alone is not web-dev evidence (customer service,
             # store management, product-entry gigs all name their store).
             "متجر إلكتروني": 4,
+            # Salla platform names demoted core->supporting: marketing/
+            # management/CRO hybrids (إدارة متجر سلة, تحسين معدل التحويل)
+            # were direct-selecting on the platform name alone.
+            "منصة سلة": 4,
+            "متجر سلة": 4,
             "e-commerce": 4,
             "ecommerce": 4,
             "theme": 3,
