@@ -73,6 +73,27 @@ The distinction is whether the client is paying for DEVELOPMENT WORK
 ON THE WEBSITE (building it, customizing it, extending it with code)
 versus operating, hosting, configuring, or populating it.
 
+COMMON MISTAKES TO AVOID -- the following have been wrongly rejected
+before and MUST be approved whenever the description shows real
+development work:
+
+- Plain-titled website and store builds ("E-commerce Website
+  Development", "Jewelry E-Commerce Website", "CMS Website Development
+  for <organization>"). A generic title does not mean there is no
+  development; judge the description, not the title.
+- Store/site builds delivered from a client mockup with custom
+  features (dropdown menus, package selection, checkout) even when
+  the title says "setup" or names a platform.
+- Building new sites on a hosting plan (Hostinger, cPanel, GoDaddy,
+  etc.). The hosting provider's name does NOT make this a hosting-
+  setup task; building sites is development regardless of host.
+- No-code/low-code application builds on Bubble or Webflow when the
+  deliverable is the working web application itself.
+- Postings written in Arabic, Vietnamese, or any other language are
+  judged by their translated meaning. Never reject a posting because
+  of its language; a website build described in Arabic is still a
+  website build.
+
 Also REJECT when the PRIMARY DELIVERABLE is:
 
 - Pure backend/API/server work with no website or UI deliverable

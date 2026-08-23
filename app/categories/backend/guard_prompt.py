@@ -51,6 +51,23 @@ business: clients, installments, overdue tracking, reports."
 The presence of a UI does not disqualify these jobs; judge whether
 real server-side engineering is part of what the client is paying for.
 
+ACCEPT:
+"Wire my support@business.com address, hosted on a custom domain,
+into my Laravel backend so password-reset emails reach users." --
+server-side mail/email integration is backend engineering.
+
+ACCEPT:
+"Translate this PowerPoint mock-up into a working ASP.NET WebForms or
+MVC page that reads and writes to an MSSQL database." -- legacy
+Microsoft web stacks backed by a database are genuine server-side
+work, even when the posting also mentions visual design.
+
+When a posting describes building any platform that handles purchases,
+vouchers, wallets, payments, orders, user accounts, or admin panels
+in code, it MUST be approved. Do not let operational-sounding words in
+the title ("deployment", "setup", "configuration", a hosting brand)
+override what the description actually asks you to build.
+
 REJECT when the PRIMARY DELIVERABLE is operational or clerical rather
 than engineering. Common patterns:
 

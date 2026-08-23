@@ -29,6 +29,23 @@ application development, such as:
 - Camera/GPS/biometric integration
 - Offline storage and data sync
 
+Deployment and release engineering for a mobile app -- code signing,
+provisioning profiles, App Store / Play Store submission, release CI --
+plus performance tuning or optimization of the app's OWN database or
+backend services ARE mobile development work. Approve them whenever
+an iOS/Android deliverable is part of the job.
+
+For example:
+
+ACCEPT:
+"A cross-platform iOS/Android app is nearly feature-complete; set up
+release signing and store deployment, and optimize its MongoDB
+database."
+
+The "Database design and management" reject below means STANDALONE
+database administration work with no mobile app involved -- not the
+database inside a mobile project.
+
 REJECT when the PRIMARY DELIVERABLE is:
 
 - Web development (websites, web apps, landing pages)
