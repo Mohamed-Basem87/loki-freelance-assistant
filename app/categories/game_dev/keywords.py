@@ -18,7 +18,6 @@ POSITIVE_KEYWORDS = {
             "cryengine": 8,
             "game maker": 8,
             "gamemaker": 8,
-            "construct": 7,
             "defold": 7,
             "cocos2d": 8,
             "cocos creator": 8,
@@ -26,6 +25,9 @@ POSITIVE_KEYWORDS = {
             "pixi.js": 6,
         },
         "supporting": {
+            # English prose verb ("construct sentences") and generic
+            # platform word ("steam room"); not reliable engine evidence.
+            "construct": 3,
             "game engine": 4,
             "2d game": 4,
             "3d game": 4,
@@ -140,7 +142,6 @@ POSITIVE_KEYWORDS = {
             "game trailer": 6,
             "game marketing": 6,
             "game publishing": 6,
-            "steam": 5,
             "itch.io": 6,
             "playstation": 5,
             "xbox": 5,
@@ -152,6 +153,7 @@ POSITIVE_KEYWORDS = {
             "metaverse": 5,
         },
         "supporting": {
+            "steam": 3,
             "vfx": 3,
             "visual effects": 3,
             "google play": 3,

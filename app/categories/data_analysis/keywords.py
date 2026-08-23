@@ -783,6 +783,8 @@ HARD_REJECT_KEYWORDS = {
     "ومدخل بيانات",
     "بمدخل بيانات",
     "لمدخل بيانات",
+    # Gmail automation/export gigs are email tooling, not analysis work.
+    "gmail",
     "lead generating", "lead generators", "lead generator", "جلب العملاء", "letter writing", "request letter",
 }
 
