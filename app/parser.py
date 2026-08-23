@@ -1,6 +1,71 @@
 import re
 
 
+# Mostaql channel posts can prepend a short client/profile profession
+# badge before the actual project title.  The badge is metadata, not
+# job content, so it must not become the title or classifier input.
+# Keep this list deliberately conservative: only exact standalone
+# badge labels with a following line are stripped.  A one-line post
+# is never stripped, so a legitimate one-line title such as "مبرمج"
+# remains intact.
+_MOSTAQL_PROFILE_BADGES = {
+    "صانع محتوى",
+    "مبرمج",
+    "مطور",
+    "مطور مواقع",
+    "مطور تطبيقات",
+    "مصمم",
+    "مصمم جرافيك",
+    "كاتب",
+    "مترجم",
+    "مسوق",
+    "مسوق رقمي",
+    "مدخل بيانات",
+    "مدير مشروع",
+}
+
+
+def _is_mostaql_source(source: str) -> bool:
+    source_lower = (source or "").casefold()
+    return "mostaql" in source_lower or "مستقل" in (source or "")
+
+
+def _strip_mostaql_profile_badge(lines: list[str], source: str) -> list[str]:
+    """Remove one known Mostaql profile badge from the message header.
+
+    Only the first non-empty line is eligible, and only when another
+    non-empty line follows it.  This prevents a legitimate one-line
+    project title from being discarded merely because it happens to
+    match a common profession label.
+    """
+    if not _is_mostaql_source(source):
+        return lines
+
+    first_index = next(
+        (index for index, line in enumerate(lines) if line.strip()),
+        None,
+    )
+    if first_index is None:
+        return lines
+
+    badge = lines[first_index].strip()
+    if badge.casefold() not in _MOSTAQL_PROFILE_BADGES:
+        return lines
+
+    following_index = next(
+        (
+            index
+            for index in range(first_index + 1, len(lines))
+            if lines[index].strip()
+        ),
+        None,
+    )
+    if following_index is None:
+        return lines
+
+    return lines[:first_index] + lines[first_index + 1:]
+
+
 def _extract_url(text: str) -> str:
     match = re.search(r"https?://\S+", text)
     if not match:
@@ -120,13 +185,18 @@ def parse_job(source: str, text: str) -> dict[str, str]:
     # -----------------------------
     # Mostaql & Generic channels
     # -----------------------------
-    job["title"] = _fallback_title(text)
+    # Parse the header/body from the same line list so a Mostaql
+    # profile badge can be removed before it becomes the title or
+    # classifier evidence.
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    lines = _strip_mostaql_profile_badge(lines, source)
+
+    job["title"] = _fallback_title("\n".join(lines))
 
     # The first meaningful line is the title. Do not feed that same
     # line into description as well: job_processor combines title and
     # description for classification, so keeping the title here would
     # count title keywords twice and distort supporting weights.
-    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     title_index = next(
         (index for index, line in enumerate(lines) if line.strip()),
         None,

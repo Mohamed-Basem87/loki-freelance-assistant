@@ -75,6 +75,28 @@ def test_nafezly_detection_by_arabic_name():
     assert job["title"] == "اختبار عربي"
 
 
+def test_mostaql_profile_badge_is_removed_before_title_and_description():
+    text = (
+        "صانع محتوى\n\n"
+        "Power BI Dashboard Needed\n\n"
+        "Need a dashboard built from sales data.\n"
+        "DAX and KPI reporting required.\n"
+    )
+
+    job = parse_job("Mostaql Jobs", text)
+
+    assert job["title"] == "Power BI Dashboard Needed"
+    assert "صانع محتوى" not in job["description"]
+    assert "Need a dashboard built from sales data." in job["description"]
+
+
+def test_mostaql_badge_is_not_stripped_when_it_is_the_only_line():
+    job = parse_job("Mostaql Jobs", "صانع محتوى")
+
+    assert job["title"] == "صانع محتوى"
+    assert job["description"] == ""
+
+
 def test_generic_message_falls_back_to_first_line_and_normalized_body():
     text = (
         "Power BI Dashboard Needed\n\n"
