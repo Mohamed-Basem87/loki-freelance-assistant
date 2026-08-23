@@ -169,6 +169,8 @@ USER_HEADERS = [
     "Username",
     "First Name",
     "Destination Type",
+    "Categories",
+    "Sources",
     "Is Active",
     "Created At",
     "Updated At",
@@ -968,7 +970,37 @@ class DBLogger:
         if save:
             self.save()
 
+    def _migrate_user_categories_into_users(self):
+        """One-time compatibility migration from user_categories to users.Categories."""
+        try:
+            rows = self._conn.execute(
+                'SELECT "User ID", "Category ID" FROM user_categories'
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return
+
+        grouped = {}
+        for user_id, category_id in rows:
+            grouped.setdefault(str(user_id), set()).add(str(category_id).strip().lower())
+
+        for user_id, categories in grouped.items():
+            current = self._conn.execute(
+                'SELECT "Categories" FROM users WHERE "User ID" = ?',
+                (user_id,),
+            ).fetchone()
+            existing = {
+                item.strip().lower()
+                for item in ((current[0] if current else "") or "").split(",")
+                if item.strip()
+            }
+            merged = ",".join(sorted(existing | categories))
+            self._conn.execute(
+                'UPDATE users SET "Categories" = ? WHERE "User ID" = ?',
+                (merged, user_id),
+            )
+
     def ensure_user(self, telegram_user_id, username="", first_name="", save=True):
+        self._migrate_user_categories_into_users()
         now = datetime.now().isoformat()
         cursor = self._conn.execute(
             'SELECT "User ID" FROM users WHERE "Telegram User ID" = ?',
@@ -1037,29 +1069,147 @@ class DBLogger:
         return self._row_to_dict(cursor, row) if row else None
 
     def set_user_category(self, user_id, category_id, enabled=True, save=True):
+        """Add/remove one category preference stored directly on the user row."""
+        category = str(category_id or "").strip().lower()
+        if not category:
+            return
+
+        row = self._conn.execute(
+            'SELECT "Categories" FROM users WHERE "User ID" = ?',
+            (str(user_id),),
+        ).fetchone()
+        if row is None:
+            return
+
+        selected = {
+            item.strip().lower()
+            for item in (row[0] or "").split(",")
+            if item.strip()
+        }
         if enabled:
-            self._conn.execute(
-                'INSERT OR IGNORE INTO user_categories '
-                '("User ID", "Category ID", "Created At") VALUES (?, ?, ?)',
-                (str(user_id), category_id, datetime.now().isoformat()),
-            )
+            selected.add(category)
         else:
-            self._conn.execute(
-                'DELETE FROM user_categories WHERE "User ID" = ? '
-                'AND "Category ID" = ?',
-                (str(user_id), category_id),
-            )
+            selected.discard(category)
+
+        value = ",".join(sorted(selected))
+        self._conn.execute(
+            'UPDATE users SET "Categories" = ?, "Updated At" = ? '
+            'WHERE "User ID" = ?',
+            (value, datetime.now().isoformat(), str(user_id)),
+        )
         if save:
             self.save()
 
-    def get_category_subscribers(self, category_id):
-        cursor = self._conn.execute(
-            'SELECT u."User ID", u."Telegram User ID", u."Destination Type" '
-            'FROM users u JOIN user_categories uc '
-            'ON u."User ID" = uc."User ID" '
-            'WHERE uc."Category ID" = ? AND u."Is Active" = "1"',
-            (category_id,),
+    # Legacy user_categories table is retained only for migration compatibility.
+    # New code stores category preferences directly on users.Categories.
+
+    def get_user_categories(self, user_id):
+        row = self._conn.execute(
+            'SELECT "Categories" FROM users WHERE "User ID" = ?',
+            (str(user_id),),
+        ).fetchone()
+        if not row or not row[0]:
+            return []
+        return [
+            item.strip().lower()
+            for item in row[0].split(",")
+            if item.strip()
+        ]
+
+    def set_user_source(self, user_id, source, enabled=True, save=True):
+        """Add/remove one source preference stored directly on the user row.
+
+        An empty Sources value means the user has not opted into source
+        filtering and therefore receives all sources. Source IDs are stored
+        as a comma-separated list because sources are a user preference,
+        not independent database entities.
+        """
+        source = str(source or "").strip().lower()
+        if not source:
+            return
+
+        row = self._conn.execute(
+            'SELECT "Sources" FROM users WHERE "User ID" = ?',
+            (str(user_id),),
+        ).fetchone()
+        if row is None:
+            return
+
+        selected = {
+            item.strip().lower()
+            for item in (row[0] or "").split(",")
+            if item.strip()
+        }
+        if enabled:
+            selected.add(source)
+        else:
+            selected.discard(source)
+
+        value = ",".join(sorted(selected))
+        self._conn.execute(
+            'UPDATE users SET "Sources" = ?, "Updated At" = ? '
+            'WHERE "User ID" = ?',
+            (value, datetime.now().isoformat(), str(user_id)),
         )
+        if save:
+            self.save()
+
+    def get_user_sources(self, user_id):
+        row = self._conn.execute(
+            'SELECT "Sources" FROM users WHERE "User ID" = ?',
+            (str(user_id),),
+        ).fetchone()
+        if not row or not row[0]:
+            return []
+        return [
+            item.strip().lower()
+            for item in row[0].split(",")
+            if item.strip()
+        ]
+
+    def get_category_subscribers(self, category_id, source=""):
+        category_id = str(category_id or "").strip().lower()
+        normalized_source = str(source or "").strip().lower()
+
+        cursor = self._conn.execute(
+            'SELECT u."User ID", u."Telegram User ID", '
+            'u."Destination Type", u."Categories", u."Sources" '
+            'FROM users u WHERE u."Is Active" = "1"'
+        )
+
+        aliases = {
+            "mostaql": ("mostaql", "مستقل"),
+            "nafezly": ("nafezly", "نفذلي"),
+            "kafiil": ("kafiil", "كفيل"),
+            "freelancer": ("freelancer",),
+        }
+
+        def category_matches(stored):
+            # Empty categories preserves the previous "no subscription" meaning.
+            if not stored:
+                return False
+            return category_id in {
+                item.strip().lower()
+                for item in stored.split(",")
+                if item.strip()
+            }
+
+        def source_matches(stored):
+            # Empty source preference means all sources.
+            if not stored or not normalized_source:
+                return True
+            selected = {
+                item.strip().lower()
+                for item in stored.split(",")
+                if item.strip()
+            }
+            for source_id in selected:
+                if source_id in aliases and any(
+                    alias in normalized_source for alias in aliases[source_id]
+                ):
+                    return True
+            return False
+
         return [
             {
                 "user_id": row[0],
@@ -1067,10 +1217,17 @@ class DBLogger:
                 "destination_type": row[2] or "user",
             }
             for row in cursor.fetchall()
+            if (
+                (row[2] or "user") != "user"
+                or (
+                    category_matches(row[3])
+                    and source_matches(row[4])
+                )
+            )
         ]
 
-    def queue_user_notifications(self, job_uuid, category_id, save=True):
-        subscribers = self.get_category_subscribers(category_id)
+    def queue_user_notifications(self, job_uuid, category_id, source="", save=True):
+        subscribers = self.get_category_subscribers(category_id, source)
         now = datetime.now().isoformat()
         queued = 0
 
@@ -1101,13 +1258,6 @@ class DBLogger:
         if save:
             self.save()
         return queued
-
-    def get_user_categories(self, user_id):
-        cursor = self._conn.execute(
-            'SELECT "Category ID" FROM user_categories WHERE "User ID" = ?',
-            (str(user_id),),
-        )
-        return [row[0] for row in cursor.fetchall()]
 
     def set_user_active(self, telegram_user_id, active, save=True):
         self.set_destination_active(telegram_user_id, active, save=save)

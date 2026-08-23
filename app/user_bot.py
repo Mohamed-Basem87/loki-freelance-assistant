@@ -18,9 +18,48 @@ POLL_INTERVAL = 1.0
 BATCH_SIZE = 20
 MAX_ATTEMPTS = 5
 
+# These are source IDs, not metadata entities. They are stored as a
+# comma-separated preference on the user row.
+SOURCE_OPTIONS = (
+    ("mostaql", "مستقل"),
+    ("nafezly", "نفذلي"),
+    ("kafiil", "كفيل"),
+    ("freelancer", "Freelancer"),
+)
+
 # Shared Bot instance for notification delivery. The existing source/channel
 # notifiers keep their own instance for backwards compatibility.
 bot = Bot(BOT_TOKEN)
+
+
+def _source_keyboard(selected_sources):
+    selected_sources = set(selected_sources)
+    rows = []
+    for source_id, display_name in SOURCE_OPTIONS:
+        prefix = "✅" if source_id in selected_sources else "⬜"
+        rows.append([
+            InlineKeyboardButton(
+                f"{prefix} {display_name}",
+                callback_data=f"src:{source_id}",
+            )
+        ])
+    rows.append([InlineKeyboardButton("Done", callback_data="src:done")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def _render_sources(query, user_id, *, edit=True):
+    selected = await logger.run(logger.get_user_sources, user_id)
+    text = (
+        "Choose the sources you want to receive.
+
+"
+        "If you select none, you'll receive jobs from all sources."
+    )
+    markup = _source_keyboard(selected)
+    if edit:
+        await query.edit_message_text(text=text, reply_markup=markup)
+    else:
+        await query.message.reply_text(text=text, reply_markup=markup)
 
 
 def _category_keyboard(selected_ids):
@@ -72,6 +111,27 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def sources_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if user is None:
+        return
+    internal_id = await logger.run(
+        logger.ensure_user,
+        user.id,
+        user.username or "",
+        user.first_name or "",
+    )
+    await update.message.reply_text(
+        "Choose the sources you want to receive.
+
+"
+        "If you select none, you'll receive jobs from all sources.",
+        reply_markup=_source_keyboard(
+            await logger.run(logger.get_user_sources, internal_id)
+        ),
+    )
+
+
 async def categories_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user is None:
@@ -108,21 +168,48 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = query.data or ""
     if data == "done":
-        selected = await logger.run(logger.get_user_categories, internal_id)
-        names = {
-            profile.id: profile.name for profile in enabled_categories()
-        }
-        selected_names = [names[cid] for cid in selected if cid in names]
-        if selected_names:
-            text = "✅ Saved. You'll receive:\n\n" + "\n".join(
-                f"• {name}" for name in selected_names
-            )
-        else:
-            text = (
-                "No categories selected. You can use /categories "
-                "whenever you want to subscribe."
-            )
-        await query.edit_message_text(text=text)
+        await _render_sources(query, internal_id)
+        return
+
+    if data.startswith("src:"):
+        source_id = data[4:]
+        valid_sources = {source_id for source_id, _ in SOURCE_OPTIONS}
+        if source_id == "done":
+            selected = await logger.run(logger.get_user_sources, internal_id)
+            names = {
+                source_id: display_name
+                for source_id, display_name in SOURCE_OPTIONS
+            }
+            if selected:
+                selected_names = [
+                    names[source_id] for source_id in selected
+                    if source_id in names
+                ]
+                text = "✅ Saved. You'll receive sources:\n\n" + "\n".join(
+                    f"• {name}" for name in selected_names
+                )
+            else:
+                text = (
+                    "✅ Saved. No source filter is active, so you'll receive "
+                    "jobs from all sources."
+                )
+            await query.edit_message_text(text=text)
+            return
+
+        if source_id not in valid_sources:
+            await query.answer("That source is no longer available.", show_alert=True)
+            return
+
+        selected = set(await logger.run(logger.get_user_sources, internal_id))
+        enabled = source_id not in selected
+        await logger.run(
+            logger.set_user_source,
+            internal_id,
+            source_id,
+            enabled,
+            True,
+        )
+        await _render_sources(query, internal_id)
         return
 
     if not data.startswith("cat:"):
@@ -387,5 +474,6 @@ def create_user_bot_application():
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("categories", categories_command))
+    application.add_handler(CommandHandler("sources", sources_command))
     application.add_handler(CallbackQueryHandler(category_callback))
     return application

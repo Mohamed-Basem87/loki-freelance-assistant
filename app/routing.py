@@ -8,12 +8,13 @@ notification per (job, user) pair.
 from app.logger import logger
 
 
-async def queue_for_category(job_uuid, category_id):
+async def queue_for_category(job_uuid, category_id, source=""):
     if not category_id:
         return 0
     return await logger.run(
         logger.queue_user_notifications,
         job_uuid,
         category_id,
+        source,
         save=True,
     )

@@ -148,7 +148,11 @@ async def _resume_pending_notifications_unlocked(job_uuid: str, row: dict):
     # state and subscriber queue creation.
     category_id = row.get("Category ID") or ""
     if category_id:
-        await queue_for_category(job_uuid, category_id)
+        await queue_for_category(
+            job_uuid,
+            category_id,
+            row.get("Source") or "",
+        )
 
     private_resolved = (
         "Telegram: Sent" in status or "Telegram: Suppressed" in status

@@ -558,3 +558,7 @@ Loki favors:
 ## License
 
 MIT
+
+### User source preferences
+
+Users can optionally select which freelance sources they want to receive. Category and source preferences are stored directly on the user record as comma-separated lists; an empty source value means all sources. Configured public channel destinations are not source-filtered.
