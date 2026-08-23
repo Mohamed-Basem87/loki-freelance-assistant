@@ -184,12 +184,6 @@ CATEGORY_HEADERS = [
     "Created At",
 ]
 
-USER_CATEGORY_HEADERS = [
-    "User ID",
-    "Category ID",
-    "Created At",
-]
-
 USER_NOTIFICATION_HEADERS = [
     "Notification ID",
     "Job UUID",
@@ -220,9 +214,6 @@ _CREATE_TABLES = (
     f'CREATE TABLE IF NOT EXISTS notification_guard ({_column_defs(NOTIFICATION_GUARD_HEADERS)});',
     f'CREATE TABLE IF NOT EXISTS users ({_column_defs(USER_HEADERS, primary_key=0)});',
     f'CREATE TABLE IF NOT EXISTS categories ({_column_defs(CATEGORY_HEADERS, primary_key=0)});',
-    f'CREATE TABLE IF NOT EXISTS user_categories ({_column_defs(USER_CATEGORY_HEADERS)});',
-    f'CREATE UNIQUE INDEX IF NOT EXISTS idx_user_categories '
-    f'ON user_categories ("User ID", "Category ID");',
     f'CREATE TABLE IF NOT EXISTS user_notifications ({_column_defs(USER_NOTIFICATION_HEADERS, primary_key=0)});',
     f'CREATE UNIQUE INDEX IF NOT EXISTS idx_user_notifications_job_user '
     f'ON user_notifications ("Job UUID", "User ID");',
@@ -333,6 +324,11 @@ class DBLogger:
             self._conn.execute(ddl)
 
         self._ensure_current_columns()
+
+        # Fold any pre-feature per-user category subscriptions (legacy
+        # user_categories table) into users.Categories once, then drop
+        # the legacy table. No-op for fresh databases.
+        self._migrate_user_categories_into_users()
 
         # Seed the category registry into SQLite. The registry is the
         # source of truth for available category definitions; SQLite
@@ -971,12 +967,16 @@ class DBLogger:
             self.save()
 
     def _migrate_user_categories_into_users(self):
-        """One-time compatibility migration from user_categories to users.Categories."""
+        """One-time migration from the legacy user_categories table into
+        users.Categories. Runs once at startup (see initialize()); the
+        legacy table is dropped afterwards so stale rows can never
+        resurrect a category a user has since unsubscribed from."""
         try:
             rows = self._conn.execute(
                 'SELECT "User ID", "Category ID" FROM user_categories'
             ).fetchall()
         except sqlite3.OperationalError:
+            # Already migrated (or a fresh database): nothing to do.
             return
 
         grouped = {}
@@ -999,8 +999,10 @@ class DBLogger:
                 (merged, user_id),
             )
 
+        self._conn.execute('DROP TABLE user_categories')
+        self.save()
+
     def ensure_user(self, telegram_user_id, username="", first_name="", save=True):
-        self._migrate_user_categories_into_users()
         now = datetime.now().isoformat()
         cursor = self._conn.execute(
             'SELECT "User ID" FROM users WHERE "Telegram User ID" = ?',
@@ -1100,8 +1102,8 @@ class DBLogger:
         if save:
             self.save()
 
-    # Legacy user_categories table is retained only for migration compatibility.
-    # New code stores category preferences directly on users.Categories.
+    # Category preferences live directly on the users row; the legacy
+    # user_categories table is migrated once at startup and dropped.
 
     def get_user_categories(self, user_id):
         row = self._conn.execute(
