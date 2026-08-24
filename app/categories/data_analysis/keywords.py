@@ -131,6 +131,12 @@ POSITIVE_KEYWORDS = {
             "looker": 7,
             "looker studio": 7,
             "qlik": 7,
+            # Sales-analysis concept family: verified genuine DA work
+            # (rowids 1818 accepted / 8043+8046 missed pair / 2684 accepted).
+            "تحليل مبيعات": 9,
+            "sales analysis": 7,
+            "sales dashboard": 7,
+            "sales dashboards": 7,
             "تحليل بيانات": 9,
             "محلل بيانات": 9,
             "تحليل مالي": 9,
@@ -149,7 +155,8 @@ POSITIVE_KEYWORDS = {
         "supporting": {
             "analytics": 2,
             "analysis": 3,
-            "sales analysis": 5,
+            "sales report": 4,
+            "sales reporting": 4,
             "marketing analysis": 4,
             "market analysis": 4,
             "customer analysis": 4,
@@ -351,6 +358,10 @@ NEGATIVE_KEYWORDS = {
             "مبرمج محترف": 7,
             "custom database": 6,
             "database solution": 6,
+            # Database ADMINISTRATION (DBA upkeep) is not analysis work;
+            # prevents SQL-DBA gigs from becoming spurious DA candidates
+            # via generic sql/database supportings (rowid 8097).
+            "dba": 6,
         },
         "supporting": {
             "flask": 3,
@@ -721,6 +732,23 @@ NEGATIVE_KEYWORDS = {
 
     "marketing": {
         "core": {
+            # Demoted from HARD_REJECT (2026-08-24 audit): these phrases
+            # appear inside genuine build gigs ("Precious Metals E-Store
+            # Development" rowid 8069, "Wix Business Site Design" 8074),
+            # so as hard rejects they silently killed real work. As core
+            # negatives they still kill pure-marketing gigs deterministically
+            # (rule: core_negative_no_core_positive / title path) while
+            # build+marketing hybrids go to arbitration instead of dying.
+            "google ads": 8,
+            "facebook ads": 8,
+            "digital marketing": 8,
+            "lead generation": 8,
+            "lead gen": 7,
+            "lead generating": 7,
+            "lead generator": 7,
+            "lead generators": 7,
+            "generación de leads": 7,
+            "جلب العملاء": 7,
             "content creator": 6,
             "content creators": 6,
             "influencer": 6,
@@ -758,16 +786,10 @@ HARD_REJECT_KEYWORDS = {
     "video editing",
     "motion graphics",
     "translation",
-    "digital marketing",
-    "google ads",
-    "facebook ads",
     "backlink",
     "backlinks",
     "link building",
     "copywriting",
-    "lead generation",
-    "lead gen",
-    "generación de leads",
     "commission only",
     "عمولة فقط",
     "internship",
@@ -785,7 +807,10 @@ HARD_REJECT_KEYWORDS = {
     "لمدخل بيانات",
     # Gmail automation/export gigs are email tooling, not analysis work.
     "gmail",
-    "lead generating", "lead generators", "lead generator", "جلب العملاء", "letter writing", "request letter",
+    # Recurring SMM-reseller storefront spam (8 corpus occurrences, all
+    # rejected); hard-rejected so reposts don't burn arbitration calls.
+    "خدمات smm",
+    "letter writing", "request letter",
 }
 
 

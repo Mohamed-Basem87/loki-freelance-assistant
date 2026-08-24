@@ -150,6 +150,14 @@ POSITIVE_KEYWORDS = {
             "duda": 7,
             "ثيم سلة": 6,
             "ثيمات سلة": 6,
+            # Arabic e-store build-intent collocations (2026-08-24 audit).
+            # Corpus: 'انشاء متجر' ~10 unique gigs, mostly genuine builds
+            # (7881 accepted; SMM-spam variant now killed by hard reject);
+            # 'تطوير متجر' Shopify/Next.js store builds (2767, 5628);
+            # 'تصميم متجر' Silla/Zid store design+dev class.
+            "انشاء متجر": 7,
+            "تطوير متجر": 7,
+            "تصميم متجر": 7,
             "ووردبريس": 7,
             "الووردبريس": 7,
             "وورد بريس": 7,
@@ -195,6 +203,13 @@ POSITIVE_KEYWORDS = {
             # were direct-selecting on the platform name alone.
             "منصة سلة": 4,
             "متجر سلة": 4,
+            # Plural/definite forms missed by the singular bigrams
+            # (تصميم وتطوير المتاجر الإلكترونية في سلة, rowid 6067 class).
+            "متاجر الكترونيه": 5,
+            # Bare Salla platform token: 69 corpus hits dominated by the
+            # Silla store design/build/management class that was silently
+            # rejected for lack of vocabulary (8087 store UI redesign).
+            "سله": 4,
             "e-commerce": 4,
             "ecommerce": 4,
             "theme": 3,
@@ -485,6 +500,28 @@ NEGATIVE_KEYWORDS = {
             "students": 2,
         },
     },
+    "marketing": {
+        # Demoted from HARD_REJECT (2026-08-24 audit): these phrases occur
+        # inside genuine build gigs ("Precious Metals E-Store Development"
+        # rowid 8069, "Wix Business Site Design" rowid 8074, precedent
+        # accepted gig rowid 7190), so as hard rejects they silently killed
+        # real work. As core negatives they still reject pure-marketing
+        # gigs deterministically while build+marketing hybrids route to
+        # arbitration instead of dying silently.
+        "core": {
+            "google ads": 8,
+            "facebook ads": 8,
+            "digital marketing": 8,
+            "lead generation": 8,
+            "lead gen": 7,
+            "lead generating": 7,
+            "lead generator": 7,
+            "lead generators": 7,
+            "generación de leads": 7,
+            "جلب العملاء": 7,
+        },
+        "supporting": {},
+    },
 }
 
 
@@ -498,16 +535,10 @@ HARD_REJECT_KEYWORDS = {
     "video editing",
     "motion graphics",
     "translation",
-    "digital marketing",
-    "google ads",
-    "facebook ads",
     "backlink",
     "backlinks",
     "link building",
     "copywriting",
-    "lead generation",
-    "lead gen",
-    "generación de leads",
     "commission only",
     "عمولة فقط",
     "internship",
@@ -518,7 +549,11 @@ HARD_REJECT_KEYWORDS = {
     "متدرب",
     "متطوع",
     "بدون مقابل",
-    "lead generating", "lead generators", "lead generator", "جلب العملاء", "letter writing", "request letter",
+    # Recurring SMM-reseller storefront spam (8 corpus occurrences,
+    # all rejected); hard-rejected so reposts don't burn arbitration
+    # calls now that store-build collocations became positive cores.
+    "خدمات smm",
+    "letter writing", "request letter",
 }
 
 

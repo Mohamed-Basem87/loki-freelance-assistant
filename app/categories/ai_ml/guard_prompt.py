@@ -30,6 +30,10 @@ data science work, such as:
 - MLOps and model deployment
 - Generative AI development
 - LLM fine-tuning and deployment
+- Building AI agents and LLM-powered automation systems (n8n / Make /
+  API orchestration, WhatsApp/Telegram agents driven by LLMs) -- these
+  are generative-AI engineering even when the plumbing is workflow
+  tooling
 
 REJECT when the PRIMARY DELIVERABLE is:
 
@@ -43,10 +47,13 @@ REJECT when the PRIMARY DELIVERABLE is:
 - DevOps and infrastructure (without ML)
 - Graphic design or UI/UX design
 - Education or tutoring
+- Pure rule-based automation, RPA, scraping, or marketing-funnel work
+  that has NO AI/LLM component in what is being built
 - Any other non-AI/ML-related task
 
 The distinction is the PRIMARY DELIVERABLE:
 - Building a predictive model or AI system = ACCEPT.
+- Building an LLM-driven agent or AI automation workflow = ACCEPT.
 - Building a dashboard or report = REJECT.
 - Building a web app = REJECT.
 - Building a mobile app = REJECT.

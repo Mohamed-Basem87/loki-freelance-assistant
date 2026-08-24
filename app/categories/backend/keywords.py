@@ -55,6 +55,10 @@ POSITIVE_KEYWORDS = {
             "neo4j": 7,
             "firebase": 6,
             "supabase": 6,
+            # Database-engineering collocation (2026-08-24 audit): 13
+            # corpus hits, predominantly genuine DB builds (445, 4029, 6612
+            # accepted; 8148 trucking web-database missed).
+            "database development": 7,
         },
         "supporting": {
             "database design": 4,
@@ -468,6 +472,28 @@ NEGATIVE_KEYWORDS = {
             "students": 2,
         },
     },
+    "marketing": {
+        # Demoted from HARD_REJECT (2026-08-24 audit): these phrases occur
+        # inside genuine build gigs ("Precious Metals E-Store Development"
+        # rowid 8069, "Wix Business Site Design" rowid 8074, precedent
+        # accepted gig rowid 7190), so as hard rejects they silently killed
+        # real work. As core negatives they still reject pure-marketing
+        # gigs deterministically while build+marketing hybrids route to
+        # arbitration instead of dying silently.
+        "core": {
+            "google ads": 8,
+            "facebook ads": 8,
+            "digital marketing": 8,
+            "lead generation": 8,
+            "lead gen": 7,
+            "lead generating": 7,
+            "lead generator": 7,
+            "lead generators": 7,
+            "generación de leads": 7,
+            "جلب العملاء": 7,
+        },
+        "supporting": {},
+    },
 }
 
 
@@ -482,16 +508,10 @@ HARD_REJECT_KEYWORDS = {
     "video editing",
     "motion graphics",
     "translation",
-    "digital marketing",
-    "google ads",
-    "facebook ads",
     "backlink",
     "backlinks",
     "link building",
     "copywriting",
-    "lead generation",
-    "lead gen",
-    "generación de leads",
     "commission only",
     "عمولة فقط",
     "internship",
@@ -502,7 +522,11 @@ HARD_REJECT_KEYWORDS = {
     "متدرب",
     "متطوع",
     "بدون مقابل",
-    "lead generating", "lead generators", "lead generator", "جلب العملاء", "letter writing", "request letter",
+    # Recurring SMM-reseller storefront spam (8 corpus occurrences,
+    # all rejected); hard-rejected so reposts don't burn arbitration
+    # calls now that store-build collocations became positive cores.
+    "خدمات smm",
+    "letter writing", "request letter",
 }
 
 
