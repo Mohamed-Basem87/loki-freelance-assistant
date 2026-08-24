@@ -212,6 +212,21 @@ POSITIVE_KEYWORDS = {
         },
     },
 
+    "ai_general": {
+        # Arabic: "smart assistant" carries build intent safely; bare
+        # "artificial intelligence" mentions are too often tool references
+        # in non-AI gigs, so they only contribute supporting weight.
+        "core": {
+            "مساعد ذكي": 7,
+        },
+        "supporting": {
+            "ذكاء اصطناعي": 4,
+            "الذكاء الاصطناعي": 4,
+            "بالذكاء الاصطناعي": 4,
+            "والذكاء الاصطناعي": 4,
+        },
+    },
+
     "generative_ai": {
         "core": {
             "generative ai": 8,
@@ -518,14 +533,10 @@ NEGATIVE_KEYWORDS = {
         },
     },
     "marketing": {
-        # Demoted from HARD_REJECT (2026-08-24 audit): these phrases occur
-        # inside genuine build gigs ("Precious Metals E-Store Development"
-        # rowid 8069, "Wix Business Site Design" rowid 8074, precedent
-        # accepted gig rowid 7190), so as hard rejects they silently killed
-        # real work. As core negatives they still reject pure-marketing
-        # gigs deterministically while build+marketing hybrids route to
-        # arbitration instead of dying silently.
+        # Negative-core placement (not HARD_REJECT): these phrases occur
+        # inside genuine build scopes; pure-marketing gigs still reject.
         "core": {
+            "translation": 8,
             "google ads": 8,
             "facebook ads": 8,
             "digital marketing": 8,
@@ -549,7 +560,6 @@ HARD_REJECT_KEYWORDS = {
     "illustrator",
     "video editing",
     "motion graphics",
-    "translation",
     "backlink",
     "backlinks",
     "link building",

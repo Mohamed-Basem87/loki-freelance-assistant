@@ -133,7 +133,11 @@ POSITIVE_KEYWORDS = {
             "qlik": 7,
             # Sales-analysis concept family: verified genuine DA work
             # (rowids 1818 accepted / 8043+8046 missed pair / 2684 accepted).
+            # Definite form promoted from supporting: same concept class.
             "تحليل مبيعات": 9,
+            "تحليل المبيعات": 9,
+            # Attached-prefix surface form (لـ) seen in production titles.
+            "لتحليل مبيعات": 9,
             "sales analysis": 7,
             "sales dashboard": 7,
             "sales dashboards": 7,
@@ -201,7 +205,6 @@ POSITIVE_KEYWORDS = {
             "preprocess": 3,
             "clean dataset": 4,
 
-            "تحليل المبيعات": 4,
             "تحليل السوق": 4,
             "تحليل الأعمال": 4,
             "ذكاء الأعمال": 4,
@@ -344,7 +347,6 @@ NEGATIVE_KEYWORDS = {
             "full stack": 9,
             "fullstack": 9,
             "مطور تطبيقات": 7,
-            "مهندس برمجيات": 7,
             "database recovery": 6,
             "restore backup": 6,
             "backup restore": 6,
@@ -383,6 +385,9 @@ NEGATIVE_KEYWORDS = {
             "برمجة": 3,
             "مبرمج": 4,
             "مطور": 4,
+            # Supporting, not core: this phrase is also the Mostaql channel
+            # poster-badge line (client tag), not a deliverable statement.
+            "مهندس برمجيات": 4,
             "واجهة برمجية": 4,
             "واجهات برمجية": 4,
             "تكامل api": 4,
@@ -732,13 +737,9 @@ NEGATIVE_KEYWORDS = {
 
     "marketing": {
         "core": {
-            # Demoted from HARD_REJECT (2026-08-24 audit): these phrases
-            # appear inside genuine build gigs ("Precious Metals E-Store
-            # Development" rowid 8069, "Wix Business Site Design" 8074),
-            # so as hard rejects they silently killed real work. As core
-            # negatives they still kill pure-marketing gigs deterministically
-            # (rule: core_negative_no_core_positive / title path) while
-            # build+marketing hybrids go to arbitration instead of dying.
+            # Negative-core placement (not HARD_REJECT): these phrases occur
+            # inside genuine build scopes; pure-marketing gigs still reject.
+            "translation": 8,
             "google ads": 8,
             "facebook ads": 8,
             "digital marketing": 8,
@@ -785,7 +786,6 @@ HARD_REJECT_KEYWORDS = {
     "illustrator",
     "video editing",
     "motion graphics",
-    "translation",
     "backlink",
     "backlinks",
     "link building",
