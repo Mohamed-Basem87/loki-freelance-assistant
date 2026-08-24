@@ -92,7 +92,7 @@ class NotificationGuardIntegration:
 
     def wrap_routing(self, original):
 
-        async def wrapped(job_uuid, category_id):
+        async def wrapped(job_uuid, category_id, source=""):
             if not category_id:
                 return 0
 
@@ -102,7 +102,7 @@ class NotificationGuardIntegration:
 
             allowed = await self._allow({
                 "job_uuid": job_uuid,
-                "source": row.get("Source", ""),
+                "source": source or row.get("Source", ""),
                 "title": row.get("Title", ""),
                 "description": row.get("Description", ""),
                 "decision": row.get("Final Decision", "Accepted"),
@@ -113,7 +113,7 @@ class NotificationGuardIntegration:
             if not allowed:
                 return 0
 
-            return await original(job_uuid, category_id)
+            return await original(job_uuid, category_id, source)
 
         return wrapped
 
