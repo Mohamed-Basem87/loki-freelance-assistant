@@ -31,14 +31,16 @@ class CategoryProfile:
 PROFILE = CategoryProfile(
     id="full_stack",
     name="Full Stack Development",
-    description="Full Stack Development spanning frontend, backend, database, and deployment.",
+    description="Full Stack WEBSITE / WEB APPLICATION development spanning frontend, backend, database, and deployment.",
     arbitration_context=(
-        "Primary deliverable is a complete product or system that genuinely spans "
-        "two or more meaningful application surfaces/layers (e.g., frontend + "
-        "backend + database + deployment). The client is asking to BUILD a new "
-        "product/system, not integrate, configure, customize, maintain, or fix an "
-        "existing one. No existing specialist category clearly owns the primary "
-        "deliverable. A viable specialist category ALWAYS beats full_stack."
+        "Primary deliverable is a complete new WEBSITE or WEB APPLICATION that "
+        "genuinely spans two or more meaningful application layers (e.g., "
+        "frontend + backend + database + deployment). The client is asking to "
+        "BUILD a new website/web application, not integrate, configure, "
+        "customize, maintain, or fix an existing one. Mobile apps, mobile-first "
+        "products, and desktop applications are NOT acceptable deliverables. "
+        "No existing specialist category clearly owns the primary deliverable. "
+        "A viable specialist category ALWAYS beats full_stack."
     ),
     positive_keywords=POSITIVE_KEYWORDS,
     negative_keywords=NEGATIVE_KEYWORDS,

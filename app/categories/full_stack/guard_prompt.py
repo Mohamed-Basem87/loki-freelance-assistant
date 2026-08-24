@@ -4,29 +4,30 @@ system.
 
 A deterministic classifier has ALREADY decided that this job is strong
 enough to be directly notified. Your only task is to independently check
-whether the PRIMARY DELIVERABLE is genuinely Full Stack Development
-work relevant to this freelancer.
+whether the PRIMARY DELIVERABLE is genuinely Full Stack WEBSITE /
+WEB APPLICATION development relevant to this freelancer.
 
-IMPORTANT SCOPE RULE:
-This freelancer is focused on FULL STACK PRODUCT DEVELOPMENT, including
-building complete new products/systems that span multiple meaningful
-application layers (frontend + backend + database + deployment, or web +
-mobile together).
+IMPORTANT SCOPE RULES:
+1. This freelancer is focused ONLY on FULL STACK WEBSITES / WEB
+   APPLICATIONS: building complete new websites/web applications that
+   span frontend + backend + database + deployment.
+2. Mobile applications, mobile-first products (even with a companion web
+   version), and desktop applications are NOT acceptable deliverables.
 
 Approve only when the actual work requested is primarily full stack
-product development, such as:
+website / web application development, such as:
 
-- Building a complete new SaaS product with frontend, backend, database, auth and deployment
-- Building a new marketplace website and companion iOS/Android application
-- Building a new social platform with web frontend, REST API, PostgreSQL, and Docker deployment
-- Building an e-commerce platform with React frontend, Python backend, and mobile apps
-- Building a project management tool with web app, API, real-time features, and mobile clients
+- Building a complete new SaaS WEB APPLICATION with frontend, backend, database, auth and deployment
+- Building a new marketplace website with user accounts, listings and payments
+- Building a new social platform website with web frontend, REST API, PostgreSQL, and Docker deployment
+- Building an e-commerce WEBSITE with React frontend and Python backend
 
 REJECT when the PRIMARY DELIVERABLE is:
 
 - Frontend-only development (websites, web apps, landing pages, UI implementation)
 - Backend-only development (APIs, databases, server-side logic without frontend)
-- Mobile-only app development (iOS/Android native or cross-platform)
+- Mobile app development or mobile-first products (iOS/Android native or cross-platform), even if a web version/dashboard is mentioned
+- Desktop application development (Electron or native)
 - Game development
 - Data analysis or business intelligence
 - Machine learning or AI model development
@@ -41,9 +42,9 @@ REJECT when the PRIMARY DELIVERABLE is:
 - Marketing (SEO, ads, lead generation, content)
 
 The distinction is the PRIMARY DELIVERABLE:
-- Building a complete new product spanning multiple layers = ACCEPT.
-- Building a web application and companion mobile application together = ACCEPT.
+- Building a complete new WEBSITE / WEB APPLICATION spanning frontend + backend + database + deployment = ACCEPT.
 - Building only one layer (frontend, backend, mobile) = REJECT.
+- Building a mobile or desktop product (even with web components) = REJECT.
 - Integrating/configuring/maintaining existing systems = REJECT.
 
 A job does NOT become acceptable merely because it mentions:
@@ -57,17 +58,18 @@ Always identify the MAIN OUTCOME the client is paying for.
 Ask yourself:
 "What will the freelancer ultimately deliver to the client?"
 
-If the answer is a complete new product spanning multiple application layers,
-approve it.
+If the answer is a complete new website/web application spanning frontend,
+backend, database and deployment, approve it.
 
-If the answer is a single layer, integration, configuration, maintenance,
-or any non-product-development task, reject it.
+If the answer is a single layer, a mobile or desktop application, an
+integration, configuration, maintenance, or any non-web-product task,
+reject it.
 
 Tools and platforms mentioned do not determine the category by
 themselves. Judge the actual work and final deliverable.
 
-If the description is ambiguous, conservative, or primarily
-non-full-stack-product-development, reject it.
+If the description is ambiguous, conservative, or not primarily full
+stack website/web application development, reject it.
 
 Return ONLY valid JSON with exactly this structure:
 

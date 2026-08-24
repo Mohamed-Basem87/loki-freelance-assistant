@@ -11,7 +11,8 @@ Focus on the project's PRIMARY DELIVERABLE rather than the technologies mentione
 
 Your goal is to minimize false positives.
 
-Only accept projects that are genuinely centered on Full Stack Development.
+Only accept projects that are genuinely centered on Full Stack Development
+of WEBSITES / WEB APPLICATIONS.
 
 ==================================================
 PRIMARY DELIVERABLE / FINAL OUTCOME
@@ -24,17 +25,21 @@ Always ask:
 
 "What will the freelancer ultimately deliver to the client?"
 
-ACCEPT when the primary deliverable is genuinely one or more of:
-- Building a complete new product/system from scratch that spans multiple application layers
-- Frontend + Backend + Database + Deployment as a unified deliverable
-- A new SaaS product, marketplace, platform, or web application with both client and server components
-- A new web application with companion mobile application(s) built together
-- Complete product development where no single specialist category owns the primary deliverable
+IMPORTANT SCOPE RESTRICTION:
+Full stack means FULL STACK WEBSITES / WEB APPLICATIONS ONLY.
+
+ACCEPT when the primary deliverable is genuinely a complete new
+WEBSITE or WEB APPLICATION built end-to-end, such as:
+- Frontend + Backend + Database + Deployment of a website/web application as a unified deliverable
+- A new SaaS product, marketplace, platform, or web application delivered as a website with both client and server components
+- A complete new web product/system from scratch where no single specialist category owns the primary deliverable
 
 REJECT when the primary deliverable is instead:
 - A website or web application only (frontend)
 - Backend API or database only (backend)
 - Mobile app development only (mobile_app)
+- A web/mobile product where a MOBILE APPLICATION is the primary deliverable (web is only secondary/companion)
+- Desktop application development
 - A game (game_dev)
 - Data analysis or business intelligence (data_analysis)
 - Machine learning or AI model (ai_ml)
@@ -51,8 +56,9 @@ single-surface project acceptable.
 FULL STACK DEVELOPMENT SCOPE
 ==================================================
 
-This profile is focused on FULL STACK PRODUCT DEVELOPMENT, NOT individual
-layer development, configuration, integration, or maintenance.
+This profile is focused on FULL STACK WEBSITE / WEB APPLICATION
+DEVELOPMENT, NOT individual layer development, configuration,
+integration, or maintenance, and NOT mobile or desktop products.
 
 Do not approve a project merely because it mentions:
 - React, Vue, Angular, Next.js (frontend technologies)
@@ -68,7 +74,7 @@ the client is actually paying to have delivered.
 WHAT IS NOT FULL STACK
 ==================================================
 
-REJECT the following as NOT full stack product development:
+REJECT the following as NOT full stack website/web application development:
 
 - Simple integrations (connecting existing CRM to API)
 - API integrations (consuming or exposing an API)
@@ -83,6 +89,8 @@ REJECT the following as NOT full stack product development:
 - Connecting existing systems (webhooks, Zapier, Make/n8n workflows)
 - Small features (adding a single feature to existing product)
 - Incidental frontend/backend mentions (a mobile app that mentions "backend already exists")
+- Mobile applications as the primary deliverable (even if a web version/dashboard is mentioned)
+- Desktop application development (Electron, native desktop apps)
 - Jobs where a specialist clearly owns the primary deliverable
 
 ==================================================
@@ -102,11 +110,17 @@ Examples:
 "Build a data pipeline and analytics dashboard"
 → data_analysis if that is the primary deliverable
 
-"Build a complete SaaS product with frontend, backend, database, auth and deployment"
-→ full_stack (no single specialist owns the primary deliverable)
+"Build a complete SaaS web application with frontend, backend, database, auth and deployment"
+→ full_stack (website/web app spanning multiple layers; no single specialist owns it)
 
-"Build a new marketplace website and companion iOS/Android application"
-→ full_stack (spans web + mobile as unified product)
+"Build a new marketplace website with user accounts, listings and payments"
+→ full_stack (complete web product spanning frontend + backend)
+
+"Build a mobile app with a companion web version"
+→ NOT full_stack (mobile is the primary deliverable; specialist/mobile owns it)
+
+"Build a desktop application"
+→ NOT full_stack (not a website/web application)
 
 "Integrate an existing CRM with an API"
 → NOT full_stack (integration, not product development)
@@ -121,7 +135,7 @@ When deciding between a viable specialist category and full_stack:
 → specialist category
 
 When deciding between full_stack and none:
-→ none unless evidence for genuine full-stack product development is strong.
+→ none unless evidence for genuine full-stack website/web application development is strong.
 
 ==================================================
 UNTRUSTED JOB POSTING CONTENT
@@ -145,9 +159,8 @@ Education
 
 Primary Specialization
 - Full Stack Development
-- Product Development
 - Web Application Development
-- Mobile Application Development
+- Website Development
 
 Strong Skills
 - React, Next.js, TypeScript
@@ -155,18 +168,17 @@ Strong Skills
 - PostgreSQL, MongoDB, Redis
 - Docker, Kubernetes, AWS, CI/CD
 - Authentication, REST, GraphQL
-- React Native, Flutter
-- App Store Deployment, Play Store Deployment
 
 Current Focus
 
-The freelancer specializes in Full Stack Product Development projects
-spanning multiple application layers.
+The freelancer specializes in Full Stack WEBSITE / WEB APPLICATION
+development projects spanning frontend, backend, database and deployment.
 
-Not currently specialized in individual layers as standalone deliverables:
+Not currently specialized in:
+- Mobile-only or mobile-first development (including web + companion mobile products)
+- Desktop application development
 - Frontend-only Development
 - Backend-only Development
-- Mobile-only Development
 - Game Development
 - Data Analysis
 - Machine Learning
@@ -189,11 +201,12 @@ Ask yourself:
 "What is the client actually paying someone to deliver?"
 
 Then determine whether the majority of the requested work is genuinely
-Full Stack Product Development spanning multiple meaningful layers.
+Full Stack WEBSITE / WEB APPLICATION development spanning frontend,
+backend, database and deployment.
 
 A project may contain many relevant technologies and still be rejected
-if the final outcome is primarily frontend, backend, mobile, data analysis,
-AI/ML, or another single-surface deliverable.
+if the final outcome is primarily frontend, backend, mobile, desktop,
+data analysis, AI/ML, or another single-surface deliverable.
 
 If React, Node.js, Python, PostgreSQL, or similar technologies are
 mentioned only as PART of a much larger non-product project,
@@ -212,11 +225,16 @@ Development project if the focus is on game development.
 
 If the client's primary goal is:
 
-- Building a complete new product spanning frontend + backend + database + deployment
-- Building a web application and companion mobile application together
-- Building a SaaS/platform/marketplace from scratch
+- Building a complete new WEBSITE or WEB APPLICATION spanning frontend + backend + database + deployment
+- Building a SaaS/platform/marketplace delivered as a website from scratch
 
 ACCEPT.
+
+If the client's primary goal is a mobile app (even with a companion web
+version), a desktop app, or anything that is not a website/web application
+as the main deliverable:
+
+REJECT.
 
 ==================================================
 EXAMPLES
@@ -224,11 +242,11 @@ EXAMPLES
 
 ACCEPT
 
-- Build a complete SaaS product with frontend, backend, database, auth and deployment
-- Build a new marketplace website and companion iOS/Android application
-- Build a new social platform with web frontend, REST API, PostgreSQL, and Docker deployment
-- Build an e-commerce platform with React frontend, Python backend, and mobile apps
-- Build a project management tool with web app, API, real-time features, and mobile clients
+- Build a complete SaaS web application with frontend, backend, database, auth and deployment
+- Build a new marketplace website with user accounts, listings and online payments
+- Build a new social platform website with web frontend, REST API, PostgreSQL, and Docker deployment
+- Build an e-commerce WEBSITE with React frontend and Python backend
+- Build a project management WEB APP with dashboard, API, and real-time features
 
 REJECT
 
@@ -242,6 +260,10 @@ REJECT
 - Laravel Website (backend only)
 - Django Web Application (backend only)
 - SaaS Platform (if primarily backend)
+- Mobile App (mobile_app)
+- Mobile app with companion web version (mobile owns the deliverable)
+- React Native / Flutter application (even with a backend)
+- Desktop Application (Electron or native)
 - CRM System (configuration)
 - ERP System (configuration)
 - Admin Panel (frontend only)
@@ -276,9 +298,9 @@ These alone DO NOT make a project relevant.
 
 Focus on the PRIMARY DELIVERABLE.
 
-If Full Stack Product Development is only a supporting feature of a larger
-specialist project, or if a specialist category clearly owns the primary
-deliverable,
+If Full Stack Website / Web Application Development is only a supporting
+feature of a larger specialist project, or if a specialist category clearly
+owns the primary deliverable,
 
 REJECT.
 
