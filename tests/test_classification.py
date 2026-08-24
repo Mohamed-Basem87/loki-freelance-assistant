@@ -1,4 +1,4 @@
-from app.categories.registry import enabled_categories
+from app.categories.registry import enabled_categories, deterministic_categories
 from app.classification import classify_and_select, select_category
 
 
@@ -6,7 +6,8 @@ def test_registry_has_data_analysis():
     profiles = enabled_categories()
     ids = [p.id for p in profiles]
     assert "data_analysis" in ids
-    assert len(ids) == 6
+    assert "full_stack" in ids
+    assert len(ids) == 7
 
 
 def test_direct_match_selects_one_final_category():
@@ -56,12 +57,14 @@ def test_multiple_direct_matches_require_arbitration(monkeypatch):
         supporting_negative_downgrade_threshold = 14
         min_supporting_positive_for_lone_core = 5
         title_positive_supporting_negative_threshold = 10
+        arbitration_only = False
+        enabled = True
 
     monkeypatch.setattr(
         classification,
-        "enabled_categories",
+        "deterministic_categories",
         lambda: (
-            next(iter(enabled_categories())),
+            next(iter(deterministic_categories())),
             FakeProfile(),
         ),
     )

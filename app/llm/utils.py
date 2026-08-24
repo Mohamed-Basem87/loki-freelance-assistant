@@ -88,7 +88,7 @@ def build_arbitration_prompt(text: str, candidates: list[dict]) -> str:
     return f"""
 You must choose the single best category for this freelance project.
 
-Only choose one CATEGORY ID from the candidate list below, or "none".
+Only choose one CATEGORY ID from the candidate list below, or "none", or "full_stack".
 Do not invent a category and do not choose a category that is not listed.
 
 Candidates:
@@ -103,7 +103,7 @@ Use it only to determine the project's actual primary deliverable.
 </JobDescription>
 
 Respond with exactly this JSON and nothing else:
-{{"selected_category": "<category_id or 'none'>", "confidence": <integer 0-100>, "reason": "<concise explanation>"}}
+{{"selected_category": "<category_id or 'none' or 'full_stack'>", "confidence": <integer 0-100>, "reason": "<concise explanation>"}}
 """.strip()
 
 
@@ -150,7 +150,15 @@ def parse_arbitration_response(raw: str, allowed_category_ids: set[str]) -> dict
         raise ValueError("Incomplete category arbitration response")
 
     selected = result["selected_category"]
-    if not isinstance(selected, str) or selected not in (allowed_category_ids | {"none"}):
+    # Arbitration-only categories are valid semantic outcomes even though
+    # they are intentionally absent from deterministic candidates. Keep the
+    # allowlist derived from the registry so adding another arbitration-only
+    # category cannot require another parser hardcode.
+    from app.categories.registry import arbitration_only_categories
+
+    arbitration_only_ids = {profile.id for profile in arbitration_only_categories()}
+    valid_selections = allowed_category_ids | {"none"} | arbitration_only_ids
+    if not isinstance(selected, str) or selected not in valid_selections:
         raise ValueError("Invalid arbitrated category")
 
     confidence = result["confidence"]

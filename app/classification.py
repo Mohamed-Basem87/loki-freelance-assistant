@@ -1,18 +1,18 @@
 """Category matching and deterministic selection orchestration."""
 
-from app.categories.registry import enabled_categories
+from app.categories.registry import deterministic_categories
 from app.filters import keyword_filter
 
 
 def classify_categories(text, title=""):
-    """Return deterministic results for every enabled category."""
+    """Return deterministic results for every deterministic category."""
     return {
         profile.id: {
             "category_id": profile.id,
             "category_name": profile.name,
             "result": keyword_filter(text, title=title, profile=profile),
         }
-        for profile in enabled_categories()
+        for profile in deterministic_categories()
     }
 
 

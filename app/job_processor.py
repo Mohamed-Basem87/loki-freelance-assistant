@@ -4,7 +4,7 @@ import time
 import uuid
 import weakref
 
-from app.categories.registry import get_category
+from app.categories.registry import get_category, arbitration_only_categories
 from app.classification import classify_and_select
 from app.llm.manager import arbitrate_category
 from app.logger import logger
@@ -498,6 +498,24 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
                 "result": category_results[category_id]["result"],
             })
 
+        # Arbitration-only categories are intentionally absent from the
+        # deterministic classifier. They still need to be present in the
+        # arbitration candidate context so Gemini receives the full policy
+        # and Groq receives its compact arbitration_context.
+        for profile in arbitration_only_categories():
+            candidates.append({
+                "id": profile.id,
+                "name": profile.name,
+                "description": profile.description,
+                "arbitration_context": profile.arbitration_context,
+                "result": {
+                    "decision": "needs_gemini",
+                    "reason": "Arbitration-only category",
+                    "categories": [],
+                    "negative_categories": [],
+                },
+            })
+
         # One provider call for the complete candidate set. The shared LLM
         # manager builds the system policy from each candidate's live
         # category-specific llm_prompt.py, so those profiles directly govern
@@ -531,14 +549,49 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
                 decision_reason = decision_reason or "LLM Arbitration: No Category"
             else:
                 # parse_arbitration_response already constrains this to
-                # the candidate set; keep a second local check as a
-                # defense against future provider/parser changes.
-                if selected not in candidate_ids:
+                # the candidate set plus arbitration-only categories; keep a
+                # second local check as a defense against future provider/parser
+                # changes.
+                arbitration_only_ids = {
+                    profile.id for profile in arbitration_only_categories()
+                }
+                if selected not in candidate_ids and selected not in arbitration_only_ids:
                     raise RuntimeError(
                         f"Arbitration selected non-candidate category: {selected}"
                     )
                 selected_category_id = selected
-                result = dict(category_results[selected]["result"])
+                # For arbitration-only categories (e.g., full_stack), there is
+                # no deterministic filter result. Build a minimal result from
+                # the category profile for audit fields.
+                if selected in category_results:
+                    result = dict(category_results[selected]["result"])
+                else:
+                    # Arbitration-only category: synthesize a minimal filter
+                    # result with empty evidence for logging.
+                    profile = get_category(selected)
+                    if profile is None:
+                        raise RuntimeError(f"Arbitration selected unknown category: {selected}")
+                    result = {
+                        "decision": "needs_gemini",
+                        "reason": decision_reason,
+                        "categories": [],
+                        "negative_categories": [],
+                        "has_core_positive": False,
+                        "has_core_negative": False,
+                        "core_positive_hit_count": 0,
+                        "supporting_positive_weight": 0,
+                        "supporting_negative_weight": 0,
+                        "title_core_positive": False,
+                        "title_core_negative": False,
+                        "positive_core_matches": [],
+                        "positive_supporting_matches": [],
+                        "negative_core_matches": [],
+                        "negative_supporting_matches": [],
+                        "hard_reject": False,
+                        "hard_reject_matches": [],
+                        "notify_directly": False,
+                        "needs_gemini": True,
+                    }
                 result["category_id"] = selected
                 result["category_selection_method"] = "llm"
                 result["category_candidates"] = ", ".join(candidate_ids)
