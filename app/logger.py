@@ -326,8 +326,9 @@ class DBLogger:
         self._ensure_current_columns()
 
         # Fold any pre-feature per-user category subscriptions (legacy
-        # user_categories table) into users.Categories once, then drop
-        # the legacy table. No-op for fresh databases.
+        # user_categories table, if this database still has one) into
+        # users.Categories once, then drop the legacy table. No-op for
+        # fresh databases and for databases already migrated.
         self._migrate_user_categories_into_users()
 
         # Seed the category registry into SQLite. The registry is the
@@ -967,16 +968,19 @@ class DBLogger:
             self.save()
 
     def _migrate_user_categories_into_users(self):
-        """One-time migration from the legacy user_categories table into
-        users.Categories. Runs once at startup (see initialize()); the
-        legacy table is dropped afterwards so stale rows can never
-        resurrect a category a user has since unsubscribed from."""
+        """One-time migration: fold any legacy per-user category rows
+        (old user_categories table) into users.Categories, then drop the
+        legacy table so it can never be read from or written to again.
+        Runs once at startup (see initialize()); a no-op for a fresh
+        database or a database that has already been migrated (in either
+        case the SELECT below raises OperationalError because the table
+        no longer exists).
+        """
         try:
             rows = self._conn.execute(
                 'SELECT "User ID", "Category ID" FROM user_categories'
             ).fetchall()
         except sqlite3.OperationalError:
-            # Already migrated (or a fresh database): nothing to do.
             return
 
         grouped = {}
@@ -1000,7 +1004,6 @@ class DBLogger:
             )
 
         self._conn.execute('DROP TABLE user_categories')
-        self.save()
 
     def ensure_user(self, telegram_user_id, username="", first_name="", save=True):
         now = datetime.now().isoformat()
@@ -1071,7 +1074,15 @@ class DBLogger:
         return self._row_to_dict(cursor, row) if row else None
 
     def set_user_category(self, user_id, category_id, enabled=True, save=True):
-        """Add/remove one category preference stored directly on the user row."""
+        """Add/remove one category preference stored directly on the user row.
+
+        Categories are stored as a comma-separated list on users.Categories,
+        the same pattern used for users.Sources (see set_user_source). The
+        legacy user_categories table is migration-only: its data is folded
+        into this column once at startup and the table is then dropped
+        (see _migrate_user_categories_into_users), so nothing at runtime
+        reads or writes it.
+        """
         category = str(category_id or "").strip().lower()
         if not category:
             return
@@ -1101,9 +1112,6 @@ class DBLogger:
         )
         if save:
             self.save()
-
-    # Category preferences live directly on the users row; the legacy
-    # user_categories table is migrated once at startup and dropped.
 
     def get_user_categories(self, user_id):
         row = self._conn.execute(
@@ -1289,9 +1297,18 @@ class DBLogger:
             'SELECT un.*, u."Destination Type" AS "Destination Type" '
             'FROM user_notifications un '
             'JOIN users u ON u."User ID" = un."User ID" '
-            'WHERE (un."Status" = "Pending" OR un."Status" = "Failed") '
+            'WHERE (un."Status" = "Pending" OR un."Status" = "Failed" '
+            '       OR un."Status" = "RateLimited") '
             'AND u."Is Active" = "1" '
-            'AND CAST(un."Attempts" AS INTEGER) < 5 '
+            # RetryAfter is Telegram backpressure, not a failed delivery.
+            # The RetryAfter handler in user_bot.py records it as its own
+            # "RateLimited" status (never "Failed"), so those rows stay
+            # claimable past the normal failure attempt budget; the
+            # server-requested retry time is still honored via Next
+            # Attempt At below. Genuine failures ("Failed") still stop
+            # being claimed once Attempts reaches the cap.
+            'AND (CAST(un."Attempts" AS INTEGER) < 5 '
+            '     OR un."Status" = "RateLimited") '
             'AND (un."Next Attempt At" IS NULL OR un."Next Attempt At" = "" '
             'OR un."Next Attempt At" <= ?) '
             'ORDER BY un.rowid LIMIT ?',
@@ -1305,7 +1322,8 @@ class DBLogger:
                 'UPDATE user_notifications SET "Status" = "Sending", '
                 '"Attempts" = ?, "Updated At" = ? '
                 'WHERE "Notification ID" = ? AND '
-                '("Status" = "Pending" OR "Status" = "Failed")',
+                '("Status" = "Pending" OR "Status" = "Failed" '
+                ' OR "Status" = "RateLimited")',
                 (str(attempts), now, row["Notification ID"]),
             )
             row["Status"] = "Sending"

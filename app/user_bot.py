@@ -363,11 +363,14 @@ async def _send_one(notification):
             disable_web_page_preview=True,
         )
     except RetryAfter as exc:
+        # Telegram backpressure, not a delivery failure: record it under a
+        # distinct status so it never shares the MAX_ATTEMPTS budget with
+        # genuine failures (see claim_pending_user_notifications).
         retry_at = datetime.now() + timedelta(seconds=float(exc.retry_after))
         await logger.run(
             logger.update_user_notification,
             notification_id,
-            "Failed",
+            "RateLimited",
             notification.get("Attempts", "1"),
             f"Telegram rate limit: retry after {exc.retry_after}s",
             retry_at.isoformat(),
