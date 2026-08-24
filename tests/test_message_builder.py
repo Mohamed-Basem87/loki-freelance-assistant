@@ -1,4 +1,4 @@
-"""
+﻿"""
 app.message_builder tests. Pure string-building module, no app.config
 dependency -- runs fully offline like test_keyword_filter.py.
 """
@@ -229,3 +229,52 @@ def test_safe_html_truncate_never_breaks_html_at_any_cut_point(cut_point):
     truncated = _safe_html_truncate(html, cut_point)
 
     _assert_balanced_b_tags(truncated)
+
+
+from app.message_builder import safe_button_url
+
+
+def test_safe_button_url_accepts_normal_public_urls():
+    assert safe_button_url("https://mostaql.com/project/123") == "https://mostaql.com/project/123"
+    assert safe_button_url("http://freelancer.com/u/x?a=1#frag") != ""
+    assert safe_button_url("  https://www.example.com/path  ") == "https://www.example.com/path"
+    assert safe_button_url("https://app.example-io.dev/x") != ""
+
+
+def test_safe_button_url_rejects_malformed_links():
+    # The production Button_url_invalid case: truncated host, no real TLD
+    # ("www." alone satisfies a naive dot check, the last label does not).
+    assert safe_button_url("https://www.sigma-compute") == ""
+    assert safe_button_url("https://sigma-compute") == ""
+    assert safe_button_url("not a url") == ""
+    assert safe_button_url("ftp://example.com/file") == ""
+    assert safe_button_url("example.com/page") == ""
+    assert safe_button_url("") == ""
+    assert safe_button_url(None) == ""
+
+
+def test_unusable_button_url_falls_back_to_a_text_link():
+    message = build_job_message(
+        title="Shopify Store Build",
+        source="Mostaql",
+        reason="",
+        url="https://www.sigma-compute",
+        channel_style=True,
+    )
+
+    assert "https://www.sigma-compute" in message
+    _assert_balanced_b_tags(message)
+
+
+def test_usable_url_does_not_duplicate_a_text_link_line():
+    message = build_job_message(
+        title="Shopify Store Build",
+        source="Mostaql",
+        reason="",
+        url="https://mostaql.com/project/1",
+        channel_style=True,
+    )
+
+    assert "Link" not in message
+
+

@@ -11,7 +11,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from app.categories.registry import enabled_categories
 from app.config import BOT_CHANNEL_CATEGORY_ID, BOT_CHANNEL_ID, BOT_TOKEN
 from app.logger import logger
-from app.message_builder import build_job_message
+from app.message_builder import build_job_message, safe_button_url
 
 DELIVERY_CONCURRENCY = 10
 POLL_INTERVAL = 1.0
@@ -349,9 +349,10 @@ async def _send_one(notification):
     message = build_user_notification(job, category_id)
 
     reply_markup = None
-    if job.get("URL"):
+    button_url = safe_button_url(job.get("URL") or "")
+    if button_url:
         reply_markup = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("🔗 Open Project", url=job["URL"])]]
+            [[InlineKeyboardButton("🔗 Open Project", url=button_url)]]
         )
 
     try:

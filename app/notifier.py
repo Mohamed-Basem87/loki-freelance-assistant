@@ -6,7 +6,7 @@ from telegram.constants import ParseMode
 
 from app.config import BOT_CHAT_ID
 from app.logger import logger
-from app.message_builder import build_job_message
+from app.message_builder import build_job_message, safe_button_url
 from app.telegram_bot import bot
 
 
@@ -41,13 +41,14 @@ async def send_notification(
 
     keyboard = None
 
-    if url:
+    button_url = safe_button_url(url)
+    if button_url:
         keyboard = InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
                         "🔗 Open Project",
-                        url=url,
+                        url=button_url,
                     )
                 ]
             ]

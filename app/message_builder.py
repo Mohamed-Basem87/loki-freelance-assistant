@@ -1,6 +1,16 @@
 from html import escape
+from urllib.parse import urlparse
 
 from app.config import source_display_name
+
+import re
+
+# A plausible top-level domain: purely alphabetic (ASCII), 2+ chars.
+# Real job-post links always end in an ordinary TLD (.com/.net/.io/...);
+# truncated channel-scraper output like "https://www.sigma-compute"
+# ends in a hyphenated word fragment, which Telegram's Bot API rejects
+# as Button_url_invalid when used as an inline-button target.
+_TLD_RE = re.compile(r"^[A-Za-z]{2,}$")
 
 
 # Telegram's hard limit on a single text message. Kept a little under
@@ -28,6 +38,36 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: max(limit - 3, 0)].rstrip() + "..."
+
+
+def safe_button_url(url: str) -> str:
+    """
+    Return a URL usable as an InlineKeyboardButton target, or "" if the
+    URL should not be attached to a button.
+
+    Telegram's Bot API rejects button URLs it cannot parse as absolute
+    http(s) links (Button_url_invalid), and channel-sourced job posts
+    sometimes carry truncated or malformed links (e.g. "https://www.
+    sigma-compute" with no real TLD). A rejected button fails the whole
+    send_message call, so an unusable link must never reach the
+    keyboard: the scheme must be http(s) and the hostname's last label
+    must look like an ordinary alphabetic TLD.
+    """
+    cleaned = (url or "").strip()
+    if not cleaned:
+        return ""
+
+    parsed = urlparse(cleaned)
+    host = (parsed.hostname or "").strip()
+    last_label = host.rsplit(".", 1)[-1] if host else ""
+    if (
+        parsed.scheme not in ("http", "https")
+        or not host
+        or not _TLD_RE.match(last_label)
+    ):
+        return ""
+
+    return cleaned
 
 
 def _safe_html_truncate(html: str, limit: int) -> str:
@@ -147,6 +187,11 @@ def build_job_message(
         sections.append(
             f"────────────────────────\n\n💡 <b>Reason</b>\n\n{escape(reason)}"
         )
+
+    if url and not safe_button_url(url):
+        # The senders can only attach a button for a Telegram-valid URL;
+        # keep the raw link visible as text so the project stays reachable.
+        sections.append(f"🔗 <b>Link</b>\n{escape(url.strip())}")
 
     message = header
     for section in sections:
