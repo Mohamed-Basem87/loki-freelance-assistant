@@ -171,6 +171,14 @@ NEGATIVE_KEYWORDS = {
         "supporting": {},
     },
 
+    # Developer-console account trading/transfer services, not app builds.
+    "account_services": {
+        "core": {
+            "app transfer": 6,
+        },
+        "supporting": {},
+    },
+
     # Hardware/mechanical product design that merely mentions an app.
     "hardware_design": {
         "core": {
@@ -519,6 +527,9 @@ HARD_REJECT_KEYWORDS = {
     "letter writing", "request letter",
     # Review/rating manipulation phrasing (رفع تقييم تطبيق أبل ستور).
     "رفع تقييم",
+    # Developer-account purchase requests (شراء حساب مطوّر Google Play
+    # Console) -- account trading, never app development.
+    "شراء حساب",
 }
 
 

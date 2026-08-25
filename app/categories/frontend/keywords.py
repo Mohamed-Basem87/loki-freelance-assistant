@@ -158,6 +158,13 @@ POSITIVE_KEYWORDS = {
             "انشاء متجر": 7,
             "تطوير متجر": 7,
             "تصميم متجر": 7,
+            # Attached-prefix (لـ) surface form of تصميم متجر.
+            "لتصميم متجر": 7,
+            # Compound verb-chain forms of تصميم متجر (verb + وتجهيز).
+            "تصميم وتجهيز متجر": 7,
+            "لتصميم وتجهيز متجر": 7,
+            # Arabic transliteration: simple info/landing page builds.
+            "صفحة تعريفية": 6,
             "ووردبريس": 7,
             "الووردبريس": 7,
             "وورد بريس": 7,
@@ -190,6 +197,7 @@ POSITIVE_KEYWORDS = {
             "website development": 7,
             "website design": 6,
             "website build": 6,
+            "website redesign": 7,
             "landing page": 6,
             "web app": 6,
             "webapp": 6,
@@ -255,6 +263,15 @@ POSITIVE_KEYWORDS = {
 
 # Negative evidence: other software domains to avoid overlap.
 NEGATIVE_KEYWORDS = {
+
+    # Domain/hosting transfer & connection config gigs are platform
+    # operations, not frontend builds.
+    "site_config": {
+        "core": {
+            "نقل الدومين": 7,
+        },
+        "supporting": {},
+    },
 
     "backend": {
         "core": {

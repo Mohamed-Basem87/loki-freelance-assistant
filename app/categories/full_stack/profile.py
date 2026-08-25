@@ -38,9 +38,14 @@ PROFILE = CategoryProfile(
         "frontend + backend + database + deployment). The client is asking to "
         "BUILD a new website/web application, not integrate, configure, "
         "customize, maintain, or fix an existing one. Mobile apps, mobile-first "
-        "products, and desktop applications are NOT acceptable deliverables. "
-        "No existing specialist category clearly owns the primary deliverable. "
-        "A viable specialist category ALWAYS beats full_stack."
+        "products, and desktop applications are NOT acceptable deliverables: "
+        "when the client asks for customer/partner/driver APPS as the primary "
+        "deliverable (Android/iOS), select the mobile category instead, even "
+        "if the project also includes a web admin panel or companion web "
+        "version. Ongoing monthly developer-hiring or staff-retainer ads are "
+        "not a build deliverable and must not be selected here. No existing "
+        "specialist category clearly owns the primary deliverable. A viable "
+        "specialist category ALWAYS beats full_stack."
     ),
     positive_keywords=POSITIVE_KEYWORDS,
     negative_keywords=NEGATIVE_KEYWORDS,
