@@ -97,6 +97,63 @@ def test_mostaql_badge_is_not_stripped_when_it_is_the_only_line():
     assert job["description"] == ""
 
 
+def test_mostaql_stats_header_badge_line_is_removed():
+    """
+    Stats-header channel layout: the whole 👤/💼/💵 metadata block
+    sits between the title and the description marker, so the
+    first-line-only strip used to miss it and profession labels
+    (e.g. معلم) leaked into the classifier input, firing education
+    core-negatives on genuine platform builds.
+    """
+    text = (
+        "🎯 تطوير منصة تدريب واختبارات\n"
+        "\u200f👤 A L I A.\n"
+        "\u200f💼 معلم\n"
+        "\u200f💵 $2500.00 - $5000.00\n"
+        "\u200f⌛ 30 يوما\n"
+        "\u200f📊 0.0%\n"
+        "~~~~ الوصف ~~~~\n"
+        "أبحث عن مبرمج لتطوير منصة تعليمية.\n"
+    )
+
+    job = parse_job("مستقل | برمجة، تطوير المواقع والتطبيقات", text)
+
+    assert job["title"] == "🎯 تطوير منصة تدريب واختبارات"
+    assert "معلم" not in job["description"]
+    # The whole stats block is metadata and is stripped with it.
+    assert "$2500.00" not in job["description"]
+    assert "A L I A." not in job["description"]
+    # The 💵 line is structured data: captured into budget instead of
+    # being lost with the rest of the header block.
+    assert job["budget"] == "$2500.00 - $5000.00"
+    # The الوصف marker line itself is stripped too, so it never leaks
+    # into the notified description.
+    assert "الوصف" not in job["description"]
+    # Description prose after the marker survives untouched.
+    assert "أبحث عن مبرمج لتطوير منصة تعليمية." in job["description"]
+
+
+def test_profession_word_inside_description_body_is_kept():
+    """
+    The header-region strip must never touch description prose: a
+    line after the الوصف marker that merely says a profession word
+    stays part of the description.
+    """
+    text = (
+        "🎯 Build me a dashboard\n"
+        "\u200f👤 Client X.\n"
+        "\u200f💼 مدخل بيانات\n"
+        "\u200f💵 $50 - $100\n"
+        "~~~~ الوصف ~~~~\n"
+        "المطلوب مطور\n"
+        "للوحة تحكم بسيطة.\n"
+    )
+
+    job = parse_job("مستقل | برمجة، تطوير المواقع والتطبيقات", text)
+
+    assert "المطلوب مطور للوحة تحكم بسيطة." in job["description"]
+
+
 def test_generic_message_falls_back_to_first_line_and_normalized_body():
     text = (
         "Power BI Dashboard Needed\n\n"

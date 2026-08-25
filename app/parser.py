@@ -1,13 +1,15 @@
 import re
 
 
-# Mostaql channel posts can prepend a short client/profile profession
-# badge before the actual project title.  The badge is metadata, not
-# job content, so it must not become the title or classifier input.
-# Keep this list deliberately conservative: only exact standalone
-# badge labels with a following line are stripped.  A one-line post
-# is never stripped, so a legitimate one-line title such as "مبرمج"
-# remains intact.
+# Legacy Mostaql layout only: some older/simpler channel posts prepend
+# a single, bare client/profile profession badge line before the
+# actual project title, with no stats-header block and no "~~~~ الوصف
+# ~~~~" marker at all (see _DESCRIPTION_MARKER_RE below, which handles
+# the current, richer layout). The badge is metadata, not job content,
+# so it must not become the title or classifier input. Keep this list
+# deliberately conservative: only exact standalone badge labels with a
+# following line are stripped. A one-line post is never stripped, so a
+# legitimate one-line title such as "مبرمج" remains intact.
 _MOSTAQL_PROFILE_BADGES = {
     "صانع محتوى",
     "مبرمج",
@@ -21,8 +23,47 @@ _MOSTAQL_PROFILE_BADGES = {
     "مسوق",
     "مسوق رقمي",
     "مدخل بيانات",
+    "معلم",
     "مدير مشروع",
 }
+
+# Stats-header channel layout:
+#   <title>
+#   👤 <client>
+#   💼 <profession>
+#   💵 <budget>
+#   ⌛ <duration>
+#   📊 <stat>
+#   ~~~~ الوصف ~~~~
+#   <description prose...>
+#
+# Everything between the title and the description marker is
+# account/profile metadata (client name, profession, budget, timer,
+# proposal stats, ...), not job content. Left intact it leaks scored
+# classifier vocabulary in BOTH polarities (profession labels like
+# "معلم"/"مبرمج", marketing terms, etc.) and leaks the raw marker text
+# itself into the notified description.
+#
+# Because the exact set of fields in this block varies and grows over
+# time (production has already added fields beyond the original
+# 👤/💼/💵 trio), the whole region -- title-exclusive, marker-inclusive
+# -- is stripped unconditionally once the marker is found, rather than
+# allowlisting individual field emoji/labels. A field type added later
+# needs no parser change to also be stripped; only the marker itself
+# has to be recognized.
+_DESCRIPTION_MARKER_RE = re.compile(r"~{2,}\s*\S*الوصف\S*\s*~{2,}")
+
+# Right-to-left/left-to-right/embedding marks Mostaql wraps each header
+# field in. Stripped before matching so they never break the budget
+# regex below.
+_HEADER_MARKS_RE = re.compile("[\u200e\u200f\u202a-\u202e\ufeff]")
+
+# The 💵 line is the one piece of stats-header metadata worth keeping
+# rather than discarding: real, structured budget data the Mostaql
+# branch has otherwise never captured (unlike Nafezly's dedicated
+# "الميزانية:" parsing below). \ufe0f? allows for an optional emoji
+# variation selector.
+_BUDGET_LINE_RE = re.compile(r"\U0001f4b5\ufe0f?\s*(.+)")
 
 
 def _is_mostaql_source(source: str) -> bool:
@@ -30,27 +71,67 @@ def _is_mostaql_source(source: str) -> bool:
     return "mostaql" in source_lower or "مستقل" in (source or "")
 
 
-def _strip_mostaql_profile_badge(lines: list[str], source: str) -> list[str]:
-    """Remove one known Mostaql profile badge from the message header.
+def _strip_mostaql_header(lines: list[str], source: str) -> tuple[list[str], str]:
+    """Remove Mostaql profile/account metadata from the message header.
 
-    Only the first non-empty line is eligible, and only when another
-    non-empty line follows it.  This prevents a legitimate one-line
-    project title from being discarded merely because it happens to
-    match a common profession label.
+    Returns ``(remaining_lines, budget)``. Two layouts are handled:
+
+    1. Stats-header posts (see module-level comment above
+       ``_DESCRIPTION_MARKER_RE``): every line from just after the
+       title up to and including the marker line is dropped
+       unconditionally. The budget line, if present anywhere in that
+       block, is extracted first. Lines after the marker -- the actual
+       description -- are never touched.
+
+    2. Legacy layout with no stats-header marker: only the first
+       non-empty line is eligible, and only when another non-empty
+       line follows it. This prevents a legitimate one-line project
+       title from being discarded merely because it happens to match a
+       common profession label (e.g. a post that really is just
+       "مبرمج" is left intact).
     """
     if not _is_mostaql_source(source):
-        return lines
+        return lines, ""
 
+    marker_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if _DESCRIPTION_MARKER_RE.search(line)
+        ),
+        None,
+    )
+
+    if marker_index is not None:
+        title_index = next(
+            (index for index, line in enumerate(lines) if line.strip()),
+            None,
+        )
+        header_start = title_index + 1 if title_index is not None else 0
+
+        budget = ""
+        for line in lines[header_start:marker_index]:
+            match = _BUDGET_LINE_RE.match(_HEADER_MARKS_RE.sub("", line).strip())
+            if match:
+                budget = match.group(1).strip()
+                break
+
+        # Drop the entire header region AND the marker line itself --
+        # only description prose after the marker survives.
+        return lines[:header_start] + lines[marker_index + 1:], budget
+
+    # No stats-header marker present: fall back to the legacy
+    # single-badge-line strip.
     first_index = next(
         (index for index, line in enumerate(lines) if line.strip()),
         None,
     )
     if first_index is None:
-        return lines
+        return lines, ""
 
     badge = lines[first_index].strip()
     if badge.casefold() not in _MOSTAQL_PROFILE_BADGES:
-        return lines
+        return lines, ""
 
     following_index = next(
         (
@@ -61,9 +142,9 @@ def _strip_mostaql_profile_badge(lines: list[str], source: str) -> list[str]:
         None,
     )
     if following_index is None:
-        return lines
+        return lines, ""
 
-    return lines[:first_index] + lines[first_index + 1:]
+    return lines[:first_index] + lines[first_index + 1:], ""
 
 
 def _extract_url(text: str) -> str:
@@ -189,7 +270,7 @@ def parse_job(source: str, text: str) -> dict[str, str]:
     # profile badge can be removed before it becomes the title or
     # classifier evidence.
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    lines = _strip_mostaql_profile_badge(lines, source)
+    lines, header_budget = _strip_mostaql_header(lines, source)
 
     job["title"] = _fallback_title("\n".join(lines))
 
@@ -209,5 +290,7 @@ def parse_job(source: str, text: str) -> dict[str, str]:
 
     job["description"] = _normalize_description(description_text)
     job["url"] = _extract_url(text)
+    if header_budget:
+        job["budget"] = header_budget
 
     return job

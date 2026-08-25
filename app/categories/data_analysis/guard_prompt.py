@@ -21,6 +21,9 @@ relevant to this freelancer, such as:
 - Power BI dashboards, reports, DAX, or analytical modeling
 - Excel analysis, advanced Excel, Power Query, PivotTables, reporting
 - SQL analysis and reporting queries
+- Excel/spreadsheet analysis supported by database design work (schema,
+  ERD, tables, keys, indexing) when the analytical outcome is the
+  primary deliverable and the database exists to serve that analysis
 - Python data analysis
 - Data cleaning / preparation
 - Data normalization, standardization, deduplication, or consolidation
@@ -61,6 +64,17 @@ ACCEPT:
 standardizing dates and numeric formats, handling missing values,
 standardizing column headers, consolidating the sheets, and delivering
 one clean workbook ready for analysis."
+
+ACCEPT:
+"Pull raw data into Excel and shape it for analysis, and design a clean
+SQL Server database (ERD, tables, keys, indexing) so the downstream
+Excel analysis stays fast and reliable. Deliverables: the schema script
+and a working analytical workbook."
+
+A client explicitly DECLINING features (e.g. "no heavy VBA automation,
+no fancy dashboards, just number crunching") does not make the job
+non-analytical -- plain analysis/number-crunching as the deliverable is
+still approved.
 
 ACCEPT:
 "Clean and prepare a raw sales dataset, normalize the columns, resolve

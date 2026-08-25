@@ -807,6 +807,9 @@ HARD_REJECT_KEYWORDS = {
     "لمدخل بيانات",
     # Gmail automation/export gigs are email tooling, not analysis work.
     "gmail",
+    # CAD product names: spreadsheet/BOM deliverables make these gigs look
+    # DA-adjacent, but the work is mechanical CAD, never analysis.
+    "solidworks", "autocad", "fusion 360",
     # Recurring SMM-reseller storefront spam (8 corpus occurrences, all
     # rejected); hard-rejected so reposts don't burn arbitration calls.
     "خدمات smm",

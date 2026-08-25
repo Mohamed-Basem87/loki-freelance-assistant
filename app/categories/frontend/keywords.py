@@ -199,6 +199,8 @@ POSITIVE_KEYWORDS = {
             "website build": 6,
             "website redesign": 7,
             "landing page": 6,
+            # Exam/testing platform builds (English).
+            "exam platform": 6,
             "web app": 6,
             "webapp": 6,
         },
@@ -220,6 +222,16 @@ POSITIVE_KEYWORDS = {
             "سله": 4,
             "e-commerce": 4,
             "ecommerce": 4,
+            # Arabic e-learning/training platform builds (منصة تعليمية family);
+            # supporting-only so content/QA gigs stay below the arbitration bar.
+            "منصة تعليمية": 6,
+            "منصة تدريب": 6,
+            # English LMS/exam-platform build vocabulary (supporting tier:
+            # course-content gigs also use these words).
+            "lms": 4,
+            "learning platform": 4,
+            "e-learning": 4,
+            "elearning": 4,
             "theme": 3,
             "plugin": 3,
             "template": 3,
@@ -542,6 +554,8 @@ NEGATIVE_KEYWORDS = {
 HARD_REJECT_KEYWORDS = {
     # Data-entry gigs reach frontend only via incidental html/format vocab.
     "data entry",
+    # Hacked-site restore / account-recovery gigs are maintenance, not builds.
+    "hacked",
     "graphic design",
     "photoshop",
     "illustrator",
