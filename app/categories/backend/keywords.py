@@ -524,6 +524,9 @@ HARD_REJECT_KEYWORDS = {
     "letter writing", "request letter",
     # PCB/hardware engineering gigs reach backend via generic api/db vocab.
     "pcb",
+    # Gambling/real-money gaming products are out of scope (policy block).
+    "casino", "igaming", "jackpot", "poker", "roulette", "blackjack",
+    "satta matka", "spin and win", "spin win", "lucky jet",
 }
 
 

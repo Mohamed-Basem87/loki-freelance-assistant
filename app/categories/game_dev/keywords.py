@@ -518,6 +518,9 @@ HARD_REJECT_KEYWORDS = {
     "letter writing", "request letter",
     # STL deliverables are CAD/3D-printing work, not game development.
     "stl",
+    # Gambling/real-money gaming products are out of scope (policy block).
+    "casino", "igaming", "jackpot", "poker", "roulette", "blackjack",
+    "satta matka", "spin and win", "spin win", "lucky jet",
 }
 
 

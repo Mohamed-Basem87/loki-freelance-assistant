@@ -532,6 +532,9 @@ HARD_REJECT_KEYWORDS = {
     "شراء حساب",
     # PCB/hardware engineering gigs reach mobile via platform-name vocab.
     "pcb",
+    # Gambling/real-money gaming products are out of scope (policy block).
+    "casino", "igaming", "jackpot", "poker", "roulette", "blackjack",
+    "satta matka", "spin and win", "spin win", "lucky jet",
 }
 
 
