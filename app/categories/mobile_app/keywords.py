@@ -104,6 +104,9 @@ POSITIVE_KEYWORDS = {
             "app developer": 4,
             "تطبيق": 2,
             "تطبيقات": 2,
+            # Arabic web-app collocation (2026-08-26 audit): not in app_types
+            # core; genuine mobile/web hybrid builds.
+            "تطبيق ويب": 6,
         },
     },
 
@@ -535,6 +538,10 @@ HARD_REJECT_KEYWORDS = {
     # Gambling/real-money gaming products are out of scope (policy block).
     "casino", "igaming", "jackpot", "poker", "roulette", "blackjack",
     "satta matka", "spin and win", "spin win", "lucky jet",
+    # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
+    "wechat",
+    "lead generation",
+    "digital marketing",
 }
 
 

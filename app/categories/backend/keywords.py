@@ -92,6 +92,11 @@ POSITIVE_KEYWORDS = {
             "websocket": 7,
             "socket.io": 7,
             "بناء api": 8,
+            # Payment gateway integrations (2026-08-26 audit): voucher/redemption
+            # API job (40671815) lacked payment-gateway-specific vocabulary.
+            "stripe": 8,
+            "razorpay": 8,
+            "paypal": 7,
         },
         "supporting": {
             "endpoint": 3,
@@ -122,6 +127,14 @@ POSITIVE_KEYWORDS = {
             "rabbitmq": 7,
             "kafka": 7,
             "redis queue": 6,
+            # ERP/CRM platforms (2026-08-26 audit): "ربط نظام Odoo" was
+            # rejected with no matching keywords — genuine backend integration.
+            "odoo": 8,
+            "zoho": 7,
+            "salesforce": 7,
+            # Arabic backend-integration collocations.
+            "ربط نظام": 8,
+            "ربط مشروع": 7,
         },
         "supporting": {
             "clean architecture": 3,
@@ -527,6 +540,15 @@ HARD_REJECT_KEYWORDS = {
     # Gambling/real-money gaming products are out of scope (policy block).
     "casino", "igaming", "jackpot", "poker", "roulette", "blackjack",
     "satta matka", "spin and win", "spin win", "lucky jet",
+    # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
+    "email deliverability",
+    "video player",
+    "lead generation",
+    "digital marketing",
+    "google ads",
+    "facebook ads",
+    "task creator",
+    "software testing consultant",
 }
 
 

@@ -591,6 +591,9 @@ HARD_REJECT_KEYWORDS = {
     # calls now that store-build collocations became positive cores.
     "خدمات smm",
     "letter writing", "request letter",
+    # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
+    "zid", "زد",
+    "digital marketing",
 }
 
 
