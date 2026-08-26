@@ -59,6 +59,11 @@ POSITIVE_KEYWORDS = {
             "برمجة ألعاب": 8,
             "تطوير ألعاب": 8,
             "مطور ألعاب": 8,
+            # Arabic singular-object build verbs.
+            "تطوير لعبة": 8,
+            "بناء لعبة": 8,
+            "انشاء لعبة": 8,
+            "مبرمج ألعاب": 8,
         },
         "supporting": {
             "game level": 4,

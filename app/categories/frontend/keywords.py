@@ -199,6 +199,8 @@ POSITIVE_KEYWORDS = {
             "website build": 6,
             "website redesign": 7,
             "landing page": 6,
+            # Arabic: "landing page".
+            "صفحة هبوط": 6,
             # Exam/testing platform builds (English).
             "exam platform": 6,
             "web app": 6,
@@ -388,6 +390,10 @@ NEGATIVE_KEYWORDS = {
             "برمجة ألعاب": 7,
             "تطوير ألعاب": 7,
             "مطور ألعاب": 7,
+            "تطوير لعبة": 7,
+            "بناء لعبة": 7,
+            "انشاء لعبة": 7,
+            "مبرمج ألعاب": 7,
         },
         "supporting": {
             "game level": 3,
@@ -556,6 +562,8 @@ HARD_REJECT_KEYWORDS = {
     "data entry",
     # Hacked-site restore / account-recovery gigs are maintenance, not builds.
     "hacked",
+    # PCB/hardware engineering misfires fire frontend tech-stack cores.
+    "pcb",
     "graphic design",
     "photoshop",
     "illustrator",

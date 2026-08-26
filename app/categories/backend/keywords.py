@@ -522,6 +522,8 @@ HARD_REJECT_KEYWORDS = {
     # calls now that store-build collocations became positive cores.
     "خدمات smm",
     "letter writing", "request letter",
+    # PCB/hardware engineering gigs reach backend via generic api/db vocab.
+    "pcb",
 }
 
 

@@ -71,6 +71,13 @@ The distinction is the PRIMARY DELIVERABLE:
 If the description is ambiguous, conservative, or primarily
 non-mobile-related, reject it.
 
+LANGUAGE ROBUSTNESS:
+Job postings arrive in many languages (English, Arabic, Spanish, French,
+Malay/Indonesian, and others). Judge the deliverable semantics in whatever
+language the post is written; translate internally if needed. Never answer
+do_not_notify solely because the posting is not in a language you expect,
+and never fail closed merely because the text is unfamiliar -- evaluate the
+actual work requested against the scope rules above.
 Return ONLY valid JSON with exactly this structure:
 
 {

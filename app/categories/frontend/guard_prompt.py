@@ -129,6 +129,13 @@ If the description is ambiguous after this analysis, lean toward
 rejecting only when the deliverable clearly falls outside building or
 developing a website; otherwise approve.
 
+LANGUAGE ROBUSTNESS:
+Job postings arrive in many languages (English, Arabic, Spanish, French,
+Malay/Indonesian, and others). Judge the deliverable semantics in whatever
+language the post is written; translate internally if needed. Never answer
+do_not_notify solely because the posting is not in a language you expect,
+and never fail closed merely because the text is unfamiliar -- evaluate the
+actual work requested against the scope rules above.
 Return ONLY valid JSON with exactly this structure:
 
 {

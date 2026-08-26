@@ -530,6 +530,8 @@ HARD_REJECT_KEYWORDS = {
     # Developer-account purchase requests (شراء حساب مطوّر Google Play
     # Console) -- account trading, never app development.
     "شراء حساب",
+    # PCB/hardware engineering gigs reach mobile via platform-name vocab.
+    "pcb",
 }
 
 

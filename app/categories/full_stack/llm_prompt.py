@@ -119,6 +119,12 @@ Examples:
 "Build a mobile app with a companion web version"
 → NOT full_stack (mobile is the primary deliverable; specialist/mobile owns it)
 
+"Build a Mobile Spin & Win MVP with wallet, coins, admin panel and deployment"
+→ NOT full_stack (mobile-first gaming product; mobile_app or game_dev owns it even though it spans UI + server + admin web panel)
+
+"Mobile-first product MVP delivered as an app with a supporting web dashboard"
+→ NOT full_stack (the app is the primary deliverable)
+
 "Build a desktop application"
 → NOT full_stack (not a website/web application)
 
@@ -263,6 +269,7 @@ REJECT
 - Mobile App (mobile_app)
 - Mobile app with companion web version (mobile owns the deliverable)
 - React Native / Flutter application (even with a backend)
+- Mobile-first product MVP (spin-and-win games, betting apps, consumer apps) even with admin panel/deployment
 - Desktop Application (Electron or native)
 - CRM System (configuration)
 - ERP System (configuration)
