@@ -565,8 +565,10 @@ HARD_REJECT_KEYWORDS = {
     # PCB/hardware engineering misfires fire frontend tech-stack cores.
     "pcb",
     # Gambling/real-money gaming products are out of scope (policy block).
-    "casino", "igaming", "jackpot", "poker", "roulette", "blackjack",
-    "satta matka", "spin and win", "spin win", "lucky jet",
+    "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
+    "blackjack", "satta matka", "spin and win", "spin win", "lucky jet",
+    "sportsbook", "sports betting", "slot machine",
+    "betting", "wager", "wagering",
     "graphic design",
     "photoshop",
     "illustrator",

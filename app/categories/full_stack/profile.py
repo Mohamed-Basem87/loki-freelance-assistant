@@ -42,10 +42,14 @@ PROFILE = CategoryProfile(
         "when the client asks for customer/partner/driver APPS as the primary "
         "deliverable (Android/iOS), select the mobile category instead, even "
         "if the project also includes a web admin panel or companion web "
-        "version. Ongoing monthly developer-hiring or staff-retainer ads are "
-        "not a build deliverable and must not be selected here. No existing "
-        "specialist category clearly owns the primary deliverable. A viable "
-        "specialist category ALWAYS beats full_stack."
+        "version. Gambling, casino, sports betting, igaming, and real-money "
+        "gaming platforms (including crypto gambling, sportsbooks, slot "
+        "machines, poker, roulette, blackjack) are NOT acceptable deliverables "
+        "and must be REJECTED. Ongoing monthly developer-hiring or "
+        "staff-retainer ads are not a build deliverable and must not be "
+        "selected here. No existing specialist category clearly owns the "
+        "primary deliverable. A viable specialist category ALWAYS beats "
+        "full_stack."
     ),
     positive_keywords=POSITIVE_KEYWORDS,
     negative_keywords=NEGATIVE_KEYWORDS,

@@ -814,6 +814,10 @@ HARD_REJECT_KEYWORDS = {
     # rejected); hard-rejected so reposts don't burn arbitration calls.
     "خدمات smm",
     "letter writing", "request letter",
+    # Gambling/real-money gaming products are out of scope (policy block).
+    "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
+    "blackjack", "sportsbook", "sports betting", "slot machine",
+    "betting", "wager", "wagering",
 }
 
 

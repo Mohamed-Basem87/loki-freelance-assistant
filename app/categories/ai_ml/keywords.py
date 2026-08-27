@@ -583,6 +583,10 @@ HARD_REJECT_KEYWORDS = {
     "lead generation",
     "digital marketing",
     "task creator",
+    # Gambling/real-money gaming products are out of scope (policy block).
+    "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
+    "blackjack", "sportsbook", "sports betting", "slot machine",
+    "betting", "wager", "wagering",
 }
 
 

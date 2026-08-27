@@ -538,8 +538,10 @@ HARD_REJECT_KEYWORDS = {
     # PCB/hardware engineering gigs reach backend via generic api/db vocab.
     "pcb",
     # Gambling/real-money gaming products are out of scope (policy block).
-    "casino", "igaming", "jackpot", "poker", "roulette", "blackjack",
-    "satta matka", "spin and win", "spin win", "lucky jet",
+    "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
+    "blackjack", "satta matka", "spin and win", "spin win", "lucky jet",
+    "sportsbook", "sports betting", "slot machine",
+    "betting", "wager", "wagering",
     # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
     "email deliverability",
     "video player",
