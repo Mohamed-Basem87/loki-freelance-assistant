@@ -100,11 +100,23 @@ class ScriptedGuard:
     each either True, False, or "error" (simulating a fail-closed
     provider exception -- persists "error" and denies, like the real
     guard's except branch).
+
+    decide() is what NotificationGuardIntegration.resolve_category()
+    actually calls in production (via install()) -- it's the single
+    evaluation point now, run once before either notification leg.
+    allow() is kept only for the one test below that pokes a decision
+    in directly to simulate "the guard already ran in an earlier
+    pass"; it shares the same `outcomes`/`calls` bookkeeping.
+
+    `reclassify_to`, when set, simulates the guard deciding the job is
+    genuinely full_stack rather than its original keyword-matched
+    category, on every "notify" outcome.
     """
 
-    def __init__(self, outcomes):
+    def __init__(self, outcomes, reclassify_to=None):
         self.outcomes = list(outcomes)
         self.calls = 0
+        self.reclassify_to = reclassify_to
 
     async def allow(self, job, *, original_decision="", category_id=""):
         self.calls += 1
@@ -133,8 +145,45 @@ class ScriptedGuard:
             provider="Scripted",
             model="scripted",
             response_time_ms=0,
+            guard_category=category_id if outcome else "",
         )
         return outcome
+
+    async def decide(self, job, *, original_decision="", category_id=""):
+        self.calls += 1
+        outcome = self.outcomes.pop(0)
+
+        if outcome == "error":
+            await log_guard_decision(
+                job_uuid=job.get("job_uuid", ""),
+                source=job.get("source", ""),
+                title=job.get("title", ""),
+                original_decision=original_decision,
+                guard_decision="error",
+                provider="Scripted",
+                model="scripted",
+                response_time_ms=0,
+                error="simulated provider outage",
+            )
+            return {"allowed": False, "category_id": category_id}
+
+        resolved_category = self.reclassify_to or category_id
+
+        await log_guard_decision(
+            job_uuid=job.get("job_uuid", ""),
+            source=job.get("source", ""),
+            title=job.get("title", ""),
+            original_decision=original_decision,
+            guard_decision="notify" if outcome else "do_not_notify",
+            provider="Scripted",
+            model="scripted",
+            response_time_ms=0,
+            guard_category=resolved_category if outcome else "",
+        )
+        return {
+            "allowed": bool(outcome),
+            "category_id": resolved_category if outcome else category_id,
+        }
 
 
 def _wire_guard(monkeypatch, fake_private, outcomes):
@@ -142,7 +191,9 @@ def _wire_guard(monkeypatch, fake_private, outcomes):
     Set app.job_processor.send_notification to `fake_private`, then wrap
     that with a NotificationGuardIntegration backed by a ScriptedGuard
     -- exactly the composition app.notification_guard.integration.install()
-    builds in production (guard wraps the real notifier function).
+    builds in production (guard wraps the real notifier function, and
+    resolve_category is installed as the single upfront evaluation
+    point that runs before either notification leg).
     """
     monkeypatch.setattr(job_processor, "send_notification", fake_private)
 
@@ -153,6 +204,12 @@ def _wire_guard(monkeypatch, fake_private, outcomes):
         job_processor,
         "send_notification",
         integration.wrap_private(job_processor.send_notification),
+    )
+
+    monkeypatch.setattr(
+        job_processor,
+        "_resolve_notification_category",
+        integration.resolve_category,
     )
 
     return guard
@@ -408,14 +465,150 @@ def test_guard_suppression_blocks_subscriber_routing(isolated_database, monkeypa
         save=True,
     )
 
+    row = {
+        "Source": "Test Channel",
+        "Title": DIRECT_TITLE,
+        "Description": DIRECT_DESCRIPTION,
+        "Final Decision": "Accepted",
+        "Needs Gemini": False,
+    }
+
+    # Mirrors production order: resolve_category() runs once, up
+    # front (see app.job_processor._resume_pending_notifications_
+    # unlocked), and only afterward do wrap_private/wrap_routing
+    # consult the persisted result -- they never trigger evaluation
+    # themselves anymore.
+    resolved_category_id = asyncio.run(
+        integration.resolve_category("guard-route-1", row, "data_analysis")
+    )
+    assert resolved_category_id == "data_analysis"
+    assert guard.calls == 1
+
     wrapped = integration.wrap_routing(fake_routing)
-    queued = asyncio.run(wrapped("guard-route-1", "data_analysis"))
+    queued = asyncio.run(wrapped("guard-route-1", resolved_category_id))
 
     assert queued == 0
     assert calls["routing"] == 0
     assert guard.calls == 1
 
-    # The durable rejection is reused rather than evaluated again.
-    queued_again = asyncio.run(wrapped("guard-route-1", "data_analysis"))
+    # The durable rejection is reused rather than evaluated again --
+    # both by a second resolve_category() call and by wrap_routing
+    # consulting the same persisted decision directly.
+    resolved_again = asyncio.run(
+        integration.resolve_category("guard-route-1", row, "data_analysis")
+    )
+    assert resolved_again == "data_analysis"
+    assert guard.calls == 1
+
+    queued_again = asyncio.run(wrapped("guard-route-1", resolved_again))
     assert queued_again == 0
     assert guard.calls == 1
+
+
+# ------------------------------------------------------------------
+# Test E -- Guard reclassification to full_stack.
+# ------------------------------------------------------------------
+
+
+def test_guard_reclassifies_direct_match_to_full_stack(isolated_database):
+    """
+    A clean keyword-direct match (e.g. "data_analysis") that the guard
+    determines is genuinely full_stack work must end up delivered
+    under "full_stack" -- Category ID, Category Selection Method, and
+    Categories all durably updated together, before either
+    notification leg runs, so the private message and the subscriber
+    fan-out can never disagree about it (see resolve_category()'s
+    docstring in app.notification_guard.integration).
+    """
+    log = isolated_database
+
+    isolated_database.create_job(
+        job_uuid="guard-reclassify-1",
+        job_id="guard-reclassify-1",
+        source="Test Channel",
+        title=DIRECT_TITLE,
+        description=DIRECT_DESCRIPTION,
+        raw_message=f"{DIRECT_TITLE}\n{DIRECT_DESCRIPTION}",
+        filter_text=f"{DIRECT_TITLE}\n{DIRECT_DESCRIPTION}",
+        company="",
+        url="https://example.invalid/guard-reclassify",
+        filter_result={
+            "decision": "notify_directly",
+            "reason": "direct",
+            "categories": ["power_bi"],
+            "negative_categories": [],
+        },
+        filter_time_ms=0,
+        save=True,
+    )
+    log.update_job(
+        "guard-reclassify-1",
+        final_decision="Accepted",
+        category_id="data_analysis",
+        category_selection_method="keyword_direct",
+        save=True,
+    )
+
+    guard = ScriptedGuard([True], reclassify_to="full_stack")
+    integration = NotificationGuardIntegration(guard)
+
+    row = log.get_job("guard-reclassify-1")
+
+    resolved_category_id = asyncio.run(
+        integration.resolve_category("guard-reclassify-1", row, "data_analysis")
+    )
+
+    assert resolved_category_id == "full_stack"
+    assert guard.calls == 1
+
+    updated_row = log.get_job("guard-reclassify-1")
+    assert updated_row["Category ID"] == "full_stack"
+    assert updated_row["Category Selection Method"] == "llm"
+    assert "Full Stack" in (updated_row["Categories"] or "")
+
+    # A resumed pass reuses the durable reclassification instead of
+    # asking the provider again.
+    resolved_again = asyncio.run(
+        integration.resolve_category(
+            "guard-reclassify-1", updated_row, "full_stack"
+        )
+    )
+    assert resolved_again == "full_stack"
+    assert guard.calls == 1
+
+    # Both notification legs must see the resolved category, not the
+    # original one.
+    routing_calls = []
+
+    async def fake_routing(job_uuid, category_id, source=""):
+        routing_calls.append(category_id)
+        return 1
+
+    wrapped_routing = integration.wrap_routing(fake_routing)
+    queued = asyncio.run(wrapped_routing("guard-reclassify-1", resolved_category_id))
+
+    assert queued == 1
+    assert routing_calls == ["full_stack"]
+
+    private_calls = []
+
+    async def fake_private(**kwargs):
+        private_calls.append(kwargs.get("category_id"))
+        return True
+
+    wrapped_private = integration.wrap_private(fake_private)
+    sent = asyncio.run(
+        wrapped_private(
+            job_uuid="guard-reclassify-1",
+            title=DIRECT_TITLE,
+            description=DIRECT_DESCRIPTION,
+            source="Test Channel",
+            decision="Accepted",
+            reason="",
+            ai_used=False,
+            category_id=resolved_category_id,
+        )
+    )
+
+    assert sent is True
+    assert private_calls == ["full_stack"]

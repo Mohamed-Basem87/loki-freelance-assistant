@@ -7,8 +7,8 @@ use-twice-then-evict cache, so every test in this file needs a real
 and test_pipeline.py -- for `_allow()`'s
 `get_latest_guard_decision` lookup to have something to read.
 
-FakeGuard.allow() persists a decision the same way the real
-NotificationGuard.allow() does (via log_guard_decision), so these
+FakeGuard.decide() persists a decision the same way the real
+NotificationGuard.decide() does (via log_guard_decision), so these
 tests exercise the actual reuse-from-persistence path instead of
 special-casing the fake.
 """
@@ -43,13 +43,19 @@ def isolated_database():
 
 class FakeGuard:
 
-    def __init__(self, allowed):
+    def __init__(self, allowed, reclassify_to=None):
         self.allowed = allowed
+        # None means "keep whatever category resolve_category() was
+        # asked to resolve"; set to e.g. "full_stack" to simulate the
+        # guard reclassifying the job.
+        self.reclassify_to = reclassify_to
         self.calls = 0
         self.jobs = []
 
-    async def allow(self, job, *, original_decision="", category_id=""):
+    async def decide(self, job, *, original_decision="", category_id=""):
         self.calls += 1
+        resolved_category = self.reclassify_to or category_id
+
         self.jobs.append({
             "job": job,
             "original_decision": original_decision,
@@ -65,9 +71,13 @@ class FakeGuard:
             provider="Fake",
             model="fake-model",
             response_time_ms=0,
+            guard_category=resolved_category if self.allowed else "",
         )
 
-        return self.allowed
+        return {
+            "allowed": self.allowed,
+            "category_id": resolved_category if self.allowed else category_id,
+        }
 
 
 async def fake_private(**kwargs):
@@ -82,10 +92,31 @@ async def run_guard_test(
     allowed,
     ai_used=False,
 ):
+    """
+    Mirrors the real pipeline's call order (see
+    app.job_processor._resume_pending_notifications_unlocked):
+    resolve_category() runs once, up front, and only afterward do the
+    wrapped private/routing calls consult the persisted result. Tests
+    exercising wrap_private in isolation therefore have to drive
+    resolve_category() first, exactly like production does, rather
+    than expecting wrap_private to trigger evaluation itself.
+    """
 
     guard = FakeGuard(allowed)
 
     integration = NotificationGuardIntegration(guard)
+
+    row = {
+        "Source": "test",
+        "Title": "Power BI dashboard",
+        "Description": "Build a sales dashboard from Excel data.",
+        "Final Decision": "Accepted",
+        "Needs Gemini": ai_used,
+    }
+
+    resolved_category_id = await integration.resolve_category(
+        "job-1", row, "data_analysis"
+    )
 
     private = integration.wrap_private(fake_private)
 
@@ -96,6 +127,7 @@ async def run_guard_test(
         "source": "test",
         "decision": "Accepted",
         "ai_used": ai_used,
+        "category_id": resolved_category_id,
     }
 
     private_result = await private(**kwargs)

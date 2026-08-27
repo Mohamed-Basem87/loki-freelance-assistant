@@ -161,6 +161,16 @@ NOTIFICATION_GUARD_HEADERS = [
     "Model",
     "Response Time (ms)",
     "Error",
+    # The category the guard settled on for a "notify" decision: either
+    # the job's original keyword-matched category (unchanged) or
+    # "full_stack" when the guard determined the job is broader than
+    # the tiering system's single-category match. Persisted alongside
+    # "Guard Decision" in the same insert so the two facts are always
+    # written atomically together -- a resumed job can never observe
+    # "notify" without also knowing which category it was "notify"
+    # for. Empty for "do_not_notify"/"error" rows, where no category
+    # choice is meaningful.
+    "Guard Category",
 ]
 
 USER_HEADERS = [
@@ -512,6 +522,7 @@ class DBLogger:
             ("jobs", JOB_HEADERS),
             ("users", USER_HEADERS),
             ("user_notifications", USER_NOTIFICATION_HEADERS),
+            ("notification_guard", NOTIFICATION_GUARD_HEADERS),
         ):
             existing = set(self._table_columns(table))
             for header in headers:
@@ -915,6 +926,29 @@ class DBLogger:
         row = cursor.fetchone()
         return row[0] if row else None
 
+    def get_latest_guard_decision_with_category(self, job_uuid):
+        """
+        Return (guard_decision, guard_category) from the most recent
+        Notification Guard row for a job, or (None, None) if the guard
+        was never evaluated for it.
+
+        Unlike get_latest_guard_decision(), this also surfaces the
+        category the guard settled on ("full_stack" or the job's
+        original category) for a "notify" decision, persisted
+        atomically alongside the decision in the same insert (see
+        NOTIFICATION_GUARD_HEADERS). This lets a resumed job reapply a
+        durable reclassification without re-asking the provider, and
+        without ever risking an inconsistent state where a "notify"
+        decision is known but which category it applies to is not.
+        """
+        cursor = self._conn.execute(
+            'SELECT "Guard Decision", "Guard Category" FROM notification_guard '
+            'WHERE "Job UUID" = ? ORDER BY rowid DESC LIMIT 1',
+            (job_uuid,),
+        )
+        row = cursor.fetchone()
+        return (row[0], row[1]) if row else (None, None)
+
     def log_notification_guard(
         self,
         job_uuid,
@@ -926,6 +960,7 @@ class DBLogger:
         model,
         response_time_ms,
         error="",
+        guard_category="",
         save=True,
     ):
 
@@ -945,6 +980,7 @@ class DBLogger:
                 model,
                 response_time_ms,
                 error,
+                guard_category,
             ],
         )
 

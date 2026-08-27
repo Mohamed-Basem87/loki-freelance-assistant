@@ -56,6 +56,25 @@ def _extract_project_id(url: str):
     return match.group(1) if match else None
 
 
+async def _resolve_notification_category(job_uuid: str, row: dict, category_id: str) -> str:
+    """
+    Hook point for the optional Notification Guard to potentially
+    reclassify a clean keyword-direct match into "full_stack" before
+    either notification leg runs (see _resume_pending_notifications_
+    unlocked below, which always calls this first).
+
+    In the standard (non-guarded) runtime this is a no-op that returns
+    the category unchanged -- run_guarded.py's install() replaces this
+    module-level reference with the real guard-aware resolver
+    (app.notification_guard.integration.NotificationGuardIntegration.
+    resolve_category), exactly like send_notification/
+    queue_for_category are replaced today. The deterministic tiering
+    system and arbitration path never call this and are unaffected
+    either way.
+    """
+    return category_id
+
+
 def _notification_payload_from_row(job_uuid: str, row: dict) -> dict:
     categories = row.get("Categories") or ""
     if isinstance(categories, str):
@@ -140,13 +159,28 @@ async def _resume_pending_notifications_unlocked(job_uuid: str, row: dict):
     if status in ("Complete", "Suppressed"):
         return
 
+    # Resolve the category to actually deliver under *before* either
+    # notification leg runs, so the owner's private message and the
+    # subscriber fan-out can never disagree about it. A no-op in the
+    # standard runtime (see _resolve_notification_category); the
+    # guarded runtime may durably reclassify a clean keyword-direct
+    # match to "full_stack" here.
+    category_id = row.get("Category ID") or ""
+    if category_id:
+        resolved_category_id = await _resolve_notification_category(
+            job_uuid, row, category_id
+        )
+        if resolved_category_id != category_id:
+            row = dict(row)
+            row["Category ID"] = resolved_category_id
+            category_id = resolved_category_id
+
     payload = _notification_payload_from_row(job_uuid, row)
 
     # Re-queue the category subscription fan-out on every recovery pass.
     # user_notifications has a UNIQUE (Job UUID, User ID) constraint, so
     # this is idempotent and closes the crash window between durable job
     # state and subscriber queue creation.
-    category_id = row.get("Category ID") or ""
     if category_id:
         await queue_for_category(
             job_uuid,
