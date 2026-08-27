@@ -62,6 +62,20 @@ MVC page that reads and writes to an MSSQL database." -- legacy
 Microsoft web stacks backed by a database are genuine server-side
 work, even when the posting also mentions visual design.
 
+ACCEPT:
+"My newly-redesigned product catalogue site has been crashing the
+virtual cloud server it lives on. The load climbs rapidly until the
+kernel's OOM-killer steps in" -- server overload fix and PHP
+optimization with OOM-killer is backend performance engineering, not
+clerical maintenance.
+
+ACCEPT:
+"I need a working web-based prototype for a crypto analytics platform
+I've branded MARKETPULSE. The goal is to pull live BTC and ETH data
+from the Binance public API" -- live API integration and prototype
+with database/API is genuine backend engineering, even when worded
+as "prototype" or "optimization".
+
 When a posting describes building any platform that handles purchases,
 vouchers, wallets, payments, orders, user accounts, or admin panels
 in code, it MUST be approved. Do not let operational-sounding words in

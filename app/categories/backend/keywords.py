@@ -176,6 +176,8 @@ POSITIVE_KEYWORDS = {
     "devops_backend": {
         "core": {
             "docker": 7,
+            "دوكر": 7,
+            "vps": 7,
             "kubernetes": 7,
             "nginx": 6,
             "apache": 6,
@@ -202,6 +204,15 @@ POSITIVE_KEYWORDS = {
             "caching": 3,
             "cdn": 3,
         },
+    },
+
+    "healthcare": {
+        "core": {
+            "hl7": 8,
+            "mirth": 7,
+            "fhir": 7,
+        },
+        "supporting": {},
     },
 }
 

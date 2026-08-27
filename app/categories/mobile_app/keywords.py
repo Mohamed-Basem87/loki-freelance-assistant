@@ -94,6 +94,9 @@ POSITIVE_KEYWORDS = {
             "برمجة تطبيق": 7,
             "تطبيق هاتف": 7,
             "تطبيق بث": 7,
+            "بناء تطبيق": 7,
+            "لبناء تطبيق": 7,
+            "بناء تطبيقات": 7,
             # Voice-chat / voice-room social apps.
             "تواصل صوتي": 8,
             "غرف صوتية": 7,
@@ -189,6 +192,17 @@ NEGATIVE_KEYWORDS = {
             "solidworks": 8,
             "feasibility study": 6,
             "feasibility": 5,
+        },
+        "supporting": {},
+    },
+
+    "beta_testing": {
+        "core": {
+            "beta testers": 7,
+            "beta tester": 7,
+            "closed beta": 7,
+            "closed test": 7,
+            "closed testing": 7,
         },
         "supporting": {},
     },
