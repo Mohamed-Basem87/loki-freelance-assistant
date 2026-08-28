@@ -42,6 +42,8 @@ REJECT when the PRIMARY DELIVERABLE is:
 - DevOps and infrastructure
 - Graphic design or UI/UX design (non-game)
 - Education or tutoring
+- Testing, QA, manual testing, beta testing, or test automation of any kind
+- Data entry, manual data copying, product entry, or store population (including `إدخال بيانات`)
 - Any other non-game-related task
 
 The distinction is the PRIMARY DELIVERABLE:

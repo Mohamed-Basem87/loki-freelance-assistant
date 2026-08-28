@@ -190,6 +190,8 @@ POSITIVE_KEYWORDS = {
             "digitalocean": 5,
             "linode": 5,
             "vultr": 5,
+            "devops": 7,
+            "dev ops": 7,
         },
         "supporting": {
             "aws": 3,
@@ -553,6 +555,7 @@ HARD_REJECT_KEYWORDS = {
     "blackjack", "satta matka", "spin and win", "spin win", "lucky jet",
     "sportsbook", "sports betting", "slot machine",
     "betting", "wager", "wagering",
+    "1xbet", "dragon tiger", "dragon vs tiger",
     # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
     "email deliverability",
     "video player",

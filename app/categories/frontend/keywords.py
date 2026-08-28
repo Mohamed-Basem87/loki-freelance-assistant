@@ -535,6 +535,17 @@ NEGATIVE_KEYWORDS = {
             "students": 2,
         },
     },
+    "data_entry": {
+        "core": {
+            "إدخال بيانات": 6,
+            "ادخال بيانات": 6,
+            "وإدخال بيانات": 6,
+            "بإدخال بيانات": 6,
+            "لإدخال بيانات": 6,
+            "data entry": 6,
+        },
+        "supporting": {},
+    },
     "marketing": {
         # Negative-core placement (not HARD_REJECT): these phrases occur
         # inside genuine build scopes; pure-marketing gigs still reject.
@@ -569,6 +580,7 @@ HARD_REJECT_KEYWORDS = {
     "blackjack", "satta matka", "spin and win", "spin win", "lucky jet",
     "sportsbook", "sports betting", "slot machine",
     "betting", "wager", "wagering",
+    "1xbet", "dragon tiger", "dragon vs tiger",
     "graphic design",
     "photoshop",
     "illustrator",

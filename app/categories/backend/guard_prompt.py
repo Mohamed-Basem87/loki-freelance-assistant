@@ -115,6 +115,8 @@ Also REJECT when the PRIMARY DELIVERABLE is:
 - Machine learning or AI model development
 - Graphic design or UI/UX design
 - Research, content writing, or education/tutoring
+- Testing, QA, manual testing, beta testing, or test automation of any kind
+- Data entry, manual data copying, product entry, or store population (including `إدخال بيانات`)
 - Any other non-backend-related task
 
 A job does NOT become acceptable merely because it mentions APIs,

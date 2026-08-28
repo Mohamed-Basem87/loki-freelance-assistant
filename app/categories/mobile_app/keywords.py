@@ -203,6 +203,19 @@ NEGATIVE_KEYWORDS = {
             "closed beta": 7,
             "closed test": 7,
             "closed testing": 7,
+            "app tester": 7,
+            "mobile app tester": 7,
+            "qa tester": 7,
+        },
+        "supporting": {},
+    },
+
+    "desktop_os": {
+        "core": {
+            "native macos": 7,
+            "native mac os": 7,
+            "macos application": 7,
+            "mac os application": 7,
         },
         "supporting": {},
     },
@@ -554,6 +567,7 @@ HARD_REJECT_KEYWORDS = {
     "blackjack", "satta matka", "spin and win", "spin win", "lucky jet",
     "sportsbook", "sports betting", "slot machine",
     "betting", "wager", "wagering",
+    "1xbet", "dragon tiger", "dragon vs tiger",
     # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
     "wechat",
     "lead generation",

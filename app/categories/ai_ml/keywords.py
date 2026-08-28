@@ -218,6 +218,9 @@ POSITIVE_KEYWORDS = {
         # in non-AI gigs, so they only contribute supporting weight.
         "core": {
             "مساعد ذكي": 7,
+            "متخصص في الذكاء الاصطناعي": 7,
+            "مطور ذكاء اصطناعي": 7,
+            "أتمتة و ذكاء اصطناعي": 7,
         },
         "supporting": {
             "ذكاء اصطناعي": 4,
@@ -587,6 +590,7 @@ HARD_REJECT_KEYWORDS = {
     "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
     "blackjack", "sportsbook", "sports betting", "slot machine",
     "betting", "wager", "wagering",
+    "1xbet", "dragon tiger", "dragon vs tiger",
 }
 
 

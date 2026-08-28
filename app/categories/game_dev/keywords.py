@@ -523,6 +523,7 @@ HARD_REJECT_KEYWORDS = {
     "blackjack", "satta matka", "spin and win", "spin win", "lucky jet",
     "sportsbook", "sports betting", "slot machine",
     "betting", "wager", "wagering",
+    "1xbet", "dragon tiger", "dragon vs tiger",
 }
 
 

@@ -20,7 +20,6 @@ application development, such as:
 - Cross-platform development (Flutter, React Native)
 - Mobile app UI/UX implementation
 - Mobile app backend integration
-- Mobile app testing and debugging
 - Mobile app deployment to App Store/Play Store
 - Mobile app performance optimization
 - Mobile app security
@@ -59,13 +58,15 @@ REJECT when the PRIMARY DELIVERABLE is:
 - DevOps and infrastructure
 - Graphic design or UI/UX design (non-mobile)
 - Education or tutoring
+- Testing, QA, manual testing, beta testing, or test automation of any kind
+- Data entry, manual data copying, product entry, or store population (including `إدخال بيانات`)
 - Any other non-mobile-related task
 
 The distinction is the PRIMARY DELIVERABLE:
 - Building a mobile app or mobile feature = ACCEPT.
 - Building a website, game, or desktop app = REJECT.
 - Mobile-responsive web design = REJECT (that's web development).
-- Mobile app testing/automation = ACCEPT.
+- Any testing, QA, beta testing, manual testing, or test automation (mobile, web, or other) = REJECT — testing services are not development.
 - Web testing/automation = REJECT.
 
 If the description is ambiguous, conservative, or primarily

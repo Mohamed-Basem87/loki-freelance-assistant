@@ -30,7 +30,7 @@ application, such as:
 - Redesigns or overhauls of existing sites involving real development
   or customization work
 - Landing pages / multi-page business websites built as a developer
-- Frontend-side API integration, testing, accessibility (WCAG),
+- Frontend-side API integration, accessibility (WCAG),
   cross-browser compatibility, animations, design system implementation
 
 IMPORTANT CMS / SITE-BUILDER DISTINCTION:
@@ -107,6 +107,8 @@ Also REJECT when the PRIMARY DELIVERABLE is:
 - Graphic design or UI/UX design only (no implementation)
 - Content writing, blogging, SEO, marketing, or ads management
 - Education or tutoring
+- Testing, QA, manual testing, beta testing, or test automation of any kind
+- Data entry, manual data copying, product entry, or store population (including WooCommerce/WordPress product entry — including `إدخال بيانات`)
 - Any other non-web-development task
 
 A job does NOT become acceptable merely because it mentions WordPress,

@@ -40,6 +40,7 @@ REJECT when the PRIMARY DELIVERABLE is:
 - Support (helpdesk, operations)
 - Data entry (manual entry, transcription)
 - Marketing (SEO, ads, lead generation, content)
+- Testing, QA, manual testing, beta testing, or test automation of any kind
 
 The distinction is the PRIMARY DELIVERABLE:
 - Building a complete new WEBSITE / WEB APPLICATION spanning frontend + backend + database + deployment = ACCEPT.
