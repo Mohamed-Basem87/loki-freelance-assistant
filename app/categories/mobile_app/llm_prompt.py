@@ -30,7 +30,7 @@ Accept when the primary deliverable is genuinely one or more of:
 - Cross-platform app development (Flutter, React Native)
 - Mobile app UI/UX implementation
 - Mobile app backend integration
-- Mobile app testing and debugging
+- Mobile app testing and debugging (REJECT when testing is the primary deliverable)
 - Mobile app deployment to App Store/Play Store
 - Mobile app performance optimization
 - Mobile app security
@@ -43,6 +43,7 @@ Reject when the primary deliverable is instead:
 - A website or web application
 - A game
 - A desktop application
+- Testing, QA, manual/beta testing, or test automation (testing services are not development)
 - Data analysis or business intelligence
 - Machine learning or AI model
 - Enterprise software
@@ -215,7 +216,6 @@ If the client's primary goal is:
 - App Store Deployment
 - Push Notifications
 - In-App Purchases
-- Mobile App Testing
 
 ACCEPT.
 

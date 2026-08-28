@@ -28,7 +28,7 @@ Accept when the primary deliverable is genuinely one or more of:
 - Game development (Unity, Unreal, Godot, etc.)
 - Game programming and scripting
 - Game design (mechanics, systems, levels)
-- Game prototyping and testing
+- Game prototyping (build the prototype)
 - Game assets (3D models, sprites, animations)
 - Game UI/HUD implementation
 - Game physics and collision systems
@@ -44,6 +44,7 @@ Reject when the primary deliverable is instead:
 - A website or web application
 - A mobile app (non-game)
 - A desktop application
+- Testing, QA, manual/beta testing, or game test automation/testing services
 - Data analysis or business intelligence
 - Machine learning or AI model
 - Enterprise software

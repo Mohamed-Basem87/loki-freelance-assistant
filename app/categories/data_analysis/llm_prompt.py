@@ -212,7 +212,7 @@ Reject when the PRIMARY DELIVERABLE is:
 - Virtual assistance or administrative work
 - Web research without meaningful analysis
 - Web scraping when analysis is not the primary deliverable
-- QA/testing/automation when the requested output is not analytical
+- QA/testing/automation (testing services, QA, or test automation are not data analysis)
 - Power Apps / Power Automate development
 - Web/backend/mobile/software development unrelated to data analysis
 - Graphic/UI/UX design

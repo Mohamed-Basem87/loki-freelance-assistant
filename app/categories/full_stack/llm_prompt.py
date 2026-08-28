@@ -35,6 +35,7 @@ WEBSITE or WEB APPLICATION built end-to-end, such as:
 - A complete new web product/system from scratch where no single specialist category owns the primary deliverable
 
 REJECT when the primary deliverable is instead:
+- Testing, QA, manual/beta testing, or test automation (testing services are not development)
 - A website or web application only (frontend)
 - Backend API or database only (backend)
 - Mobile app development only (mobile_app)

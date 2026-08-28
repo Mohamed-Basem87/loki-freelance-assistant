@@ -42,6 +42,7 @@ Accept when the primary deliverable is genuinely one or more of:
 - LLM fine-tuning and deployment
 
 Reject when the primary deliverable is instead:
+- Testing, QA, manual/beta testing, or test automation (testing services are not ML/AI development)
 - Data analysis or business intelligence (reporting, dashboards, KPIs)
 - A website or web application
 - A mobile app

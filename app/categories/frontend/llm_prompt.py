@@ -31,7 +31,6 @@ Accept when the primary deliverable is genuinely one or more of:
 - Frontend architecture
 - State management
 - API integration (frontend-side)
-- Frontend testing
 - Performance optimization (frontend)
 - Accessibility (WCAG)
 - Cross-browser compatibility
@@ -41,6 +40,7 @@ Accept when the primary deliverable is genuinely one or more of:
 Reject when the primary deliverable is instead:
 - Backend API or database
 - Mobile app development
+- Testing, QA, manual/beta testing, or test automation (frontend or otherwise; testing services are not development)
 - Game development
 - Data analysis or business intelligence
 - Machine learning or AI model
@@ -171,7 +171,6 @@ Strong Skills
 - Responsive Design
 - State Management
 - API Integration
-- Frontend Testing
 
 Current Focus
 
@@ -234,7 +233,6 @@ If the client's primary goal is:
 - Component Development
 - Figma to Code
 - Design System
-- Frontend Testing
 
 ACCEPT.
 
@@ -253,7 +251,6 @@ ACCEPT
 - Responsive Web Design
 - Component Library
 - Design System Implementation
-- Frontend Testing
 - Frontend Performance Optimization
 
 REJECT

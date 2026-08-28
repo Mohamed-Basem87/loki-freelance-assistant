@@ -38,6 +38,7 @@ Accept when the primary deliverable is genuinely one or more of:
 - Cloud infrastructure (AWS, GCP, Azure)
 
 Reject when the primary deliverable is instead:
+- Testing, QA, manual/beta testing, or test automation (testing services are not development)
 - Frontend/UI implementation
 - Mobile app development
 - Game development
