@@ -37,8 +37,8 @@ MUST be approved even when the posting also mentions frontend work.
 For example:
 
 ACCEPT:
-"Build a full-featured betting platform with real-time odds, user
-accounts, wallet and payment processing."
+"Build a full-featured e-commerce platform with product catalog, user
+accounts, cart, and payment processing."
 
 ACCEPT:
 "Develop an automated voucher/gift-card platform that splits purchased
@@ -105,8 +105,19 @@ REJECT:
 "Turn our spreadsheet workflow into a Power Apps model-driven order
 system." -- low-code platform configuration, not code development.
 
+REJECT:
+"Build a betting site with real-time odds, user wallets, and payout
+processing." -- gambling platform; always rejected even though it
+involves software engineering.
+
 Also REJECT when the PRIMARY DELIVERABLE is:
 
+- Gambling, betting, casino, sports betting, bookmaker/sportsbook,
+  odds or live-odds engines, betting exchanges, binary-options,
+  payout-arbitrage or gambling-signal/prediction platforms, betting
+  bots, and lottery/casino/slot games. ALWAYS REJECT -- do not notify
+  for any gambling-related deliverable, regardless of any positive
+  keywords.
 - Frontend-only development (UI implementation, responsive design,
   CMS site builds with no custom server-side work)
 - Mobile app development (iOS/Android)

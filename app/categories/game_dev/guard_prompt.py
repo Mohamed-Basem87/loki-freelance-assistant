@@ -31,6 +31,12 @@ development, such as:
 
 REJECT when the PRIMARY DELIVERABLE is:
 
+- Gambling, betting, casino, sports betting, bookmaker/sportsbook,
+  odds or live-odds engines, betting exchanges, binary-options,
+  payout-arbitrage or gambling-signal/prediction platforms, betting
+  bots, and lottery/casino/slot/spin games. ALWAYS REJECT -- do not
+  notify for any gambling-related deliverable, regardless of any
+  positive keywords.
 - Web development (websites, web apps, landing pages)
 - Mobile app development (non-game apps)
 - Desktop application development
@@ -52,8 +58,9 @@ The distinction is the PRIMARY DELIVERABLE:
 - Game-related tools or engines = ACCEPT.
 - Non-game tools or applications = REJECT.
 
-If the description is ambiguous, conservative, or primarily
-non-game-related, reject it.
+If the description is ambiguous after this analysis, lean toward
+rejecting only when the deliverable clearly falls outside game
+development, game tooling, or interactive media; otherwise approve.
 
 LANGUAGE ROBUSTNESS:
 Job postings arrive in many languages (English, Arabic, Spanish, French,

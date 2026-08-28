@@ -157,6 +157,18 @@ POSITIVE_KEYWORDS = {
             "virtual reality game": 7,
             "augmented reality game": 7,
             "metaverse": 5,
+            # Minecraft mod/plugin/RNG-map builds. Corpus: 24 'minecraft'
+            # hits, only 4 reached arbitration/accepted; genuine mod/plugin
+            # builds silently rejected (40675878 Bingo Replay Mod, 40634052
+            # Animal Mod Porting, 40650526 Ranks plugin, 40641804 Horror
+            # plugin, mostaql:1157555 map builds). "modding" 14 hits/7
+            # accepted, all game_dev (trainers/editors are game-adjacent).
+            "minecraft": 8,
+            "minecraft mod": 8,
+            "minecraft mods": 8,
+            "minecraft plugin": 8,
+            "minecraft plugins": 8,
+            "modding": 7,
         },
         "supporting": {
             "steam": 3,
@@ -524,6 +536,7 @@ HARD_REJECT_KEYWORDS = {
     "sportsbook", "sports betting", "slot machine",
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
+    "quotex", "iq option", "binary options", "olymptrade", "pocket option",
 }
 
 

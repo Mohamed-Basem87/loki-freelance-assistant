@@ -24,6 +24,12 @@ website / web application development, such as:
 
 REJECT when the PRIMARY DELIVERABLE is:
 
+- Gambling, betting, casino, sports betting, bookmaker/sportsbook,
+  odds or live-odds engines, betting exchanges, binary-options,
+  payout-arbitrage or gambling-signal/prediction platforms, betting
+  bots, and lottery/casino/slot games. ALWAYS REJECT -- do not notify
+  for any gambling-related deliverable, regardless of any positive
+  keywords.
 - Frontend-only development (websites, web apps, landing pages, UI implementation) — but note: e-commerce sites with custom payment integration, order management, and deployment are NOT frontend-only
 - Backend-only development (APIs, databases, server-side logic without frontend)
 - Mobile-only app development where the web component is just an admin panel or afterthought — but a complete platform (web + API + database + mobile app as one integrated system) IS acceptable
@@ -80,8 +86,10 @@ or any non-web-product task, reject it.
 Tools and platforms mentioned do not determine the category by
 themselves. Judge the actual work and final deliverable.
 
-If the description is ambiguous, conservative, or not primarily full
-stack website/web application development, reject it.
+If the description is ambiguous after this analysis, lean toward
+rejecting only when the deliverable clearly falls outside building a
+complete website/web application spanning frontend, backend, database,
+and deployment; otherwise approve.
 
 LANGUAGE ROBUSTNESS:
 Job postings arrive in many languages (English, Arabic, Spanish, French,

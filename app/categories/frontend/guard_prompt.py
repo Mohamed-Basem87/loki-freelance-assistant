@@ -96,6 +96,12 @@ development work:
 
 Also REJECT when the PRIMARY DELIVERABLE is:
 
+- Gambling, betting, casino, sports betting, bookmaker/sportsbook,
+  odds or live-odds engines, betting exchanges, binary-options,
+  payout-arbitrage or gambling-signal/prediction platforms, betting
+  bots, and lottery/casino/slot games. ALWAYS REJECT -- do not notify
+  for any gambling-related deliverable, regardless of any positive
+  keywords.
 - Pure backend/API/server work with no website or UI deliverable
 - Mobile app development (iOS/Android)
 - Game development

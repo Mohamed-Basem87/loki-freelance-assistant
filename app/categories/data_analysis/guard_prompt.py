@@ -90,15 +90,35 @@ mail merge."
 REJECT:
 "Enter product names and descriptions from a provided file into our ERP."
 
-REJECT:
-"Create an Excel invoice template/form with formulas and formatting."
+IMPORTANT EXCEL TOOL-BUILDING DISTINCTION:
+
+Building a FUNCTIONAL Excel application/Tool -- a scheduling system,
+tracker, calculator, dashboard, or workbook with real formulas, logic,
+dynamic behavior, and validation that end users actively operate -- IS
+genuine Data Analysis / BI deliverable work and MUST be approved. It is
+not data entry and not a passive static document.
+
+For example:
+
+ACCEPT:
+"Create a customizable scheduling spreadsheet for 2-10 users:
+customizable templates, color-coded schedules, dynamic behavior, and
+formulas." -- building a functional Excel tool, not data entry.
+
+REJECT (static/passive only):
+"Produce a blank invoice or form template with formulas and formatting,
+with no operating tool logic or dynamic behavior."
 
 The distinction is the PRIMARY DELIVERABLE:
 - Transforming and improving the quality/structure of an existing dataset
   so it is clean and analysis-ready = ACCEPT.
+- Building a functional Excel tool/application (schedulers, trackers,
+  calculators, dashboards, formula-driven workbooks users operate) =
+  ACCEPT.
 - Manually copying or transcribing information without meaningful
   analytical data transformation = REJECT.
-- Creating a document, form, template, or software workflow = REJECT.
+- A static/passive blank template, form, or one-way document with no
+  operating tool behavior, or a pure formatting/layout request = REJECT.
 
 A job does NOT need to include downstream analysis to qualify as
 data-cleaning/data-preparation work.
@@ -167,6 +187,12 @@ even if the job also requires EDA, cleaning, visualization, or reporting.
 
 Also reject when the PRIMARY DELIVERABLE is:
 
+- Gambling, betting, casino, sports betting, bookmaker/sportsbook,
+  odds or live-odds engines, betting exchanges, binary-options,
+  payout-arbitrage or gambling-signal/prediction platforms, betting
+  bots, and lottery/casino/slot games. ALWAYS REJECT -- do not notify
+  for any gambling-related deliverable, regardless of any positive
+  keywords.
 - Data entry or manual copying
 - Transcription
 - OCR or manual document extraction
@@ -204,8 +230,10 @@ document/form/template, or another non-analytical deliverable, reject it.
 Tools and technologies mentioned as secondary requirements do not
 determine the category. Judge the actual work and final deliverable.
 
-If the description is ambiguous, conservative, or primarily
-non-analytical, reject it.
+If the description is ambiguous after this analysis, lean toward
+rejecting only when the deliverable clearly falls outside analytical,
+reporting, BI, data-processing, cleaning, or Excel-tool work;
+otherwise approve.
 
 LANGUAGE ROBUSTNESS:
 Job postings arrive in many languages (English, Arabic, Spanish, French,

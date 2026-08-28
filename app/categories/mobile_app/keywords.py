@@ -38,6 +38,14 @@ POSITIVE_KEYWORDS = {
             "ios": 7,
             "iphone": 6,
             "ipad": 6,
+            # Arabic iPhone forms (2026-08-28 FN recovery): nafezly:54135
+            # 'مقاسات التطبيق' -- iPhone app spacing/size adaptation across
+            # all devices -- matched only غضف weak 'تطبيق' and was rejected.
+            # 'ايفون' mirrors the English 'iphone'; device-variant phrases
+            # cover 'كل اجهزه الايفون / جميع اجهزة الايفون'.
+            "ايفون": 6,
+            "اجهزه الايفون": 7,
+            "اجهزة الايفون": 7,
             "xcode": 8,
             "playstore": 7,
             "play store": 7,
@@ -110,6 +118,13 @@ POSITIVE_KEYWORDS = {
             # Arabic web-app collocation (2026-08-26 audit): not in app_types
             # core; genuine mobile/web hybrid builds.
             "تطبيق ويب": 6,
+            # UI layout-adaptation phrasing (2026-08-28 FN recovery):
+            # 'تعديل المساحات والاحجام / تعديل الشاشات' in nafezly:54135
+            # corroborate the iPhone-app core matched in the same posting
+            # (satisfies the lone-core supporting-weight requirement).
+            "تطبيق للايفون": 6,
+            "تعديل المساحات والاحجام": 4,
+            "تعديل الشاشات": 4,
         },
     },
 
@@ -206,6 +221,34 @@ NEGATIVE_KEYWORDS = {
             "app tester": 7,
             "mobile app tester": 7,
             "qa tester": 7,
+            # Test-only engagements (2026-08-28 audit). Corpus + window:
+            # 40676212 'Functional Testing for Vagaro Pro Application' and
+            # mostaql:1272413 'إختبار تطبيق على هاتف الإيفون' were ACCEPTED
+            # and NOTIFIED as mobile_app; 'app testing' 13 hits/3 accepted
+            # (two direct NOTIFIED: 40667212, 40665366). Arabic form
+            # normalizes from both اختبار/إختبار. Mixed with a mobile build
+            # core these force arbitration instead of a wrong direct notify.
+            "app testing": 8,
+            "functional testing": 8,
+            "user acceptance testing": 8,
+            "اختبار تطبيق": 8,
+        },
+        "supporting": {},
+    },
+
+    # App/ASO marketing gigs (2026-08-28 audit). Corpus: mostaql:1271628
+    # 'إعلان ممول لتطبيق إدارة مالية' (paid ad campaign for an iPhone app,
+    # $100 budget to boost downloads) is marketing, not development; the
+    # Arabic iPhone vocabulary added for nafezly:54135 recovery would
+    # otherwise surface it. Negative core forces reject when there is no
+    # genuine build core, and arbitration when one is also present.
+    "growth_marketing": {
+        "core": {
+            "حملة اعلانية": 8,
+            "حملة تسويقية": 8,
+            "اعلان ممول": 8,
+            "زيادة تحميل التطبيق": 8,
+            "زيادة التنزيلات": 8,
         },
         "supporting": {},
     },
@@ -568,10 +611,14 @@ HARD_REJECT_KEYWORDS = {
     "sportsbook", "sports betting", "slot machine",
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
+    "quotex", "iq option", "binary options", "olymptrade", "pocket option",
     # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
     "wechat",
     "lead generation",
-    "digital marketing",
+    # 'digital marketing' NOT hard-rejected (2026-08-28 audit): same
+    # enumeration-misfire pattern as data entry/illustrator
+    # (freelancer:40676186). Marketing negative core still rejects pure
+    # marketing; build+marketing hybrids correctly route to arbitration.
 }
 
 

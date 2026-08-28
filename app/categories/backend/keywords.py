@@ -241,6 +241,13 @@ NEGATIVE_KEYWORDS = {
         "core": {
             "power apps": 8,
             "power platform": 8,
+            # 2026-08-28 audit: freelancer:40676123 "Adalo App Logic Revamp"
+            # (a no-code logic-FIXING gig, explicitly "NOT build-from-scratch")
+            # direct-selected backend via rbac/access-control cores. Adalo is
+            # the specific no-code platform; keeps the FP from the direct
+            # notify path (guard happened to suppress it, but the classifier
+            # should not have accepted deterministically).
+            "adalo": 8,
         },
         "supporting": {},
     },
@@ -521,12 +528,17 @@ NEGATIVE_KEYWORDS = {
 
 # Hard rejects: unrelated work rejected when no positive signal exists.
 HARD_REJECT_KEYWORDS = {
-    # Data-entry gigs reach backend only via incidental db/tool vocabulary.
-    "data entry",
-    "إدخال بيانات",
+    # Data-entry/illustrator TOKENS intentionally NOT hard-rejected here:
+    # platform builds enumerate them as target-user roles
+    # (freelancer:40676186 Perancangan Aplikasi Freelancer listed Data
+    # Entry/Illustrator and every category hard-rejected, blocking
+    # arbitration of a genuine Laravel/Node/MySQL build). Pure data-entry
+    # work still rejects via insufficient_signal in all categories and the
+    # data_analysis automation negatives; graphic-design work rejects in
+    # data_analysis. Arabic protection kept via the إدخال بيانات family in
+    # data_analysis negatives.
     "graphic design",
     "photoshop",
-    "illustrator",
     "video editing",
     "motion graphics",
     "backlink",
@@ -556,15 +568,19 @@ HARD_REJECT_KEYWORDS = {
     "sportsbook", "sports betting", "slot machine",
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
+    "quotex", "iq option", "binary options", "olymptrade", "pocket option",
     # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
     "email deliverability",
     "video player",
     "lead generation",
-    "digital marketing",
     "google ads",
     "facebook ads",
     "task creator",
     "software testing consultant",
+    # 'digital marketing' NOT hard-rejected (2026-08-28 audit): same
+    # enumeration-misfire pattern as data entry/illustrator
+    # (freelancer:40676186). Marketing negative core still rejects pure
+    # marketing; build+marketing hybrids route to arbitration.
 }
 
 

@@ -591,6 +591,7 @@ HARD_REJECT_KEYWORDS = {
     "blackjack", "sportsbook", "sports betting", "slot machine",
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
+    "quotex", "iq option", "binary options", "olymptrade", "pocket option",
 }
 
 

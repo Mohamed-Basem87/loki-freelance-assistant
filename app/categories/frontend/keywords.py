@@ -163,6 +163,15 @@ POSITIVE_KEYWORDS = {
             # Compound verb-chain forms of تصميم متجر (verb + وتجهيز).
             "تصميم وتجهيز متجر": 7,
             "لتصميم وتجهيز متجر": 7,
+            # Arabic Salla store BUILD-intent collocations (2026-08-28
+            # audit). Corpus: mostaql:1272458 'تصميم وتأسيس متجر إلكتروني
+            # على منصة سلة' rejected -- bare-platform support words
+            # (منصة سلة + متجر إلكتروني + سله) totaled 8 < the 12
+            # arbitration bar, and 'انشاء متجر' never forms contiguously
+            # ('إنشاء وإعداد المتجر' normalizes to 'انشاء واعداد المتجر').
+            # 'تأسيس متجر' 1/1 (ؤ->و normalize) build intent.
+            "تصميم وتأسيس متجر": 7,
+            "تأسيس متجر": 7,
             # Arabic transliteration: simple info/landing page builds.
             "صفحة تعريفية": 6,
             "ووردبريس": 7,
@@ -283,6 +292,36 @@ NEGATIVE_KEYWORDS = {
     "site_config": {
         "core": {
             "نقل الدومين": 7,
+        },
+        "supporting": {},
+    },
+
+    # Build-fix/maintenance contracts are ongoing operations, not builds.
+    # Negative cores, not hard rejects: a genuine rebuild that mentions
+    # maintenance still reaches arbitration instead of being killed here.
+    # Corpus (2026-08-28 audit): 40676226 'WordPress Speed & Weekly
+    # Maintenance' was DETERMINISTICALLY NOTIFIED; 'wordpress maintenance'
+    # 8 hits / 0 accepted; 'website maintenance' 17 hits with 2 accepted
+    # direct notifies (40675755 3-Month maintenance, 40672242 migration).
+    "maintenance": {
+        "core": {
+            "wordpress maintenance": 8,
+            "website maintenance": 8,
+            "site maintenance": 8,
+            "weekly maintenance": 8,
+        },
+        "supporting": {},
+    },
+
+    # Hosting/domain-transfer gigs are platform operations, not builds.
+    # Corpus: 'نقل موقع' 7 hits/3 accepted -- two WordPress-transfer FPs
+    # (40675962 in window guard-caught, 40673971) direct-selected via the
+    # wordpress core positive (نقل مواقع absent from vocab).
+    "site_transfer": {
+        "core": {
+            "نقل موقع": 8,
+            "نقل موقعين": 8,
+            "نقل مواقع": 8,
         },
         "supporting": {},
     },
@@ -569,8 +608,13 @@ NEGATIVE_KEYWORDS = {
 
 # Hard rejects: unrelated work rejected when no positive signal exists.
 HARD_REJECT_KEYWORDS = {
-    # Data-entry gigs reach frontend only via incidental html/format vocab.
-    "data entry",
+    # Data-entry/illustrator TOKENS are intentionally NOT hard-rejected
+    # here: platform builds that enumerate their target users list them
+    # (freelancer:40676186 "Perancangan Aplikasi Freelancer" listed Data
+    # Entry/Illustrator as user roles and every category hard-rejected,
+    # blocking arbitration for a genuine Flutter/React+Laravel build).
+    # Data-entry gigs still fall to the data_entry negative core or
+    # insufficient_signal; graphic-design gigs reject in data_analysis.
     # Hacked-site restore / account-recovery gigs are maintenance, not builds.
     "hacked",
     # PCB/hardware engineering misfires fire frontend tech-stack cores.
@@ -581,9 +625,9 @@ HARD_REJECT_KEYWORDS = {
     "sportsbook", "sports betting", "slot machine",
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
+    "quotex", "iq option", "binary options", "olymptrade", "pocket option",
     "graphic design",
     "photoshop",
-    "illustrator",
     "video editing",
     "motion graphics",
     "backlink",
@@ -607,7 +651,12 @@ HARD_REJECT_KEYWORDS = {
     "letter writing", "request letter",
     # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
     "zid", "زد",
-    "digital marketing",
+    # 'digital marketing' is NOT hard-rejected here (2026-08-28 audit):
+    # the phrase follows the same enumeration-misfire pattern as data
+    # entry/illustrator (freelancer:40676186 platform build rejected when
+    # target-user types were listed). The marketing NEGATIVE core already
+    # rejects pure-marketing work; mixing with build vocab correctly routes
+    # to arbitration instead of a blind hard kill.
 }
 
 
