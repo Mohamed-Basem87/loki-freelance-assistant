@@ -160,6 +160,14 @@ POSITIVE_KEYWORDS = {
             "تصميم متجر": 7,
             # Attached-prefix (لـ) surface form of تصميم متجر.
             "لتصميم متجر": 7,
+            # Arabic site-build collocations (2026-08-28 run 20 audit):
+            # mostaql:1272540 'متخصص في انشاء المواقع الاعلانات المبوبة'
+            # (classified-ads website: membership, balance, ads, chats,
+            # ratings, payments, QR, delivery reps) was deterministically
+            # REJECTED -- no site-build vocabulary matched while
+            # 'موقع'/'مواقع' stay in NOISE_KEYWORDS by design.
+            "انشاء المواقع": 7,
+            "الاعلانات المبوبة": 7,
             # Compound verb-chain forms of تصميم متجر (verb + وتجهيز).
             "تصميم وتجهيز متجر": 7,
             "لتصميم وتجهيز متجر": 7,
@@ -623,6 +631,10 @@ HARD_REJECT_KEYWORDS = {
     "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
     "blackjack", "satta matka", "spin and win", "spin win", "lucky jet",
     "sportsbook", "sports betting", "slot machine",
+    # lottery/lotto added 2026-08-28 run 20: full-corpus sweep found 1
+    # historical ACCEPTED 'Automated Lottery' backend job (rowid 8863);
+    # unambiguous gambling, 0 window / 0 corpus innocent collateral.
+    "lottery", "lotto",
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",

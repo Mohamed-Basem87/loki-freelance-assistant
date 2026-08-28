@@ -200,6 +200,25 @@ NEGATIVE_KEYWORDS = {
         "supporting": {},
     },
 
+    # Phone-unlock / device-data-recovery gigs, not app builds. `unlock`
+    # alone is NOT used: full-corpus scan shows ~14 genuine builds merely
+    # mention it (game level unlocks, medical apps) and would wrongly
+    # route to arbitration. `data recovery`/`forensics` target the class
+    # surgically. Corpus (2026-08-28 run 20): the SAME 'Unlock Samsung
+    # A35' posting split outcomes -- freelancer:40676863 rejected (gemini
+    # none) while duplicate freelancer:40677010 was keyword_direct NOTIFIED
+    # mobile_app on android/phone positives; historical FPs 40669950
+    # (recover deleted texts, keyword_direct accepted) and 40670144 (phone
+    # hacker, keyword_direct accepted) are the same class. Negatives force
+    # placement to arbitration (mixed) instead of a wrong direct notify.
+    "device_unlock": {
+        "core": {
+            "data recovery": 8,
+            "forensics": 8,
+        },
+        "supporting": {},
+    },
+
     # Hardware/mechanical product design that merely mentions an app.
     "hardware_design": {
         "core": {
@@ -232,6 +251,14 @@ NEGATIVE_KEYWORDS = {
             "functional testing": 8,
             "user acceptance testing": 8,
             "اختبار تطبيق": 8,
+            # Separator-surface forms (2026-08-28 run 20 audit):
+            # mostaql:1272465 'عمل اختبار لتطبيق (iOS)' -- read the usage
+            # guide, log defects with screenshots -- slipped past the
+            # contiguous 'اختبار تطبيق' negative and was keyword_direct
+            # NOTIFIED as mobile_app. The 'ل' breaks the boundary, so the
+            # phrase never formed.
+            "اختبار لتطبيق": 8,
+            "اختبار للتطبيق": 8,
         },
         "supporting": {},
     },
@@ -609,6 +636,10 @@ HARD_REJECT_KEYWORDS = {
     "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
     "blackjack", "satta matka", "spin and win", "spin win", "lucky jet",
     "sportsbook", "sports betting", "slot machine",
+    # lottery/lotto added 2026-08-28 run 20: full-corpus sweep found 1
+    # historical ACCEPTED 'Automated Lottery' backend job (rowid 8863);
+    # unambiguous gambling, 0 window / 0 corpus innocent collateral.
+    "lottery", "lotto",
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",

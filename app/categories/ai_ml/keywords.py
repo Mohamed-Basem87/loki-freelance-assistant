@@ -589,6 +589,10 @@ HARD_REJECT_KEYWORDS = {
     # Gambling/real-money gaming products are out of scope (policy block).
     "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
     "blackjack", "sportsbook", "sports betting", "slot machine",
+    # lottery/lotto added 2026-08-28 run 20: full-corpus sweep found 1
+    # historical ACCEPTED 'Automated Lottery' backend job (rowid 8863);
+    # unambiguous gambling, 0 window / 0 corpus innocent collateral.
+    "lottery", "lotto",
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",
