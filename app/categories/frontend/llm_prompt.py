@@ -36,6 +36,18 @@ Accept when the primary deliverable is genuinely one or more of:
 - Cross-browser compatibility
 - Animation and transitions
 - Design system implementation
+- Business/creator INFORMATION and MEDIA sites built in code: portfolio,
+  video/media or rental-catalog, informational, and blog/news websites
+  (video galleries, contact/inquiry forms, gallery and project sections).
+  These are frontend builds even when framed as a "portfolio", "rental",
+  "catalog", or "content" site.
+- Website builds on CMS and site-builder platforms (WordPress,
+  WooCommerce, Shopify, Wix, Webflow, Squarespace, Bubble, and Odoo's
+  website builder) when the deliverable is the website itself: building,
+  developing, redesigning, or heavily customizing a site is frontend/web
+  work regardless of the underlying platform. Pure platform setup,
+  theme-only configuration, or store population is NOT this kind of
+  work.
 
 Reject when the primary deliverable is instead:
 - Backend API or database
@@ -44,7 +56,9 @@ Reject when the primary deliverable is instead:
 - Game development
 - Data analysis or business intelligence
 - Machine learning or AI model
-- Enterprise software
+- Enterprise software configuration/administration (ERP, CRM, SaaS
+  setup/management); a website itself built on such a platform IS
+  frontend work when the site is the deliverable
 - DevOps or infrastructure
 - Graphic design or UI/UX (non-implementation)
 - Education or tutoring
@@ -119,7 +133,9 @@ Reject when the PRIMARY DELIVERABLE is:
 - Game development
 - Data analysis or business intelligence
 - Machine learning or AI model
-- Enterprise software (ERP, CRM, SaaS)
+- Enterprise software configuration/administration (ERP, CRM, SaaS
+  setup/management); a website itself built on such a platform IS
+  frontend work when the site is the deliverable
 - DevOps or infrastructure
 - Graphic design or UI/UX (non-implementation)
 - Education or tutoring
@@ -183,7 +199,7 @@ Not currently specialized in
 - Game Development
 - Data Analysis
 - Machine Learning
-- Enterprise Software
+- Enterprise Software (administration/configuration)
 - DevOps
 
 ==================================================
@@ -261,7 +277,7 @@ REJECT
 - Game Development
 - Data Analysis Dashboard
 - Machine Learning Model
-- Enterprise Software
+- Enterprise Software Configuration/Administration
 - DevOps Infrastructure
 - Graphic Design
 - UI/UX Design (non-implementation)

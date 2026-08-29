@@ -471,9 +471,13 @@ NEGATIVE_KEYWORDS = {
     },
 
     "enterprise": {
+        # CRM integration/customization builds are legitimate work
+        # (customization IS work for a linked business function).
+        # 'crm' demoted core->supporting (2026-08-29 audit): the core
+        # token was title-killing the whole WhatsApp/CRM/AI-bot class
+        # (e.g. rowid 10758, a WhatsApp AI-bot + CRM build).
         "core": {
             "erp": 7,
-            "crm": 7,
             "wms": 7,
             "saas": 6,
             "netsuite": 7,
@@ -482,6 +486,7 @@ NEGATIVE_KEYWORDS = {
             "dynamics 365": 7,
         },
         "supporting": {
+            "crm": 4,
             "mvp": 3,
             "software development": 4,
             "admin panel": 4,
@@ -641,6 +646,20 @@ HARD_REJECT_KEYWORDS = {
     # historical ACCEPTED 'Automated Lottery' backend job (rowid 8863);
     # unambiguous gambling, 0 window / 0 corpus innocent collateral.
     "lottery", "lotto",
+    # Adult/18+ web-content products are out of scope (policy block,
+    # 2026-08-29 run 22). freelancer:40677922 'Website Development'
+    # (porn site build modelled on beeg.com: uploader roles, paysite
+    # tags, VR player) was keyword_direct NOTIFIED as frontend/full_stack
+    # and DELIVERED -- fp_delivered. Full-corpus: these tokens have 0
+    # accepted collateral in any category (historical adult/escort jobs
+    # all already rejected). 'nsfw' added 2026-08-29 run 23 -- full-corpus
+    # impact is exactly 2 jobs: freelancer:40660265 (ai_ml, ACCEPTED
+    # pre-policy, explicit PG violation: 'AI mini-series ... along with
+    # NSFW variants') and freelancer:40641766 (already rejected); both
+    # llm-arbitrated so replay-safe.
+    "porn", "paysite", "paysites", "beeg", "nsfw",
+    "adult site", "adult website",
+    "escort service", "escort services",
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",
@@ -667,8 +686,11 @@ HARD_REJECT_KEYWORDS = {
     # calls now that store-build collocations became positive cores.
     "خدمات smm",
     "letter writing", "request letter",
-    # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
-    "zid", "زد",
+    # 'zid'/'زد' removed from hard-reject (2026-08-29 audit): it is a
+    # common Arabic verb (increase) and the Zid SaaS marketplace name
+    # ("سلة او زد"); run 14's "0 accepted" no longer holds -- it was
+    # title-killing legit builds like rowid 10758 (WhatsApp AI-bot +
+    # CRM, frontend hard-reject via 'سلة او زد').
     # 'digital marketing' is NOT hard-rejected here (2026-08-28 audit):
     # the phrase follows the same enumeration-misfire pattern as data
     # entry/illustrator (freelancer:40676186 platform build rejected when

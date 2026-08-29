@@ -36,6 +36,11 @@ Accept when the primary deliverable is genuinely one or more of:
 - Security implementation
 - DevOps and deployment
 - Cloud infrastructure (AWS, GCP, Azure)
+- ERP/business-system backend development when the deliverable is
+  engineered server-side code (custom modules, business rules, database
+  and API work -- e.g. Odoo custom modules in Python/PostgreSQL for an
+  ERP). Enterprise administration or configuration with no development
+  is not backend work.
 
 Reject when the primary deliverable is instead:
 - Testing, QA, manual/beta testing, or test automation (testing services are not development)
@@ -170,7 +175,9 @@ Not currently specialized in
 - Game Development
 - Data Analysis
 - Machine Learning
-- Enterprise Software
+- Enterprise Software (administration/configuration only; ERP BACKEND
+  development -- custom modules, business logic, database and API work --
+  IS backend work)
 - DevOps
 
 ==================================================
@@ -221,6 +228,8 @@ If the client's primary goal is:
 - Authentication/Authorization
 - Microservices
 - DevOps/Infrastructure
+- ERP/backend-system development (custom modules, business rules,
+  database and API work -- e.g. Odoo custom modules in Python/PostgreSQL)
 
 ACCEPT.
 

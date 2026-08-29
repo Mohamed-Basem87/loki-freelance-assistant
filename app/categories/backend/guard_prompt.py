@@ -117,7 +117,17 @@ Also REJECT when the PRIMARY DELIVERABLE is:
   payout-arbitrage or gambling-signal/prediction platforms, betting
   bots, and lottery/casino/slot games. ALWAYS REJECT -- do not notify
   for any gambling-related deliverable, regardless of any positive
-  keywords.
+  keywords, including moderation, detection, filtering, or analytics
+  tooling for gambling and any job materially related to gambling.
+- Adult/sexually-explicit deliverables: porn/paysite/adult websites or
+  platforms (including adult video-distribution sites), escort or
+  adult-service platforms, sexually-explicit games (including NSFW
+  visual novels), and AI/automation pipelines that create or distribute
+  explicit imagery or video. ALWAYS REJECT -- do not notify for any
+  adult-content deliverable, regardless of any positive keywords,
+  including tooling or services that moderate, detect, filter, classify,
+  or otherwise analyze adult content, and any job materially related to
+  adult content.
 - Frontend-only development (UI implementation, responsive design,
   CMS site builds with no custom server-side work)
 - Mobile app development (iOS/Android)
@@ -139,6 +149,11 @@ Ask yourself:
 
 If the answer includes engineered server-side software -- APIs,
 databases, business logic, integrations built in code -- approve it.
+
+Backend development on an enterprise system such as Odoo (custom
+modules, server-side logic, database and API work) is engineered
+server-side software and is approved; installing/configuring an ERP
+with no development work is not.
 
 If the answer is installing/configuring existing tools, documentation,
 consulting, administration, or a non-backend deliverable, reject it.

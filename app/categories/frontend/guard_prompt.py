@@ -93,6 +93,11 @@ development work:
   judged by their translated meaning. Never reject a posting because
   of its language; a website build described in Arabic is still a
   website build.
+- Portfolio, media/rental-catalog, informational, and blog/news websites
+  (video galleries, contact/inquiry forms, gallery and project sections)
+  built for a business or creator -- these are website builds and are
+  approved regardless of the "portfolio"/"rental"/"catalog"/"content"
+  framing.
 
 Also REJECT when the PRIMARY DELIVERABLE is:
 
@@ -101,7 +106,17 @@ Also REJECT when the PRIMARY DELIVERABLE is:
   payout-arbitrage or gambling-signal/prediction platforms, betting
   bots, and lottery/casino/slot games. ALWAYS REJECT -- do not notify
   for any gambling-related deliverable, regardless of any positive
-  keywords.
+  keywords, including moderation, detection, filtering, or analytics
+  tooling for gambling and any job materially related to gambling.
+- Adult/sexually-explicit deliverables: porn/paysite/adult websites or
+  platforms (including adult video-distribution sites), escort or
+  adult-service platforms, sexually-explicit games (including NSFW
+  visual novels), and AI/automation pipelines that create or distribute
+  explicit imagery or video. ALWAYS REJECT -- do not notify for any
+  adult-content deliverable, regardless of any positive keywords,
+  including tooling or services that moderate, detect, filter, classify,
+  or otherwise analyze adult content, and any job materially related to
+  adult content.
 - Pure backend/API/server work with no website or UI deliverable
 - Mobile app development (iOS/Android)
 - Game development

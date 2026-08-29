@@ -678,8 +678,12 @@ WINDOW_2026_08_13_CASES = [
         "name": "WhatsApp booking bot (real job 40643442)",
         "title": "Bot IA WhatsApp reservas con Sheets",
         "text": (
-            # Lone "excel" body core positive + "whatsapp" ai_apps core
-            # negative -> mixed_core_signals -> Gemini.
+            # Post-2026-08-29: 'whatsapp'/'واتساب' demoted from ai_apps
+            # core to supporting (3). Excel/Sheets core positives with no
+            # core negative now clean-direct-notify; the WhatsApp-bot
+            # build class itself is claimed by ai_ml's chatbot / bot
+            # cores. WhatsApp-adjacent DA work being lost (core-killed)
+            # was the original bug this case guarded against.
             "Bot IA WhatsApp reservas con Sheets. "
             "Busco implementar un flujo inteligente que permita tomar "
             "reservas via WhatsApp Business y llevar la informacion "
@@ -688,7 +692,7 @@ WINDOW_2026_08_13_CASES = [
             "usuario, hacer las preguntas necesarias y registrar "
             "automaticamente nombre, fecha y numero de personas."
         ),
-        "expected": "needs_gemini",
+        "expected": "notify_directly",
     },
     {
         "name": "WhatsApp info bot, no core positive (real job 40636356)",
@@ -710,16 +714,18 @@ WINDOW_2026_08_13_CASES = [
         "name": "Genuine WhatsApp-adjacent analysis must not be lost",
         "title": "WhatsApp Marketing Data Analysis",
         "text": (
-            # Core positive ("data analysis"/"excel"/"pivot table") +
-            # "whatsapp" core negative -> mixed_core_signals -> Gemini, never
-            # an outright reject.
+            # Post-2026-08-29: pure WhatsApp-adjacent ANALYSIS is exactly
+            # what the DA channel is for, so 'whatsapp' as a supporting
+            # negative (3) no longer blocks it -> direct-notify instead of
+            # Gemini. The class discrimination lives on: posts with NO DA
+            # core positive still reject (see 40636356 above).
             "WhatsApp Marketing Data Analysis. "
             "Export our WhatsApp Business chat history and build an Excel "
             "dashboard with pivot tables and DAX measures to analyze "
             "customer response times, conversion trends and sales analysis "
             "by region."
         ),
-        "expected": "needs_gemini",
+        "expected": "notify_directly",
     },
 ]
 

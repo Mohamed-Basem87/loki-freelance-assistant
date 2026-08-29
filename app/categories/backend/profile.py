@@ -32,7 +32,10 @@ PROFILE = CategoryProfile(
     arbitration_context=(
         "Primary deliverables are backend development, API design and "
         "implementation, database management, server-side logic, and "
-        "infrastructure. Reject when the primary deliverable is frontend "
+        "infrastructure. Backend development on enterprise systems such as "
+        "Odoo (custom modules, server-side logic, database/API work) is in "
+        "scope; ERP administration or configuration without development is "
+        "not. Reject when the primary deliverable is frontend "
         "development, mobile app development, game development, data "
         "analysis, machine learning, or another non-backend-related task."
     ),
