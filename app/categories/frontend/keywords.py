@@ -167,6 +167,12 @@ POSITIVE_KEYWORDS = {
             # REJECTED -- no site-build vocabulary matched while
             # 'موقع'/'مواقع' stay in NOISE_KEYWORDS by design.
             "انشاء المواقع": 7,
+            # Singular build phrase (2026-08-29 audit): 'انشاء موقع' fires
+            # at word/start-of-text boundaries, whereas the و-prefixed
+            # 'وانشاء المواقع' never forms under \b boundary matching.
+            # Recovers the Arabic singular website-build class
+            # (انشاء موقع / انشاء موقع الكتروني).
+            "انشاء موقع": 7,
             "الاعلانات المبوبة": 7,
             # Compound verb-chain forms of تصميم متجر (verb + وتجهيز).
             "تصميم وتجهيز متجر": 7,

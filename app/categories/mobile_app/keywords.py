@@ -109,6 +109,12 @@ POSITIVE_KEYWORDS = {
             "تواصل صوتي": 8,
             "غرف صوتية": 7,
             "دردشة صوتية": 7,
+            # Text chat-app builds (2026-08-29 audit): Arabic "group chat
+            # app" class. Corpus: 'تطبيق دردشة' 3 hits all mobile chat
+            # apps (9113, 9838 accepted); 'دردشة جماعية' 1 hit (the
+            # recovered job). Extends the voice-chat family to text chat.
+            "تطبيق دردشة": 8,
+            "دردشة جماعية": 7,
         },
         "supporting": {
             "app development": 4,
