@@ -153,6 +153,34 @@ async def categories_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 
+async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Opt the user out of notifications.
+
+    Telegram never sends a my_chat_member update for a device-level
+    "Stop Bot" -- that only fires on a hard block/unblock (see Bot API
+    "my_chat_member": "For private chats, this update is received only
+    when the bot is blocked or unblocked by the user"). So /stop is the
+    only reliable in-band way for a user to unsubscribe. It sets
+    Is Active=0 so the notification claim query stops picking the user
+    up; /start re-activates them.
+    """
+    user = update.effective_user
+    if user is None or update.effective_chat is None:
+        return
+
+    await logger.run(logger.ensure_user, user.id, user.username or "", user.first_name or "")
+    await logger.run(logger.set_destination_active, user.id, False)
+
+    try:
+        await update.message.reply_text(
+            "You've been unsubscribed from Loki Jobs. "
+            "You won't receive any more job notifications.\n\n"
+            "To start receiving jobs again, send /start."
+        )
+    except Exception as exc:
+        await logger.run(logger.log_error, "Stop Command", exc, "", save=True)
+
+
 async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = update.effective_user
@@ -531,6 +559,7 @@ def create_user_bot_application():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("categories", categories_command))
     application.add_handler(CommandHandler("sources", sources_command))
+    application.add_handler(CommandHandler("stop", stop_command))
     application.add_handler(CallbackQueryHandler(category_callback))
     # ChatMemberHandler.MY_CHAT_MEMBER: updates about the bot's own
     # membership status (blocked/stopped/unblocked), not other members'

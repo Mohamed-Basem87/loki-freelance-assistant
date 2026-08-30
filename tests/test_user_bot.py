@@ -9,12 +9,13 @@ from telegram import (
     ChatMemberLeft,
     ChatMemberMember,
     ChatMemberUpdated,
+    Message,
     Update,
     User,
 )
 
 from app.logger import logger
-from app.user_bot import my_chat_member_update
+from app.user_bot import my_chat_member_update, stop_command
 
 
 def _isolated_db():
@@ -188,6 +189,47 @@ def test_unknown_telegram_id_is_a_harmless_no_op():
             )
             await my_chat_member_update(update, context=None)
             assert _is_active(999888) is None
+
+        asyncio.run(run())
+    finally:
+        _restore_db(original)
+
+
+def _stop_command_update(telegram_user_id):
+    """Build a real message-bearing Update for /stop.
+
+    stop_command() calls update.effective_user, update.effective_chat and
+    update.message.reply_text. The Bot/Message classes auto-build a Bot when
+    given a token via api_kwargs={"bot": ...}? Not so -- pass bot via the
+    positional args and set_bot(). reply_text needs a bound bot to send the
+    confirmation through.
+    """
+    user = User(id=telegram_user_id, first_name="Tester", is_bot=False)
+    chat = Chat(id=telegram_user_id, type="private")
+    message = Message(
+        1,
+        datetime.now(),
+        chat=chat,
+        from_user=user,
+        text="/stop",
+    )
+    return Update(update_id=2, message=message)
+
+
+def test_stop_command_deactivates_the_user():
+    """/stop is the in-band opt-out: Telegram never sends a my_chat_member
+    update for a device-level Stop, so the user must be able to unsubscribe
+    explicitly. It must set Is Active=0 and remain reachable to /start."""
+    original = _isolated_db()
+    try:
+        async def run():
+            await logger.run(logger.ensure_user, 555444, "tester", "Tester")
+            assert _is_active(555444) == "1"
+
+            update = _stop_command_update(555444)
+            await stop_command(update, context=None)
+
+            assert _is_active(555444) == "0"
 
         asyncio.run(run())
     finally:
