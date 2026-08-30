@@ -22,6 +22,19 @@ website / web application development, such as:
 - Building a new social platform website with web frontend, REST API, PostgreSQL, and Docker deployment
 - Building an e-commerce WEBSITE with React frontend and Python backend
 
+ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
+A posting that engages a developer on a recurring/part-time/month-to-month
+basis to develop, maintain, and evolve an existing full-stack
+website/web application -- adding features, fixing bugs, refactoring,
+keeping dependencies current, and producing iterative builds/releases --
+IS genuine full-stack development work with real deliverables. Approve it
+even when worded like an employment role ("part-time full-stack
+developer", "ongoing web app maintenance"). Hiring/staffing posts are LEADS
+when the advertised role belongs to this category's scope (full-stack web
+developer or web app maintainer): approve them even with no concrete
+project spec. Only do_not_notify when the role is outside this category's
+scope.
+
 REJECT when the PRIMARY DELIVERABLE is:
 
 - Gambling, betting, casino, sports betting, bookmaker/sportsbook,

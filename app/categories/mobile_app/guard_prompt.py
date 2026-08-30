@@ -45,6 +45,18 @@ The "Database design and management" reject below means STANDALONE
 database administration work with no mobile app involved -- not the
 database inside a mobile project.
 
+ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
+A posting that engages a developer on a recurring/part-time/month-to-month
+basis to develop, maintain, and evolve an existing mobile app -- adding
+features, fixing bugs, refactoring, keeping the codebase aligned with
+current Android/iOS SDK versions, and producing iterative builds/releases
+-- IS genuine mobile development work with real deliverables. Approve it
+even when worded like an employment role ("part-time Android developer",
+"ongoing app maintenance"). Hiring/staffing posts are LEADS when the
+advertised role belongs to this category's scope (Android/iOS/mobile app
+developer or maintainer): approve them even with no concrete project spec.
+Only do_not_notify when the role is outside this category's scope.
+
 REJECT when the PRIMARY DELIVERABLE is:
 
 - Gambling, betting, casino, sports betting, bookmaker/sportsbook,

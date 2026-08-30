@@ -35,6 +35,18 @@ data science work, such as:
   are generative-AI engineering even when the plumbing is workflow
   tooling
 
+ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
+A posting that engages a developer on a recurring/part-time/month-to-month
+basis to develop, maintain, and evolve an existing AI/ML application --
+adding features, fixing bugs, refactoring, retraining/tuning models, and
+producing iterative releases -- IS genuine AI/ML engineering with real
+deliverables. Approve it even when worded like an employment role
+("part-time AI developer", "ongoing AI system maintenance"). Hiring/staffing
+posts are LEADS when the advertised role belongs to this category's scope
+(AI/ML engineer, data scientist in an AI/ML building role, AI system
+maintainer): approve them even with no concrete project spec. Only
+do_not_notify when the role is outside this category's scope.
+
 REJECT when the PRIMARY DELIVERABLE is:
 
 - Gambling, betting, casino, sports betting, bookmaker/sportsbook,

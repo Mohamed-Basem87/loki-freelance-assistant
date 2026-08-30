@@ -228,6 +228,23 @@ POSITIVE_KEYWORDS = {
             "exam platform": 6,
             "web app": 6,
             "webapp": 6,
+            # Arabic e-learning-platform build family (2026-08-30 run 24).
+            # PROMOTED supporting->core: supporting tier never reached the
+            # 12-weight arbitration bar, so mostaql:1272797 'منصة تعليمية
+            # لشراء كورسات' (videos/live-stream/teacher-student/e-payment,
+            # deploy-ready) and 30 corpus siblings (UI/UX builds, backend
+            # rebuilds, full-stack platforms) were silently rejected.
+            # As CORE in BOTH frontend and backend, any mention produces
+            # two direct matches -> needs_gemini -> LLM arbitration, which
+            # lands platform builds on full_stack/backend/frontend instead
+            # of a wrong lone direct notify. 'منصت' is the common 'ت' typo;
+            # V-l-prefixed forms (لمنصة تعليمية) break \b word boundaries
+            # after normalize (ل attaches to منصة), so they need their own
+            # entries (r3177 UI/UX لمنصة تعليمية title class).
+            "منصة تعليمية": 8,
+            "منصت تعليمية": 8,
+            "لمنصة تعليمية": 8,
+            "لمنصت تعليمية": 8,
         },
         "supporting": {
             # Store mention alone is not web-dev evidence (customer service,
@@ -249,7 +266,6 @@ POSITIVE_KEYWORDS = {
             "ecommerce": 4,
             # Arabic e-learning/training platform builds (منصة تعليمية family);
             # supporting-only so content/QA gigs stay below the arbitration bar.
-            "منصة تعليمية": 6,
             "منصة تدريب": 6,
             # English LMS/exam-platform build vocabulary (supporting tier:
             # course-content gigs also use these words).

@@ -207,6 +207,23 @@ NEGATIVE_KEYWORDS = {
         "supporting": {},
     },
 
+    # Architectural/interior 3D visualization gigs co-hit the 3D art
+    # engines (blender/3ds max are also CAD-adjacent). 2026-08-30 run 24:
+    # freelancer:40678574 '3D Visualization for Modern Multi-Level Villa'
+    # (rowid 10975) direct-notified game_dev via blender/3ds max cores and
+    # was only stopped by the guard. Full-corpus '3d visualization' = 4
+    # hits, ONLY 10975 accepted (r1664 flooring web app, r8332 web digital
+    # twin, r10033 construction docs all rejected) -- safe to negate.
+    # Negative cores (not hard reject): a genuine 3D game mentioning
+    # "3D visualization" as a feature still reaches arbitration.
+    "architectural_viz": {
+        "core": {
+            "3d visualization": 8,
+            "architectural visualization": 8,
+        },
+        "supporting": {},
+    },
+
     "frontend": {
         "core": {
             "react": 8,

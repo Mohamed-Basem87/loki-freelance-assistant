@@ -216,6 +216,22 @@ POSITIVE_KEYWORDS = {
         },
         "supporting": {},
     },
+
+    # Arabic web-platform build family (2026-08-30 run 24). CORE here (and
+    # in frontend) so a generic 'منصة تعليمية' build produces two direct
+    # matches -> needs_gemini -> LLM lands it on full_stack/backend/frontend
+    # instead of a silent reject (mostaql:1272797 + 30 corpus siblings).
+    # Variants: 'ت' typo; V ل-prefixed forms (لمنصة تعليمية) break \b after
+    # normalize (ل attaches to منصة), so they need their own entries.
+    "web_platforms": {
+        "core": {
+            "منصة تعليمية": 7,
+            "منصت تعليمية": 7,
+            "لمنصة تعليمية": 7,
+            "لمنصت تعليمية": 7,
+        },
+        "supporting": {},
+    },
 }
 
 

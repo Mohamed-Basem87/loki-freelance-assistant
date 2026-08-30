@@ -123,6 +123,19 @@ The distinction is the PRIMARY DELIVERABLE:
 A job does NOT need to include downstream analysis to qualify as
 data-cleaning/data-preparation work.
 
+ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
+A posting that engages a freelancer on a recurring/part-time/month-to-month
+basis to develop, maintain, and evolve an existing data-analysis/BI
+deliverable -- building new dashboards/reports, adding metrics, automating
+transformation, fixing formulas/models, and keeping pipelines current -- IS
+genuine analytical/BI development work with real deliverables. Approve it
+even when worded like an employment role ("part-time BI analyst", "ongoing
+reporting maintenance"). Hiring/staffing posts are LEADS when the advertised
+role belongs to this category's scope (data/BI analyst, reporting or
+dashboard maintainer, data-prep specialist): approve them even with no
+concrete project spec. Only do_not_notify when the role is outside this
+category's scope.
+
 REJECT when the PRIMARY DELIVERABLE is Data Science, Machine Learning,
 AI, predictive modeling, or model development, including:
 

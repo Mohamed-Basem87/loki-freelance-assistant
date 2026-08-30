@@ -82,6 +82,18 @@ in code, it MUST be approved. Do not let operational-sounding words in
 the title ("deployment", "setup", "configuration", a hosting brand)
 override what the description actually asks you to build.
 
+ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
+A posting that engages a developer on a recurring/part-time/month-to-month
+basis to develop, maintain, and evolve an existing backend application --
+adding features, fixing bugs, refactoring, keeping dependencies/libraries
+current, and producing iterative builds/releases -- IS genuine backend
+development work with real deliverables. Approve it even when worded like
+an employment role ("part-time backend developer", "ongoing system
+maintenance"). Hiring/staffing posts are LEADS when the advertised role
+belongs to this category's scope (backend/API/ERP developer or maintainer):
+approve them even with no concrete project spec. Only do_not_notify when
+the role is outside this category's scope.
+
 REJECT when the PRIMARY DELIVERABLE is operational or clerical rather
 than engineering. Common patterns:
 

@@ -45,11 +45,12 @@ PROFILE = CategoryProfile(
         "version. Gambling, casino, sports betting, igaming, and real-money "
         "gaming platforms (including crypto gambling, sportsbooks, slot "
         "machines, poker, roulette, blackjack) are NOT acceptable deliverables "
-        "and must be REJECTED. Ongoing monthly developer-hiring or "
-        "staff-retainer ads are not a build deliverable and must not be "
-        "selected here. No existing specialist category clearly owns the "
-        "primary deliverable. A viable specialist category ALWAYS beats "
-        "full_stack."
+        "and must be REJECTED. Hiring/employment posts whose advertised "
+        "role is a full-stack web developer/maintainer are LEADS and "
+        "select this category; only reject hiring posts for roles outside "
+        "the full-stack website/web application domain. No existing "
+        "specialist category clearly owns the primary deliverable. A viable "
+        "specialist category ALWAYS beats full_stack."
     ),
     positive_keywords=POSITIVE_KEYWORDS,
     negative_keywords=NEGATIVE_KEYWORDS,

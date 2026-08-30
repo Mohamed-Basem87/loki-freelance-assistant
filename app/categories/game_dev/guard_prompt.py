@@ -29,6 +29,18 @@ development, such as:
 - VR/AR game development
 - Game scripting (Blueprint, GDScript, etc.)
 
+ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
+A posting that engages a developer on a recurring/part-time/month-to-month
+basis to develop, maintain, and evolve an existing game -- adding features,
+fixing bugs, refactoring, keeping the codebase aligned with current
+Unity/Unreal/library versions, and producing iterative builds/releases -- IS
+genuine game development work with real deliverables. Approve it even when
+worded like an employment role ("part-time game developer", "ongoing game
+maintenance"). Hiring/staffing posts are LEADS when the advertised role
+belongs to this category's scope (game developer or maintainer): approve
+them even with no concrete project spec. Only do_not_notify when the role
+is outside this category's scope.
+
 REJECT when the PRIMARY DELIVERABLE is:
 
 - Gambling, betting, casino, sports betting, bookmaker/sportsbook,

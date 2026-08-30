@@ -99,6 +99,19 @@ development work:
   approved regardless of the "portfolio"/"rental"/"catalog"/"content"
   framing.
 
+ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
+A posting that engages a developer on a recurring/part-time/month-to-month
+basis to develop, maintain, and evolve an existing website/web application
+-- adding features, fixing bugs, refactoring, keeping the codebase aligned
+with current library versions and platform standards, and producing
+iterative builds/releases -- IS genuine frontend development work with real
+deliverables. Approve it even when worded like an employment role
+("part-time web developer", "ongoing website maintenance"). Hiring/staffing
+posts are LEADS when the advertised role belongs to this category's scope
+(web/frontend developer, website or CMS maintainer): approve them even with
+no concrete project spec. Only do_not_notify when the role is outside this
+category's scope.
+
 Also REJECT when the PRIMARY DELIVERABLE is:
 
 - Gambling, betting, casino, sports betting, bookmaker/sportsbook,
