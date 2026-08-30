@@ -26,7 +26,9 @@ async def run():
     await user_bot.start()
     if user_bot.updater is None:
         raise RuntimeError("Telegram user bot updater is unavailable")
-    await user_bot.updater.start_polling()
+    await user_bot.updater.start_polling(
+        allowed_updates=("message", "callback_query", "my_chat_member")
+    )
 
     try:
         await asyncio.gather(
