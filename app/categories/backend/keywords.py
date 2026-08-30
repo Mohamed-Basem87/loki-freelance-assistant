@@ -135,6 +135,10 @@ POSITIVE_KEYWORDS = {
             # Arabic backend-integration collocations.
             "ربط نظام": 8,
             "ربط مشروع": 7,
+            # ERPNext/Frappe ERP platforms — custom builds & customization.
+            "erpnext": 8,
+            "frappe": 8,
+            "فرابي": 8,
         },
         "supporting": {
             "clean architecture": 3,
@@ -229,6 +233,41 @@ POSITIVE_KEYWORDS = {
             "منصت تعليمية": 7,
             "لمنصة تعليمية": 7,
             "لمنصت تعليمية": 7,
+        },
+        "supporting": {},
+    },
+
+    # Email-infrastructure/automation builds. Build vocabulary only:
+    # pure tool-onboarding / cold-email-service gigs reach arbitration
+    # (lone 'email deliverability' < supporting minimum) and reject.
+    "email_infrastructure": {
+        "core": {
+            "email automation": 8,
+            "outbound email": 8,
+            "outbound email system": 9,
+            "email sequence": 7,
+            "email sequences": 8,
+            "email infrastructure": 8,
+            "email deliverability": 7,
+            "reply detection": 6,
+            "smartlead": 8,
+            "n8n": 8,
+            "cold email system": 8,
+        },
+        "supporting": {},
+    },
+
+    # Auction/marketplace platform builds (VIN-search, live bidding,
+    # membership, payments).
+    "marketplace": {
+        "core": {
+            "auction": 7,
+            "auction platform": 8,
+            "auction website": 8,
+            "live auction": 8,
+            "online auction": 8,
+            "مزاد": 7,
+            "المزاد": 7,
         },
         "supporting": {},
     },
@@ -609,7 +648,6 @@ HARD_REJECT_KEYWORDS = {
     "1xbet", "dragon tiger", "dragon vs tiger",
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",
     # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
-    "email deliverability",
     "video player",
     "lead generation",
     "google ads",

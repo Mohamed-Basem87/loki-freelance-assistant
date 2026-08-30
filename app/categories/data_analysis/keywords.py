@@ -195,8 +195,11 @@ POSITIVE_KEYWORDS = {
             "data curation": 3,
             "data quality": 3,
             "pivot chart": 3,
-            "dataset": 2,
-            "datasets": 2,
+            "dataset": 5,
+            "datasets": 4,
+            # Arabic: "data display" — Arabic dashboard briefs aggregate
+            # dataset/dashboard/البيانات to the supporting threshold.
+            "عرض البيانات": 5,
             "clean data": 4,
             "cleaning data": 4,
             "prepare data": 3,
