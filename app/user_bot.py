@@ -38,9 +38,48 @@ SOURCE_OPTIONS = (
 bot = Bot(BOT_TOKEN)
 
 
-def _source_keyboard(selected_sources):
+_INACTIVE_NOTICE = (
+    "⏸ You're currently unsubscribed from Loki Jobs.\n"
+    "Your choices below are saved, but won't be delivered until you "
+    "resume notifications.\n\n"
+)
+
+# Distinct resume callback per screen (see category_callback) so the
+# handler knows which picker to redraw after reactivating -- reusing
+# "cat:"/"src:" prefixes here would collide with real category/source
+# IDs, so this uses its own top-level "reactivate:" prefix instead.
+_RESUME_CATEGORIES_CALLBACK = "reactivate:cat"
+_RESUME_SOURCES_CALLBACK = "reactivate:src"
+
+
+async def _is_active(telegram_user_id) -> bool:
+    """True unless the user has explicitly /stopped or blocked the bot.
+
+    Looked up by Telegram user ID (not the internal "User ID" UUID)
+    since that's what every command handler already has on hand from
+    `update.effective_user.id`, and it's the same column
+    `record_subscription_event`/`set_destination_active` write to.
+    A user who has never been seen before (no row yet) is treated as
+    active -- ensure_user() is expected to have already created the
+    row by the time this is called from any real command path, so
+    this only matters for defensive callers.
+    """
+    destination = await logger.run(logger.get_destination, telegram_user_id)
+    if destination is None:
+        return True
+    return str(destination.get("Is Active", "1")) == "1"
+
+
+def _source_keyboard(selected_sources, *, inactive=False):
     selected_sources = set(selected_sources)
     rows = []
+    if inactive:
+        rows.append([
+            InlineKeyboardButton(
+                "▶️ Resume notifications",
+                callback_data=_RESUME_SOURCES_CALLBACK,
+            )
+        ])
     for source_id, display_name in SOURCE_OPTIONS:
         prefix = "✅" if source_id in selected_sources else "⬜"
         rows.append([
@@ -53,22 +92,31 @@ def _source_keyboard(selected_sources):
     return InlineKeyboardMarkup(rows)
 
 
-async def _render_sources(query, user_id, *, edit=True):
+async def _render_sources(query, user_id, telegram_user_id, *, edit=True):
     selected = await logger.run(logger.get_user_sources, user_id)
+    inactive = not await _is_active(telegram_user_id)
     text = (
-        "Choose the sources you want to receive.\n\n"
+        (_INACTIVE_NOTICE if inactive else "")
+        + "Choose the sources you want to receive.\n\n"
         "If you select none, you'll receive jobs from all sources."
     )
-    markup = _source_keyboard(selected)
+    markup = _source_keyboard(selected, inactive=inactive)
     if edit:
         await query.edit_message_text(text=text, reply_markup=markup)
     else:
         await query.message.reply_text(text=text, reply_markup=markup)
 
 
-def _category_keyboard(selected_ids):
+def _category_keyboard(selected_ids, *, inactive=False):
     selected_ids = set(selected_ids)
     rows = []
+    if inactive:
+        rows.append([
+            InlineKeyboardButton(
+                "▶️ Resume notifications",
+                callback_data=_RESUME_CATEGORIES_CALLBACK,
+            )
+        ])
     for profile in enabled_categories():
         prefix = "✅" if profile.id in selected_ids else "⬜"
         rows.append([
@@ -81,13 +129,15 @@ def _category_keyboard(selected_ids):
     return InlineKeyboardMarkup(rows)
 
 
-async def _render_categories(query, user_id, *, edit=True):
+async def _render_categories(query, user_id, telegram_user_id, *, edit=True):
     selected = await logger.run(logger.get_user_categories, user_id)
+    inactive = not await _is_active(telegram_user_id)
     text = (
-        "Choose the job categories you want to receive.\n\n"
+        (_INACTIVE_NOTICE if inactive else "")
+        + "Choose the job categories you want to receive.\n\n"
         "You can select more than one."
     )
-    markup = _category_keyboard(selected)
+    markup = _category_keyboard(selected, inactive=inactive)
     if edit:
         await query.edit_message_text(text=text, reply_markup=markup)
     else:
@@ -133,11 +183,17 @@ async def sources_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user.username or "",
         user.first_name or "",
     )
+    inactive = not await _is_active(user.id)
+    text = (
+        (_INACTIVE_NOTICE if inactive else "")
+        + "Choose the sources you want to receive.\n\n"
+        "If you select none, you'll receive jobs from all sources."
+    )
     await update.message.reply_text(
-        "Choose the sources you want to receive.\n\n"
-        "If you select none, you'll receive jobs from all sources.",
+        text,
         reply_markup=_source_keyboard(
-            await logger.run(logger.get_user_sources, internal_id)
+            await logger.run(logger.get_user_sources, internal_id),
+            inactive=inactive,
         ),
     )
 
@@ -152,11 +208,17 @@ async def categories_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user.username or "",
         user.first_name or "",
     )
+    inactive = not await _is_active(user.id)
+    text = (
+        (_INACTIVE_NOTICE if inactive else "")
+        + "Choose the job categories you want to receive.\n\n"
+        "You can select more than one."
+    )
     await update.message.reply_text(
-        "Choose the job categories you want to receive.\n\n"
-        "You can select more than one.",
+        text,
         reply_markup=_category_keyboard(
-            await logger.run(logger.get_user_categories, internal_id)
+            await logger.run(logger.get_user_categories, internal_id),
+            inactive=inactive,
         ),
     )
 
@@ -207,7 +269,15 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query is None or user is None:
         return
 
-    await query.answer()
+    data = query.data or ""
+
+    # A callback query can only be answered once -- answer here with
+    # the reactivation toast when relevant, otherwise the usual silent
+    # ack, rather than calling query.answer() a second time below.
+    if data.startswith("reactivate:"):
+        await query.answer("Notifications resumed ✅")
+    else:
+        await query.answer()
 
     internal_id = await logger.run(
         logger.ensure_user,
@@ -216,9 +286,28 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user.first_name or "",
     )
 
-    data = query.data or ""
+    if data.startswith("reactivate:"):
+        # Reactivating from /categories or /sources must use the exact
+        # same durable path /start uses (record_subscription_event,
+        # not a bare set_destination_active) so it's indistinguishable
+        # from a real /start in the audit trail and analytics.
+        await logger.run(
+            logger.record_subscription_event,
+            user.id,
+            user.first_name or "",
+            user.username or "",
+            True,
+            "reactivate",
+        )
+        screen = data.split(":", 1)[1]
+        if screen == "src":
+            await _render_sources(query, internal_id, user.id)
+        else:
+            await _render_categories(query, internal_id, user.id)
+        return
+
     if data == "done":
-        await _render_sources(query, internal_id)
+        await _render_sources(query, internal_id, user.id)
         return
 
     if data.startswith("src:"):
@@ -259,7 +348,7 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             enabled,
             True,
         )
-        await _render_sources(query, internal_id)
+        await _render_sources(query, internal_id, user.id)
         return
 
     if not data.startswith("cat:"):
@@ -281,7 +370,7 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         enabled,
         True,
     )
-    await _render_categories(query, internal_id)
+    await _render_categories(query, internal_id, user.id)
 
 
 async def register_configured_channel(application: Application):
