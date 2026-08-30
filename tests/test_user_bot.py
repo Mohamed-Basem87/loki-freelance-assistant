@@ -96,11 +96,10 @@ def test_stopping_the_bot_deactivates_the_user_immediately():
         _restore_db(original)
 
 
-def test_unblocking_reactivates_the_user_even_without_a_fresh_start():
+def test_unblocking_does_not_reactivate_the_user_without_start():
     """
-    A user who unblocks the bot becomes reachable again the moment
-    Telegram reports the status change back to "member" -- this must
-    not require them to send /start again for "Is Active" to recover.
+    A user who unblocks the bot becomes reachable again, but Option A
+    keeps the subscription inactive until the user explicitly sends /start.
     """
     original = _isolated_db()
     try:
@@ -115,7 +114,7 @@ def test_unblocking_reactivates_the_user_even_without_a_fresh_start():
             )
             await my_chat_member_update(update, context=None)
 
-            assert _is_active(555222) == "1"
+            assert _is_active(555222) == "0"
 
         asyncio.run(run())
     finally:
@@ -230,6 +229,90 @@ def test_stop_command_deactivates_the_user():
             await stop_command(update, context=None)
 
             assert _is_active(555444) == "0"
+
+        asyncio.run(run())
+    finally:
+        _restore_db(original)
+
+
+def _subscription_events(telegram_user_id):
+    cursor = logger._conn.execute(
+        'SELECT "Telegram User ID", "First Name", "Username", '
+        '"Event Type", "Occurred At", "Trigger" '
+        'FROM subscription_events WHERE "Telegram User ID" = ? '
+        'ORDER BY rowid',
+        (str(telegram_user_id),),
+    )
+    return cursor.fetchall()
+
+
+def test_subscription_events_record_only_real_state_transitions():
+    """Repeated /start or /stop must not create duplicate analytics events."""
+    original = _isolated_db()
+    try:
+        async def run():
+            await logger.run(logger.ensure_user, 555555, "basem", "Basem")
+
+            changed = await logger.run(
+                logger.record_subscription_event,
+                555555, "Basem", "basem", True, "start"
+            )
+            assert changed is False
+
+            changed = await logger.run(
+                logger.record_subscription_event,
+                555555, "Basem", "basem", False, "stop"
+            )
+            assert changed is True
+
+            changed = await logger.run(
+                logger.record_subscription_event,
+                555555, "Basem", "basem", False, "stop"
+            )
+            assert changed is False
+
+            changed = await logger.run(
+                logger.record_subscription_event,
+                555555, "Basem", "basem", True, "start"
+            )
+            assert changed is True
+
+            changed = await logger.run(
+                logger.record_subscription_event,
+                555555, "Basem", "basem", True, "start"
+            )
+            assert changed is False
+
+            events = _subscription_events(555555)
+            assert len(events) == 2
+            assert events[0][0:4] == ("555555", "Basem", "basem", "unsubscribed")
+            assert events[0][5] == "stop"
+            assert events[1][0:4] == ("555555", "Basem", "basem", "subscribed")
+            assert events[1][5] == "start"
+            assert events[0][4]
+            assert events[1][4]
+            assert _is_active(555555) == "1"
+
+        asyncio.run(run())
+    finally:
+        _restore_db(original)
+
+
+def test_ensure_user_preserves_unsubscribed_state():
+    """Profile updates must never silently undo an explicit /stop."""
+    original = _isolated_db()
+    try:
+        async def run():
+            await logger.run(logger.ensure_user, 555666, "old", "Old")
+            await logger.run(
+                logger.record_subscription_event,
+                555666, "Old", "old", False, "stop"
+            )
+            assert _is_active(555666) == "0"
+
+            await logger.run(logger.ensure_user, 555666, "new", "New")
+            assert _is_active(555666) == "0"
+            assert _subscription_events(555666)[0][3] == "unsubscribed"
 
         asyncio.run(run())
     finally:

@@ -208,6 +208,16 @@ USER_NOTIFICATION_HEADERS = [
     "Next Attempt At",
 ]
 
+SUBSCRIPTION_EVENT_HEADERS = [
+    "Event ID",
+    "Telegram User ID",
+    "First Name",
+    "Username",
+    "Event Type",
+    "Occurred At",
+    "Trigger",
+]
+
 
 def _column_defs(headers, primary_key=None):
     defs = [f'"{header}" TEXT' for header in headers]
@@ -225,6 +235,7 @@ _CREATE_TABLES = (
     f'CREATE TABLE IF NOT EXISTS users ({_column_defs(USER_HEADERS, primary_key=0)});',
     f'CREATE TABLE IF NOT EXISTS categories ({_column_defs(CATEGORY_HEADERS, primary_key=0)});',
     f'CREATE TABLE IF NOT EXISTS user_notifications ({_column_defs(USER_NOTIFICATION_HEADERS, primary_key=0)});',
+    f'CREATE TABLE IF NOT EXISTS subscription_events ({_column_defs(SUBSCRIPTION_EVENT_HEADERS, primary_key=0)});',
     f'CREATE UNIQUE INDEX IF NOT EXISTS idx_user_notifications_job_user '
     f'ON user_notifications ("Job UUID", "User ID");',
 )
@@ -1049,9 +1060,13 @@ class DBLogger:
         )
         row = cursor.fetchone()
         if row:
+            # Do not reactivate an existing user here. ensure_user() is also
+            # called by /categories and /sources, and those commands must not
+            # silently undo an explicit /stop. Only /start is authoritative
+            # for re-subscribing a user.
             self._conn.execute(
                 'UPDATE users SET "Username" = ?, "First Name" = ?, '
-                '"Destination Type" = "user", "Is Active" = "1", "Updated At" = ? '
+                '"Destination Type" = "user", "Updated At" = ? '
                 'WHERE "User ID" = ?',
                 (username or "", first_name or "", now, row[0]),
             )
@@ -1069,6 +1084,92 @@ class DBLogger:
         if save:
             self.save()
         return user_id
+
+    def record_subscription_event(
+        self,
+        telegram_user_id,
+        first_name="",
+        username="",
+        active=True,
+        trigger="",
+        save=True,
+    ):
+        """Record a subscription transition and return whether it changed."""
+        chat_id = str(telegram_user_id)
+        now = datetime.now().isoformat()
+        desired = "1" if active else "0"
+
+        row = self._conn.execute(
+            'SELECT "Is Active" FROM users WHERE "Telegram User ID" = ?',
+            (chat_id,),
+        ).fetchone()
+
+        if row is None:
+            self.ensure_user(
+                telegram_user_id,
+                username=username,
+                first_name=first_name,
+                save=False,
+            )
+            self._conn.execute(
+                'UPDATE users SET "Is Active" = ?, "Username" = ?, "First Name" = ?, '
+                '"Updated At" = ? WHERE "Telegram User ID" = ?',
+                (desired, username or "", first_name or "", now, chat_id),
+            )
+            self._conn.execute(
+                'INSERT INTO subscription_events '
+                '("Event ID", "Telegram User ID", "First Name", "Username", '
+                '"Event Type", "Occurred At", "Trigger") '
+                'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (
+                    str(uuid.uuid4()),
+                    chat_id,
+                    first_name or "",
+                    username or "",
+                    "subscribed" if active else "unsubscribed",
+                    now,
+                    trigger or "",
+                ),
+            )
+            if save:
+                self.save()
+            return True
+
+        current = str(row[0])
+
+        if current == desired:
+            self._conn.execute(
+                'UPDATE users SET "Username" = ?, "First Name" = ?, '
+                '"Updated At" = ? WHERE "Telegram User ID" = ?',
+                (username or "", first_name or "", now, chat_id),
+            )
+            if save:
+                self.save()
+            return False
+
+        self._conn.execute(
+            'UPDATE users SET "Is Active" = ?, "Username" = ?, "First Name" = ?, '
+            '"Updated At" = ? WHERE "Telegram User ID" = ?',
+            (desired, username or "", first_name or "", now, chat_id),
+        )
+        self._conn.execute(
+            'INSERT INTO subscription_events '
+            '("Event ID", "Telegram User ID", "First Name", "Username", '
+            '"Event Type", "Occurred At", "Trigger") '
+            'VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (
+                str(uuid.uuid4()),
+                chat_id,
+                first_name or "",
+                username or "",
+                "subscribed" if active else "unsubscribed",
+                now,
+                trigger or "",
+            ),
+        )
+        if save:
+            self.save()
+        return True
 
     def ensure_channel_destination(self, telegram_chat_id, title="", save=True):
         """Register a Telegram channel as a normal subscription destination."""

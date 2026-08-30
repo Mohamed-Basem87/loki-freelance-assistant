@@ -105,6 +105,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user.username or "",
         user.first_name or "",
     )
+    await logger.run(
+        logger.record_subscription_event,
+        user.id,
+        user.first_name or "",
+        user.username or "",
+        True,
+        "start",
+    )
 
     await update.message.reply_text(
         "Welcome to Loki Jobs 👋\n\n"
@@ -168,8 +176,20 @@ async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user is None or update.effective_chat is None:
         return
 
-    await logger.run(logger.ensure_user, user.id, user.username or "", user.first_name or "")
-    await logger.run(logger.set_destination_active, user.id, False)
+    await logger.run(
+        logger.ensure_user,
+        user.id,
+        user.username or "",
+        user.first_name or "",
+    )
+    await logger.run(
+        logger.record_subscription_event,
+        user.id,
+        user.first_name or "",
+        user.username or "",
+        False,
+        "stop",
+    )
 
     try:
         await update.message.reply_text(
@@ -476,19 +496,17 @@ async def my_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TY
     React the moment a user's relationship with the bot changes, instead
     of only finding out reactively the next time a send happens to fail.
 
-    Telegram pushes a my_chat_member update to the bot immediately when a
-    user blocks it, presses "Stop" in the chat menu, or unblocks/restarts
-    it -- all *before* the bot ever attempts another send. Without this
+    Telegram pushes a my_chat_member update to the bot when a user
+    blocks/leaves it or becomes reachable again. Without this
     handler, "Is Active" only ever gets corrected by _send_one's Forbidden
     handler above, which means a user who stops the bot and then never
     happens to match another notification stays "Is Active"="1" in the DB
     indefinitely, even though they are not actually reachable.
 
-    Telegram represents both "Stop Bot" and an outright account-level
-    block identically here (new_chat_member.status becomes "kicked",
-    surfaced by this python-telegram-bot version as
-    ChatMemberStatus.BANNED) -- there is no way, or need, to distinguish
-    them; either way the chat is no longer reachable.
+    Telegram can report a blocked/left private chat as an unreachable
+    membership state. That is a reachability change, not a new subscription
+    event. Explicit subscription analytics are recorded only by /start and
+    /stop.
 
     Scoped to private 1:1 chats only (update.effective_chat.type ==
     "private") so a status change on the configured public channel
@@ -510,15 +528,9 @@ async def my_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TY
             False,
         )
     elif new_status == ChatMemberStatus.MEMBER:
-        # Unblocked/restarted -- reachable again even before any /start
-        # command arrives. ensure_user() (triggered by /start) already
-        # does this too; this just catches it slightly earlier and
-        # covers the case where the user never re-sends /start at all.
-        await logger.run(
-            logger.set_destination_active,
-            chat_id,
-            True,
-        )
+        # Becoming reachable again does not mean the user subscribed again.
+        # Only /start reactivates the subscription.
+        return
 
 
 async def user_notification_worker():
