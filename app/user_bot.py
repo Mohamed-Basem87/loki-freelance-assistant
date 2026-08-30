@@ -4,9 +4,15 @@ import asyncio
 from datetime import datetime, timedelta
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import ParseMode
+from telegram.constants import ChatMemberStatus, ParseMode
 from telegram.error import Forbidden, RetryAfter, TelegramError
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    ChatMemberHandler,
+    CommandHandler,
+    ContextTypes,
+)
 
 from app.categories.registry import enabled_categories
 from app.config import BOT_CHANNEL_CATEGORY_ID, BOT_CHANNEL_ID, BOT_TOKEN
@@ -437,6 +443,56 @@ async def _send_one(notification):
         )
 
 
+async def my_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    React the moment a user's relationship with the bot changes, instead
+    of only finding out reactively the next time a send happens to fail.
+
+    Telegram pushes a my_chat_member update to the bot immediately when a
+    user blocks it, presses "Stop" in the chat menu, or unblocks/restarts
+    it -- all *before* the bot ever attempts another send. Without this
+    handler, "Is Active" only ever gets corrected by _send_one's Forbidden
+    handler above, which means a user who stops the bot and then never
+    happens to match another notification stays "Is Active"="1" in the DB
+    indefinitely, even though they are not actually reachable.
+
+    Telegram represents both "Stop Bot" and an outright account-level
+    block identically here (new_chat_member.status becomes "kicked",
+    surfaced by this python-telegram-bot version as
+    ChatMemberStatus.BANNED) -- there is no way, or need, to distinguish
+    them; either way the chat is no longer reachable.
+
+    Scoped to private 1:1 chats only (update.effective_chat.type ==
+    "private") so a status change on the configured public channel
+    destination -- a different, admin-membership concept entirely -- is
+    never misread as a user unsubscribing.
+    """
+
+    chat = update.effective_chat
+    if chat is None or chat.type != "private":
+        return
+
+    new_status = update.my_chat_member.new_chat_member.status
+    chat_id = str(chat.id)
+
+    if new_status in (ChatMemberStatus.BANNED, ChatMemberStatus.LEFT):
+        await logger.run(
+            logger.set_destination_active,
+            chat_id,
+            False,
+        )
+    elif new_status == ChatMemberStatus.MEMBER:
+        # Unblocked/restarted -- reachable again even before any /start
+        # command arrives. ensure_user() (triggered by /start) already
+        # does this too; this just catches it slightly earlier and
+        # covers the case where the user never re-sends /start at all.
+        await logger.run(
+            logger.set_destination_active,
+            chat_id,
+            True,
+        )
+
+
 async def user_notification_worker():
     semaphore = asyncio.Semaphore(DELIVERY_CONCURRENCY)
 
@@ -476,4 +532,11 @@ def create_user_bot_application():
     application.add_handler(CommandHandler("categories", categories_command))
     application.add_handler(CommandHandler("sources", sources_command))
     application.add_handler(CallbackQueryHandler(category_callback))
+    # ChatMemberHandler.MY_CHAT_MEMBER: updates about the bot's own
+    # membership status (blocked/stopped/unblocked), not other members'
+    # statuses in a group -- Telegram sends these by default without
+    # needing an explicit allowed_updates change on start_polling().
+    application.add_handler(
+        ChatMemberHandler(my_chat_member_update, ChatMemberHandler.MY_CHAT_MEMBER)
+    )
     return application
