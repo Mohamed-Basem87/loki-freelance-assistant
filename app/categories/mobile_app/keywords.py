@@ -220,6 +220,14 @@ NEGATIVE_KEYWORDS = {
     "account_services": {
         "core": {
             "app transfer": 6,
+            # Account opening is administration, not application development.
+            # Arabic forms are deliberately narrow: two delivered FPs
+            # (mostaql:1273314 in run 28 and 1273337 in run 29) show that
+            # Apple/App Store platform positives otherwise notify directly.
+            # Mixed signals route these jobs to arbitration rather than
+            # hard-rejecting genuine deployment or release-engineering work.
+            "فتح حساب ابل ستور": 8,
+            "فتح حساب في apple developer": 8,
         },
         "supporting": {},
     },
