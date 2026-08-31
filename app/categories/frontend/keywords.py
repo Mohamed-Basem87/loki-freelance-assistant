@@ -238,6 +238,14 @@ POSITIVE_KEYWORDS = {
             "landing page": 6,
             # Arabic: "landing page".
             "صفحة هبوط": 6,
+            # Arabic plural "landing pages" (2026-08-31 run 28): Salla
+            # landing-page BUILD class. mostaql:1273301 'انشاء صفحات هبوط
+            # على سلة' + 46244 'إنشاء 5 صفحات هبوط احترافية على منصة سلة
+            # لحملات إعلانية' - genuine landing-page builds, both silently
+            # rejected (plural form uncovered; صففة singular core can't
+            # match). Sibling of singular صفحة هبوط (6). CRO/store-optimizer
+            # gigs (1270931/46590) already handled deterministically.
+            "صفحات هبوط": 6,
             # Exam/testing platform builds (English).
             "exam platform": 6,
             "web app": 6,

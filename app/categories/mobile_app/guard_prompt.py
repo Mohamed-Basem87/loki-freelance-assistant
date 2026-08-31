@@ -84,6 +84,16 @@ REJECT when the PRIMARY DELIVERABLE is:
 - Backend API development (without mobile app)
 - Database design and management
 - DevOps and infrastructure
+- Developer-account / app-store account ADMINISTRATION: renewing an Apple
+  Developer Program (or Google Play) developer account, fixing membership
+  or payment on that account, changing Account Holder / team ID / developer
+  role-transfer details, D-U-N-S / account-conversion, or any config-only
+  handling of the developer account or store account. This is account
+  administration, NOT app development -- do_not_notify even when the post
+  mentions Apple/developer/account and even when it references an existing
+  app waiting to be published. (Rejecting this does NOT reject genuine
+  deployment/release engineering of an app that is being built/signed in
+  this job -- that stays Approved.)
 - Graphic design or UI/UX design (non-mobile)
 - Education or tutoring
 - Testing, QA, manual testing, beta testing, or test automation of any kind
@@ -96,6 +106,13 @@ The distinction is the PRIMARY DELIVERABLE:
 - Mobile-responsive web design = REJECT (that's web development).
 - Any testing, QA, beta testing, manual testing, or test automation (mobile, web, or other) = REJECT — testing services are not development.
 - Web testing/automation = REJECT.
+
+ACCOUNT-ADMIN vs DEPLOYMENT: renewing/repairing the developer-account
+membership, fixing its payment, or changing its Account Holder / team ID is
+ACCOUNT ADMINISTRATION = REJECT. Code signing, provisioning profiles, App
+Store submission and release CI for an app actually being built/signed in
+this job is DEPLOYMENT ENGINEERING = ACCEPT. Ask what the client pays for:
+fixing the developer account itself vs. building/releasing the app.
 
 If the description is ambiguous after this analysis, lean toward
 rejecting only when the deliverable clearly falls outside developing or
