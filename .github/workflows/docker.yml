@@ -113,3 +113,18 @@ jobs:
             # database/, .env) is never touched or overwritten here; it is
             # only bind-mounted into the container by docker-compose.yml.
             docker compose up -d --pull always
+
+            # Old :latest and :<sha> images pile up on the host after every
+            # deploy (nothing purges them), which is why Portainer shows
+            # dozens of images / 12 GB even after pruning. Drop all dangling
+            # images and any locally-orphaned tag of this repo older than the
+            # image currently in use by the running container.
+            LOCAL_TAG="mohamedbasem2/loki-freelance-assistant:latest"
+            IN_USE_TAG="$(docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q loki)" 2>/dev/null || echo '')"
+            docker images "mohamedbasem2/loki-freelance-assistant*" --format '{{.Repository}}:{{.Tag}} {{.ID}}' | while read -r img id; do
+              tag="${img% *}"
+              if [ "$tag" != "$LOCAL_TAG" ] && [ "$tag" != "$IN_USE_TAG" ]; then
+                docker rmi "$img" >/dev/null 2>&1 || true
+              fi
+            done
+            docker image prune -f
