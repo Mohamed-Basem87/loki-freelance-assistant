@@ -173,6 +173,12 @@ POSITIVE_KEYWORDS = {
             # Recovers the Arabic singular website-build class
             # (انشاء موقع / انشاء موقع الكتروني).
             "انشاء موقع": 7,
+            # Arabic "make a website" build verb (2026-08-31 run 27):
+            # user-flagged nafezly:54287 'مطلوب عمل موقع Portfolio' + 11
+            # sibling site-build FNs (bakery/books/jewelry/landing/company)
+            # rejected for missing vocabulary; 'موقع' stays NOISE by design.
+            # Zero accepted collateral (1 accepted 9987 = legit frontend).
+            "عمل موقع": 7,
             "الاعلانات المبوبة": 7,
             # Compound verb-chain forms of تصميم متجر (verb + وتجهيز).
             "تصميم وتجهيز متجر": 7,
@@ -210,6 +216,14 @@ POSITIVE_KEYWORDS = {
             "موقع إلكتروني": 6,
             "مواقع إلكترونية": 6,
             "تصميم موقع": 6,
+            # Arabic 'design & program a website' collocation (2026-08-31):
+            # cafe site FNs (11501/11522), contractor, restaurant-with-menu
+            # (6019/6020), WordPress 8534 sister of accepted 8532.
+            # Normalized: ة→ه folds 'تصميم وبرمجة' to 'تصميم وبرمجه'.
+            "تصميم وبرمجة موقع": 7,
+            # Arabic 'design & develop a website' collocation (2026-08-31):
+            # FNs: 1857/2425/2991 (company/corp sites), 1405 (tourism).
+            "تصميم وتطوير موقع": 7,
             "تطوير مواقع": 6,
             "تصميم مواقع": 6,
             "مطور مواقع": 6,

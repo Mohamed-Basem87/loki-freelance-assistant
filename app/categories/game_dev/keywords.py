@@ -64,6 +64,19 @@ POSITIVE_KEYWORDS = {
             "بناء لعبة": 8,
             "انشاء لعبة": 8,
             "مبرمج ألعاب": 8,
+            # Arabic 'design & develop a game' collocation (2026-08-31):
+            # nafezly:54290/35466 'تصميم وتطوير لعبة موبايل بسيطة' — a
+            # straightforward mobile Android game (design, characters,
+            # programming, levels, sounds) — rejected as needs_gemini->none
+            # because the و-prefixed form never formed under \b boundary
+            # matching. 'تصميم وتطوير لعبه' (ة→ه): 2 hits, both FNs.
+            "تصميم وتطوير لعبة": 8,
+            # Arabic 'mobile game' collocation (2026-08-31): 'لعبة موبايل'
+            # normalizes to 'لعبه موبايل'. 5 hits: 4 genuine mobile-game
+            # builds (could be devs/art), 1 FP (a coaching ad). Recovering
+            # the build class at supporting weight so true builds route to
+            # arbitration while ambiguous ones don't blind-notify.
+            "لعبة موبايل": 6,
         },
         "supporting": {
             "game level": 4,

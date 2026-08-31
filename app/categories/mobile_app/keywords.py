@@ -115,12 +115,30 @@ POSITIVE_KEYWORDS = {
             # recovered job). Extends the voice-chat family to text chat.
             "تطبيق دردشة": 8,
             "دردشة جماعية": 7,
+            # Arabic transliteration "mobile application" (2026-08-31):
+            # mostaql:1273183 'تصميم واجهة موبايل ابلكيشن لمشاركة وتأجير
+            # السيارات' (XRide car-sharing app) was rejected for missing
+            # vocabulary; 1 hit, 0 accepted, 0 innocent collateral.
+            "موبايل ابلكيشن": 8,
+            # Arabic "educational app" build class (2026-08-31):
+            # nafezly:54310/35488 'تطبيق لتعليم التاريخ العسكري' —
+            # futuristic Arabic history app (sections, search, cards,
+            # responsive, Arabic UI) — genuine mobile app build rejected
+            # by education negative. 'تطبيق لتعليم': 2 hits, both FNs.
+            # 'تطبيق تعليمي': 5 hits, 2 accepted (9028/9634 mobile_app),
+            # 3 rejected including genuine build 11283 PWA app.
+            "تطبيق لتعليم": 7,
+            "تطبيق تعليمي": 7,
         },
         "supporting": {
             "app development": 4,
             "app developer": 4,
             "تطبيق": 2,
             "تطبيقات": 2,
+            # Arabic transliteration "application" (2026-08-31):
+            # companion to "موبايل ابلكيشن" core; supporting-only so
+            # context-dependent, not strong standalone signal.
+            "ابلكيشن": 4,
             # Arabic web-app collocation (2026-08-26 audit): not in app_types
             # core; genuine mobile/web hybrid builds.
             "تطبيق ويب": 6,
