@@ -94,7 +94,7 @@ async def fetch_projects(
     async with session.get(url) as response:
         response.raise_for_status()
         varibale= await response.json()
-        print(response.json())
+        print(varibale)
         return varibale
 
 
