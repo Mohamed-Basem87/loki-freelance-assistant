@@ -112,7 +112,15 @@ def test_groq_rotates_across_models_on_failure(monkeypatch):
 
     assert result["decision"] == "accept"
     assert len(fake_client.completions.calls) == 3
-    assert [c["model"] for c in fake_client.completions.calls] == groq.GROQ_MODELS
+    # Only the first 3 models are expected to have been tried -- the
+    # 3rd call succeeds, so the loop stops there regardless of how
+    # many more models GROQ_MODELS happens to have configured after
+    # it (not hardcoding the full list length here, since that's an
+    # operator config choice, not something this test should pin).
+    assert (
+        [c["model"] for c in fake_client.completions.calls]
+        == groq.GROQ_MODELS[:3]
+    )
 
 
 def test_groq_raises_after_all_models_fail(monkeypatch):

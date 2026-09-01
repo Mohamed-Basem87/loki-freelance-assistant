@@ -38,10 +38,10 @@ NOTIFICATION_GUARD_API_KEYS = [
 # Same rotation strategy as the main Groq LLM subsystem.
 NOTIFICATION_GUARD_MODELS = [
     "openai/gpt-oss-120b",
-    "llama-3.3-70b-versatile",
     "qwen/qwen3.6-27b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
 ]
-
 
 NOTIFICATION_GUARD_MAX_RETRIES = int(
     os.getenv(

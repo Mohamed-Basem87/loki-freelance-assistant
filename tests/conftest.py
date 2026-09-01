@@ -46,7 +46,10 @@ import).
 import os
 from pathlib import Path
 
+import pytest
 from dotenv import load_dotenv
+
+from app.llm import rate_limit_tracker
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -73,3 +76,21 @@ _TEST_ENV_DEFAULTS = {
 
 for _name, _value in _TEST_ENV_DEFAULTS.items():
     os.environ.setdefault(_name, _value)
+
+
+@pytest.fixture(autouse=True)
+def _reset_llm_rate_limit_cooldowns():
+    """app.llm.rate_limit_tracker (see tests/test_llm_gemini.py,
+    tests/test_notification_guard.py) is process-lifetime, in-memory,
+    global state by design -- see its own module docstring for why.
+    That's the right choice for the running bot, but across a test
+    session it means one test's simulated 429/model-not-found failure
+    could leave a candidate id "in cooldown" for a later, unrelated
+    test that happens to reuse the same positional id (e.g. both
+    construct a 2-client fake rotation and both call it "key #1").
+    Clearing before *and* after each test keeps that state from ever
+    leaking across test boundaries in either direction.
+    """
+    rate_limit_tracker.clear()
+    yield
+    rate_limit_tracker.clear()

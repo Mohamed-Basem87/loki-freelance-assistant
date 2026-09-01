@@ -7,6 +7,7 @@ from tenacity import (
     wait_fixed,
 )
 
+from app.llm import rate_limit_tracker
 from app.notification_guard.config import (
     NOTIFICATION_GUARD_API_KEYS,
     NOTIFICATION_GUARD_MODELS,
@@ -84,6 +85,77 @@ class GroqNotificationGuard:
         # Kept for compatibility with the existing guard logger.
         self.model = self.models[0] if self.models else ""
 
+    def _candidates(self):
+        """(client_index, client, model) triples to try, in the usual
+        key-major/model-minor order, with any candidate still in a
+        rate-limit or permanent-failure cooldown (see
+        app.llm.rate_limit_tracker) skipped -- unless *every*
+        candidate is currently in cooldown, in which case the full,
+        unfiltered list is returned (see filter_available's own
+        docstring for why: attempting a call that might still fail
+        beats hard-refusing to try anything over a cooldown estimate
+        that could simply be wrong).
+
+        Skipping matters a lot here specifically: this rotation is
+        the notification guard, called once per keyword-direct-match
+        job, every single one -- an exhausted daily-token-budget model
+        (as opposed to a per-request rate limit) fails identically for
+        every remaining job that day, so re-attempting it from
+        scratch each time is pure wasted latency on a request that
+        cannot succeed until the provider's quota window resets.
+        """
+        all_candidates = [
+            (client_index, client, model)
+            for client_index, client in enumerate(self.clients)
+            for model in self.models
+        ]
+        all_ids = [
+            f"groq-guard-key{client_index + 1}-{model}"
+            for client_index, _, model in all_candidates
+        ]
+        available_ids = set(rate_limit_tracker.filter_available(all_ids))
+
+        skipped = len(all_ids) - len(available_ids)
+        if skipped:
+            print(
+                f"Skipping {skipped} Groq guard key/model combination(s) "
+                f"still in cooldown from a recent failure."
+            )
+
+        return [
+            (client_index, client, model)
+            for (client_index, client, model), candidate_id in zip(
+                all_candidates, all_ids
+            )
+            if candidate_id in available_ids
+        ]
+
+    @staticmethod
+    def _record_failure(candidate_id: str, client_index: int, model: str, error: Exception):
+        if _is_transient(error):
+            cooldown = rate_limit_tracker.mark_rate_limited(
+                candidate_id, str(error)
+            )
+            print(
+                f"Groq guard key #{client_index + 1}, model '{model}' "
+                f"failed: {error}\n"
+                f"Marking it unavailable for {cooldown:.0f}s before "
+                f"it's tried again."
+            )
+        else:
+            # Not a rate limit -- e.g. an unrecognized model name
+            # (404 model_not_found) -- so waiting and retrying it on
+            # every future call would fail identically forever until
+            # the config itself is fixed. See mark_permanently_broken.
+            rate_limit_tracker.mark_permanently_broken(candidate_id)
+            print(
+                f"Groq guard key #{client_index + 1}, model '{model}' "
+                f"failed: {error}\n"
+                f"This does not look like a rate limit -- marking it "
+                f"unavailable for a while rather than retrying it on "
+                f"every future job."
+            )
+
     def evaluate(
         self,
         title: str,
@@ -93,53 +165,51 @@ class GroqNotificationGuard:
 
         last_exception = None
 
-        for client_index, client in enumerate(self.clients):
+        for client_index, client, model in self._candidates():
 
-            for model in self.models:
+            candidate_id = f"groq-guard-key{client_index + 1}-{model}"
 
-                print(
-                    f"Using Groq guard key #{client_index + 1}, model: {model}"
+            print(
+                f"Using Groq guard key #{client_index + 1}, model: {model}"
+            )
+
+            try:
+
+                response = _generate_response(
+                    client,
+                    model,
+                    title,
+                    description,
+                    system_prompt,
                 )
 
-                try:
+                content = (
+                    response
+                    .choices[0]
+                    .message
+                    .content
+                )
 
-                    response = _generate_response(
-                        client,
-                        model,
-                        title,
-                        description,
-                        system_prompt,
-                    )
+                decision = self._parse_decision(
+                    content
+                )
 
-                    content = (
-                        response
-                        .choices[0]
-                        .message
-                        .content
-                    )
+                # A valid decision is final.
+                # Do NOT rotate models after a valid
+                # notify/do_not_notify response.
+                return decision
 
-                    decision = self._parse_decision(
-                        content
-                    )
+            except Exception as e:
 
-                    # A valid decision is final.
-                    # Do NOT rotate models after a valid
-                    # notify/do_not_notify response.
-                    return decision
+                self._record_failure(candidate_id, client_index, model, e)
 
-                except Exception as e:
+                last_exception = e
 
-                    print(
-                        f"Groq guard key #{client_index + 1}, model '{model}' failed: {e}"
-                    )
+                # Continue to the next model regardless
+                # of failure type, matching the main
+                # project's Groq behavior.
 
-                    last_exception = e
-
-                    # Continue to the next model regardless
-                    # of failure type, matching the main
-                    # project's Groq behavior.
-
-                    continue
+                continue
 
         if last_exception:
             raise last_exception
@@ -193,45 +263,43 @@ class GroqNotificationGuard:
 
         last_exception = None
 
-        for client_index, client in enumerate(self.clients):
+        for client_index, client, model in self._candidates():
 
-            for model in self.models:
+            candidate_id = f"groq-guard-key{client_index + 1}-{model}"
 
-                print(
-                    f"Using Groq guard key #{client_index + 1}, model: {model}"
+            print(
+                f"Using Groq guard key #{client_index + 1}, model: {model}"
+            )
+
+            try:
+
+                response = _generate_response(
+                    client,
+                    model,
+                    title,
+                    description,
+                    system_prompt,
                 )
 
-                try:
+                content = (
+                    response
+                    .choices[0]
+                    .message
+                    .content
+                )
 
-                    response = _generate_response(
-                        client,
-                        model,
-                        title,
-                        description,
-                        system_prompt,
-                    )
+                return self._parse_decision_with_category(
+                    content,
+                    original_category_id,
+                )
 
-                    content = (
-                        response
-                        .choices[0]
-                        .message
-                        .content
-                    )
+            except Exception as e:
 
-                    return self._parse_decision_with_category(
-                        content,
-                        original_category_id,
-                    )
+                self._record_failure(candidate_id, client_index, model, e)
 
-                except Exception as e:
+                last_exception = e
 
-                    print(
-                        f"Groq guard key #{client_index + 1}, model '{model}' failed: {e}"
-                    )
-
-                    last_exception = e
-
-                    continue
+                continue
 
         if last_exception:
             raise last_exception

@@ -2,6 +2,7 @@ from google import genai
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
 
 from app.config import GEMINI_API_KEYS
+from app.llm import rate_limit_tracker
 from app.llm.utils import build_prompt, build_arbitration_prompt, parse_response, parse_arbitration_response
 
 
@@ -69,7 +70,25 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
     failures = []
     last_exception = None
 
+    # Candidate ids are positional ("gemini-key1", "gemini-key2", ...)
+    # rather than the raw API key itself -- stable across calls for
+    # the lifetime of this process (CLIENTS is built once at import
+    # time in a fixed order) without ever putting a real secret into
+    # the tracker's in-memory keys.
+    all_ids = [f"gemini-key{i}" for i in range(1, len(CLIENTS) + 1)]
+    available_ids = set(rate_limit_tracker.filter_available(all_ids))
+    skipped = len(all_ids) - len(available_ids)
+    if skipped:
+        print(
+            f"Skipping {skipped} Gemini key(s) still in cooldown "
+            f"from a recent rate-limit/quota failure."
+        )
+
     for index, client in enumerate(CLIENTS, start=1):
+
+        candidate_id = f"gemini-key{index}"
+        if candidate_id not in available_ids:
+            continue
 
         print(f"Using Gemini API key #{index}")
 
@@ -88,13 +107,24 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
             failures.append(f"key #{index}: {e}")
             last_exception = e
 
+            if _is_transient(e):
+                cooldown = rate_limit_tracker.mark_rate_limited(
+                    candidate_id, str(e)
+                )
+                print(
+                    f"Gemini key #{index} failed: {e}\n"
+                    f"Marking key #{index} unavailable for "
+                    f"{cooldown:.0f}s before it's tried again."
+                )
+            else:
+                print(f"Gemini key #{index} failed: {e}")
+
             # Always try the remaining keys, regardless of *why* this
             # one failed -- a malformed/unparseable response from key
             # #1 says nothing about whether key #2 would work, so
             # there's no good reason to give up on the whole provider
             # over it. We only stop early once every key/model has
             # been tried (see the loop ending below), same as Groq.
-            print(f"Gemini key #{index} failed: {e}")
             print("Trying next key..." if index < len(CLIENTS) else "No more Gemini keys.")
             continue
 
@@ -120,7 +150,21 @@ def evaluate_category_arbitration(
     failures = []
     last_exception = None
 
+    all_ids = [f"gemini-key{i}" for i in range(1, len(CLIENTS) + 1)]
+    available_ids = set(rate_limit_tracker.filter_available(all_ids))
+    skipped = len(all_ids) - len(available_ids)
+    if skipped:
+        print(
+            f"Skipping {skipped} Gemini key(s) still in cooldown "
+            f"from a recent rate-limit/quota failure."
+        )
+
     for index, client in enumerate(CLIENTS, start=1):
+
+        candidate_id = f"gemini-key{index}"
+        if candidate_id not in available_ids:
+            continue
+
         print(f"Using Gemini API key #{index} for category arbitration")
         try:
             response = _generate_response(client, prompt, system_prompt)
@@ -128,7 +172,19 @@ def evaluate_category_arbitration(
         except Exception as e:
             failures.append(f"key #{index}: {e}")
             last_exception = e
-            print(f"Gemini arbitration key #{index} failed: {e}")
+
+            if _is_transient(e):
+                cooldown = rate_limit_tracker.mark_rate_limited(
+                    candidate_id, str(e)
+                )
+                print(
+                    f"Gemini arbitration key #{index} failed: {e}\n"
+                    f"Marking key #{index} unavailable for "
+                    f"{cooldown:.0f}s before it's tried again."
+                )
+            else:
+                print(f"Gemini arbitration key #{index} failed: {e}")
+
             continue
 
     if failures:
