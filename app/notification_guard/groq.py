@@ -132,9 +132,16 @@ class GroqNotificationGuard:
 
     @staticmethod
     def _record_failure(candidate_id: str, client_index: int, model: str, error: Exception):
-        if _is_transient(error):
+        """See app.llm.groq._record_failure for the full reasoning --
+        identical three-way classification (quota exhaustion / momentary
+        overload / permanent), applied here to the guard's key+model
+        rotation instead of the main pipeline's model-only rotation.
+        """
+        error_text = str(error)
+
+        if rate_limit_tracker.is_quota_exhaustion(error_text):
             cooldown = rate_limit_tracker.mark_rate_limited(
-                candidate_id, str(error)
+                candidate_id, error_text
             )
             print(
                 f"Groq guard key #{client_index + 1}, model '{model}' "
@@ -142,18 +149,27 @@ class GroqNotificationGuard:
                 f"Marking it unavailable for {cooldown:.0f}s before "
                 f"it's tried again."
             )
+        elif _is_transient(error):
+            # Overload/timeout -- momentary, not informative about
+            # this key/model's own state, so it is deliberately left
+            # untouched in the cooldown tracker rather than marked.
+            print(
+                f"Groq guard key #{client_index + 1}, model '{model}' "
+                f"failed (transient, not quota-related, not marked "
+                f"unavailable): {error}"
+            )
         else:
-            # Not a rate limit -- e.g. an unrecognized model name
-            # (404 model_not_found) -- so waiting and retrying it on
-            # every future call would fail identically forever until
-            # the config itself is fixed. See mark_permanently_broken.
+            # Not a rate limit or an overload -- e.g. an unrecognized
+            # model name (404 model_not_found) -- so waiting and
+            # retrying it on every future call would fail identically
+            # forever until the config itself is fixed.
             rate_limit_tracker.mark_permanently_broken(candidate_id)
             print(
                 f"Groq guard key #{client_index + 1}, model '{model}' "
                 f"failed: {error}\n"
-                f"This does not look like a rate limit -- marking it "
-                f"unavailable for a while rather than retrying it on "
-                f"every future job."
+                f"This does not look like a rate limit or transient "
+                f"overload -- marking it unavailable for a while "
+                f"rather than retrying it on every future job."
             )
 
     def evaluate(
@@ -193,6 +209,8 @@ class GroqNotificationGuard:
                 decision = self._parse_decision(
                     content
                 )
+
+                rate_limit_tracker.mark_success(candidate_id)
 
                 # A valid decision is final.
                 # Do NOT rotate models after a valid
@@ -287,6 +305,8 @@ class GroqNotificationGuard:
                     .message
                     .content
                 )
+
+                rate_limit_tracker.mark_success(candidate_id)
 
                 return self._parse_decision_with_category(
                     content,

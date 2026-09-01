@@ -100,6 +100,7 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
                 system_prompt,
             )
 
+            rate_limit_tracker.mark_success(candidate_id)
             return parse_response(response.text)
 
         except Exception as e:
@@ -107,7 +108,7 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
             failures.append(f"key #{index}: {e}")
             last_exception = e
 
-            if _is_transient(e):
+            if rate_limit_tracker.is_quota_exhaustion(str(e)):
                 cooldown = rate_limit_tracker.mark_rate_limited(
                     candidate_id, str(e)
                 )
@@ -117,6 +118,12 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
                     f"{cooldown:.0f}s before it's tried again."
                 )
             else:
+                # Covers both a momentary 503/overload (still worth
+                # retrying fresh on the *next* call -- no reason to
+                # believe this key is specifically bad) and a one-off
+                # malformed/unparseable response, which says nothing
+                # about whether this key will work for the next job.
+                # Neither gets marked in the cooldown tracker.
                 print(f"Gemini key #{index} failed: {e}")
 
             # Always try the remaining keys, regardless of *why* this
@@ -168,12 +175,13 @@ def evaluate_category_arbitration(
         print(f"Using Gemini API key #{index} for category arbitration")
         try:
             response = _generate_response(client, prompt, system_prompt)
+            rate_limit_tracker.mark_success(candidate_id)
             return parse_arbitration_response(response.text, allowed)
         except Exception as e:
             failures.append(f"key #{index}: {e}")
             last_exception = e
 
-            if _is_transient(e):
+            if rate_limit_tracker.is_quota_exhaustion(str(e)):
                 cooldown = rate_limit_tracker.mark_rate_limited(
                     candidate_id, str(e)
                 )

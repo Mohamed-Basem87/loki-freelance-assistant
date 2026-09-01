@@ -61,25 +61,45 @@ def _record_failure(model: str, error: Exception):
     re-paying the request (and, for transient errors, tenacity's
     retry-and-wait) on every single job that needs Groq fallback for
     the rest of the cooldown window. See app.llm.rate_limit_tracker.
+
+    Three-way classification, in order:
+      1. Quota exhaustion (429-shaped, per-minute or per-day) --
+         genuinely can't succeed again on this model until its quota
+         window clears, so it's marked in the cooldown tracker.
+      2. Transient infra overload (503-shaped, "the model is
+         overloaded") -- says nothing about whether this model will
+         still be bad a moment later, so it is NOT marked at all;
+         already retried once within this call via tenacity, and the
+         next job's call will simply try it fresh.
+      3. Anything else (e.g. an unrecognized/decommissioned model
+         name) -- can't self-resolve by waiting, so it gets a long
+         cooldown until a human fixes the config.
     """
+    error_text = str(error)
     candidate_id = f"groq-model-{model}"
-    if _is_transient(error):
-        cooldown = rate_limit_tracker.mark_rate_limited(candidate_id, str(error))
+
+    if rate_limit_tracker.is_quota_exhaustion(error_text):
+        cooldown = rate_limit_tracker.mark_rate_limited(candidate_id, error_text)
         print(
             f"Groq model '{model}' failed: {error}\n"
             f"Marking '{model}' unavailable for {cooldown:.0f}s "
             f"before it's tried again."
         )
+    elif _is_transient(error):
+        # Overload/timeout -- momentary, not informative about this
+        # model's own state, so it is deliberately left untouched in
+        # the cooldown tracker rather than marked either way.
+        print(
+            f"Groq model '{model}' failed (transient, not quota-"
+            f"related, not marked unavailable): {error}"
+        )
     else:
-        # Not a rate limit -- e.g. an unrecognized/decommissioned
-        # model name -- so retrying it on every future call would
-        # fail identically forever until the config itself is fixed.
         rate_limit_tracker.mark_permanently_broken(candidate_id)
         print(
             f"Groq model '{model}' failed: {error}\n"
-            f"This does not look like a rate limit -- marking '{model}' "
-            f"unavailable for a while rather than retrying it on every "
-            f"future job."
+            f"This does not look like a rate limit or transient "
+            f"overload -- marking '{model}' unavailable for a while "
+            f"rather than retrying it on every future job."
         )
 
 
@@ -117,6 +137,7 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
 
             response = _generate_response(model, prompt, system_prompt)
 
+            rate_limit_tracker.mark_success(f"groq-model-{model}")
             return parse_response(
                 response.choices[0].message.content
             )
@@ -155,6 +176,7 @@ def evaluate_category_arbitration(
         print(f"Using Groq model for category arbitration: {model}")
         try:
             response = _generate_response(model, prompt, system_prompt)
+            rate_limit_tracker.mark_success(f"groq-model-{model}")
             return parse_arbitration_response(
                 response.choices[0].message.content,
                 allowed,
