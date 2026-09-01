@@ -93,8 +93,9 @@ async def fetch_projects(
 
     async with session.get(url) as response:
         response.raise_for_status()
+        varibale= await response.json()
         print(response.json())
-        return await response.json()
+        return varibale
 
 
 async def poll_once():
