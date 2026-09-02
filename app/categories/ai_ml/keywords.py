@@ -169,15 +169,30 @@ POSITIVE_KEYWORDS = {
             "bayesian": 6,
             "bayesian statistics": 7,
             "statistical modeling": 7,
-            "statistical analysis": 6,
+            # ML/model-building regression work (NOT descriptive stats).
+            # 2026-09-02 run 31: 12348 'Python OOP Linear Regression'
+            # (a from-scratch linear-regression MODEL implementation) was
+            # wrongly claimed by data_analysis via numpy and suppressed by
+            # the DA guard. This core makes ai_ml a competing candidate so
+            # the ML-vs-DA boundary goes to arbitration instead of a
+            # deterministic DA suppression.
+            "linear regression": 7,
+            "regression model": 7,
+            "regression analysis": 6,
         },
         "supporting": {
             "eda": 4,
             "exploratory data analysis": 4,
             "hypothesis testing": 4,
+            # Descriptive statistical analysis (ANOVA/SPSS/R stats) is
+            # data_analysis work. Demoted core->supporting 2026-09-02
+            # run 31: 12655/12682 were deterministic-routed to ai_ml via
+            # the lone 'statistical analysis' core and suppressed by the
+            # ai_ml guard. Now the data_analysis candidate (which has its
+            # own cores for this) wins routing instead.
+            "statistical analysis": 4,
             "p-value": 3,
             "confidence interval": 3,
-            "regression analysis": 4,
             "correlation": 2,
             "distribution": 2,
         },
@@ -624,6 +639,13 @@ HARD_REJECT_KEYWORDS = {
     "porn", "paysite", "paysites", "beeg", "nsfw",
     "adult site", "adult website",
     "escort service", "escort services",
+    # companion-rental / rental-boyfriend / escort-style booking platforms are
+    # adult-adjacent and OUT OF SCOPE (2026-09-02 run 31). full_stack delivered
+    # FPs 12635/12717 + rejected siblings 12329/12602/12692. Narrow phrases
+    # only (deliberately NOT bare 'companion'/'escort' - care-companion /
+    # dating collateral risk).
+    "rental boyfriend", "boyfriend rental", "rent-a-boyfriend",
+    "rental companion", "companion rental",
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",

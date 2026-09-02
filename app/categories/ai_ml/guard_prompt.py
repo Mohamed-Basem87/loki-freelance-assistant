@@ -35,6 +35,17 @@ data science work, such as:
   are generative-AI engineering even when the plumbing is workflow
   tooling
 
+HARD RULE AGAINST MISSED IN-SCOPE AI-AGENT BUILDS (2026-09-02 run 31):
+A WhatsApp/smart-chatbot or LLM-driven agent/automation build IS in
+scope even when it is delivered on no-code/workflow platforms
+(Make.com, Airtable, ManyChat, webhooks) and connects business data or
+payments. Suppressing these as "not AI/ML" because the plumbing is
+no-code is exactly the run-31 false suppression pattern (rowid 12768:
+a WhatsApp smart bot on Make + Airtable + payment gateways). If the
+core of what is being built is an LLM-driven conversational agent or
+AI automation, approve it. Only reject when there is NO AI/LLM
+component at all.
+
 ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
 A posting that engages a developer on a recurring/part-time/month-to-month
 basis to develop, maintain, and evolve an existing AI/ML application --

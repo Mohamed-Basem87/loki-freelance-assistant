@@ -97,6 +97,30 @@ POSITIVE_KEYWORDS = {
             "stripe": 8,
             "razorpay": 8,
             "paypal": 7,
+            # Integration/automation-workflow engineering (plural forms +
+            # webhook/automation-tooling tokens so API-integration and
+            # workflow-automation gigs claim backend instead of defaulting
+            # to frontend or being suppressed). 2026-09-02 run 31:
+            # 12576 (Shopify<->Camex sync via Make/Integromat + webhooks)
+            # wrongly routed to frontend; 12588 (API integrations &
+            # automation workflows) Gemini-picked frontend though its
+            # tracks are backend/AI-agent integration work.
+            "api integrations": 8,
+            "rest apis": 8,
+            # NOTE: 'webhook'/'webhooks'/'integration developer' are
+            # intentionally NOT added here (2026-09-02 run 31 collateral):
+            # they are too broad and fire on AI-agent, CRM, and trading
+            # jobs, pushing clean ai_ml jobs (12434/12768) into spurious
+            # arbitration and pulling previously-rejected CRM/trading jobs
+            # (12274/12425) into consideration. Only specific integration
+            # engineering tokens stay core so 12576 (via integromat/rest
+            # apis) and 12588 (via api integrations/workflow automation)
+            # claim backend without broad collateral.
+            "workflow automation": 7,
+            "workflow automations": 7,
+            "automation workflow": 7,
+            "automation workflows": 7,
+            "integromat": 7,
         },
         "supporting": {
             "endpoint": 3,
@@ -644,6 +668,13 @@ HARD_REJECT_KEYWORDS = {
     "porn", "paysite", "paysites", "beeg", "nsfw",
     "adult site", "adult website",
     "escort service", "escort services",
+    # companion-rental / rental-boyfriend / escort-style booking platforms are
+    # adult-adjacent and OUT OF SCOPE (2026-09-02 run 31). full_stack delivered
+    # FPs 12635/12717 + rejected siblings 12329/12602/12692. Narrow phrases
+    # only (deliberately NOT bare 'companion'/'escort' - care-companion /
+    # dating collateral risk).
+    "rental boyfriend", "boyfriend rental", "rent-a-boyfriend",
+    "rental companion", "companion rental",
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",

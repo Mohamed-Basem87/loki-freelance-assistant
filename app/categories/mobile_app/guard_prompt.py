@@ -57,6 +57,19 @@ advertised role belongs to this category's scope (Android/iOS/mobile app
 developer or maintainer): approve them even with no concrete project spec.
 Only do_not_notify when the role is outside this category's scope.
 
+HARD RULE AGAINST MISSED IN-SCOPE MONETIZATION/RELEASE WORK
+(2026-09-02 run 31):
+Mobile app subscription, in-app-purchase, and free-trial configuration
+on App Store Connect / Google Play Console, RevenueCat setup, and
+store payload/deployment configuration for an EXISTING mobile app ARE
+in scope -- this is app monetization/release engineering, not account
+administration and not a new build. 12667 (Apple + Google subscription
+free-trial setup with RevenueCat) was wrongly suppressed in run 31.
+Approve subscription/IAP/trial/paywall and release-store configuration
+when it targets a mobile app's monetization or release. Only reject
+pure developer-account ADMINISTRATION (renewing membership, changing
+Account Holder) with no app-level deliverable.
+
 REJECT when the PRIMARY DELIVERABLE is:
 
 - Gambling, betting, casino, sports betting, bookmaker/sportsbook,

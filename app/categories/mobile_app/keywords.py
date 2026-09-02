@@ -691,6 +691,13 @@ HARD_REJECT_KEYWORDS = {
     "porn", "paysite", "paysites", "beeg", "nsfw",
     "adult site", "adult website",
     "escort service", "escort services",
+    # companion-rental / rental-boyfriend / escort-style booking platforms are
+    # adult-adjacent and OUT OF SCOPE (2026-09-02 run 31). full_stack delivered
+    # FPs 12635/12717 + rejected siblings 12329/12602/12692. Narrow phrases
+    # only (deliberately NOT bare 'companion'/'escort' - care-companion /
+    # dating collateral risk).
+    "rental boyfriend", "boyfriend rental", "rent-a-boyfriend",
+    "rental companion", "companion rental",
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",

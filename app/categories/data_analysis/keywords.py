@@ -155,6 +155,22 @@ POSITIVE_KEYWORDS = {
             "وتحليل مالي": 9,
             "بتحليل مالي": 9,
             "لتحليل مالي": 9,
+            # Descriptive/business statistical-analysis work (ANOVA, SPSS,
+            # hypothesis testing, R stats) is Data Analysis, NOT AI/ML
+            # model-building. 2026-09-02 run 31: 12655 (ANOVA on Citrus
+            # Virus Dataset) and 12682 (Seven mini SPSS projects) were
+            # wrongly claimed by ai_ml via its over-broad 'statistical
+            # analysis' core and suppressed. These cores make the
+            # data_analysis candidate fire so the jobs route here instead.
+            "anova": 8,
+            "spss": 8,
+            "statistical analysis": 7,
+            "statistical analyses": 7,
+            "hypothesis testing": 6,
+            "statistical testing": 6,
+            "statistical test": 6,
+            "post-hoc": 6,
+            "post hoc": 6,
         },
         "supporting": {
             "analytics": 2,
@@ -848,6 +864,13 @@ HARD_REJECT_KEYWORDS = {
     "porn", "paysite", "paysites", "beeg", "nsfw",
     "adult site", "adult website",
     "escort service", "escort services",
+    # companion-rental / rental-boyfriend / escort-style booking platforms are
+    # adult-adjacent and OUT OF SCOPE (2026-09-02 run 31). full_stack delivered
+    # FPs 12635/12717 + rejected siblings 12329/12602/12692. Narrow phrases
+    # only (deliberately NOT bare 'companion'/'escort' - care-companion /
+    # dating collateral risk).
+    "rental boyfriend", "boyfriend rental", "rent-a-boyfriend",
+    "rental companion", "companion rental",
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",

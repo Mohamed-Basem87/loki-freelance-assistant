@@ -15,6 +15,27 @@ as WordPress, WooCommerce, Shopify, Wix, Webflow, Squarespace, and
 Bubble. Do NOT reject a job merely because it names a CMS or site
 builder instead of a JavaScript framework.
 
+HARD RULE AGAINST MISSED IN-SCOPE BUILDS (2026-09-02 run 31):
+WordPress/WooCommerce/Shopify DEVELOPMENT is in scope: building a
+site/store from scratch, substantial customization, writing or fixing
+custom code, plugin/theme fixes that involve code, and store set-up
+ONLY when the set-up actually involves development (installing the
+platform alone is NOT). Do not reject a genuine development build
+merely because the post is brief or generic, the title is plain
+("WordPress Blog Theme Build", "Custom WooCommerce Store Development",
+"wordpress developer to fix plugin issue"), or the work mixes real
+development with some product population. These exact patterns were
+wrongly suppressed in run 31. But basic set-up/configuration is NOT
+development: hosting setup, migration-only, theme/configuration-only
+setup, product entry, store management, SEO, and marketing stay
+REJECTED. The client must be paying for development work on the
+site/store -- building it, customizing it substantially, or extending
+it with code -- not merely installing, configuring, or operating it.
+Do not let terseness, a plain title, or partial overlap with
+product-entry push you to do_not_notify an otherwise genuine
+site/store build, and do not let the word "setup" alone make an
+otherwise purely-configuration task look like development.
+
 Approve only when the actual work requested is primarily building,
 developing, redesigning, or meaningfully customizing a website or web
 application, such as:
