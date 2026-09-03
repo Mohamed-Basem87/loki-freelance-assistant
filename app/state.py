@@ -22,6 +22,36 @@ _CROSS_SOURCE_TTL_SECONDS = 30 * 24 * 60 * 60
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="state-persist")
 
+# save() does two rounds of blocking disk I/O (write_text + os.replace,
+# for both state.json and its backup) with no timeout of its own. This
+# executor has exactly one worker thread, so if that write ever blocks
+# forever on the underlying syscall (e.g. a stalled disk, a hung
+# network-mounted volume) every future state.run() call -- including
+# ones from a completely different job -- queues up behind it forever,
+# with no exception and nothing to log. This was diagnosed as the
+# likely cause of a real incident (2 Sept 2026) where both Telegram
+# and FreeHub ingestion silently stopped producing jobs simultaneously
+# while the bot's command interface (which never touches this module)
+# kept working, the container stayed alive, and nothing appeared in
+# the errors table -- exactly the signature this class of failure
+# would produce, with a restart (a fresh executor) being what actually
+# fixed it. _run_with_timeout below exists to turn that same failure
+# mode into a loud, recoverable error instead of a silent, permanent
+# freeze the next time it happens.
+_STATE_TIMEOUT_SECONDS = 30
+
+
+class StuckExecutorError(RuntimeError):
+    """Raised when a state-persistence call didn't return within
+    _STATE_TIMEOUT_SECONDS. See the comment above _STATE_TIMEOUT_SECONDS
+    for why this exists. The stuck worker thread cannot be forcibly
+    killed and will leak until the process restarts, but a fresh
+    executor is installed immediately so no further call queues up
+    behind it -- this specific call still fails (its caller's existing
+    per-item exception handling, e.g. the Telegram/FreeHub worker
+    loops, is what recovers it, same as any other job-level failure),
+    but ingestion as a whole is not permanently blocked by it."""
+
 
 class StateCorruptionError(RuntimeError):
     """Raised when state.json exists but cannot be parsed and no usable backup exists."""
@@ -94,11 +124,45 @@ class StateManager:
         os.replace(backup_temp_path, backup_path)
 
     async def run(self, func, *args, **kwargs):
+        """Run a StateManager method on the single dedicated
+        state-persistence thread and await its result.
+
+        Wrapped in a timeout specifically because the underlying
+        writes are blocking disk I/O with no timeout of their own --
+        see the comment above _STATE_TIMEOUT_SECONDS for the incident
+        this is defending against. On timeout, the presumed-stuck
+        executor is replaced with a fresh one before raising, so this
+        one call fails but future calls are not queued behind a
+        permanently blocked thread.
+        """
+        global _EXECUTOR
+
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            _EXECUTOR,
-            lambda: func(*args, **kwargs),
-        )
+
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(_EXECUTOR, lambda: func(*args, **kwargs)),
+                timeout=_STATE_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            _EXECUTOR = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="state-persist"
+            )
+            func_name = getattr(func, "__name__", repr(func))
+            print(
+                f"[STATE] {func_name} did not return within "
+                f"{_STATE_TIMEOUT_SECONDS}s -- its worker thread is "
+                f"presumed permanently stuck (e.g. a stalled disk "
+                f"write) and has been replaced so ingestion isn't "
+                f"silently blocked forever. This one call failed; the "
+                f"caller's normal retry/recovery path handles it from "
+                f"here."
+            )
+            raise StuckExecutorError(
+                f"{func_name} did not complete within "
+                f"{_STATE_TIMEOUT_SECONDS}s; its worker thread was "
+                f"replaced."
+            ) from None
 
     def get_last_message_id(self, channel_id):
         return int(self.data.get(str(channel_id), 0))

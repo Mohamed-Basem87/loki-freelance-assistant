@@ -17,6 +17,32 @@ DB_FILE = Path(__file__).resolve().parent.parent / "loki_freelance_bot.db"
 # database at the same time) without ever blocking the event loop.
 _EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="db-logger")
 
+# This executor has exactly one worker thread; if a call ever blocks
+# forever (e.g. SQLite hitting a lock that never clears, or the DB
+# file living on a stalled volume), every subsequent DBLogger.run()
+# call system-wide -- including from a completely unrelated request --
+# would queue up behind it forever with no exception and nothing to
+# log. See the matching comment in app.state for a real incident this
+# same failure shape caused there; this mirrors that module's fix so
+# the DB path (which touches far more of the app -- bot commands,
+# notifications, and ingestion all depend on it, not just ingestion)
+# gets the same protection even though it wasn't implicated in that
+# specific incident. 60s rather than app.state's 30s, since a schema
+# migration (_rebuild_table, on a large historical table) can
+# legitimately take longer than a routine single-row write without
+# actually being stuck.
+_DB_TIMEOUT_SECONDS = 60
+
+
+class StuckExecutorError(RuntimeError):
+    """Raised when a DBLogger call didn't return within
+    _DB_TIMEOUT_SECONDS. See the comment above _DB_TIMEOUT_SECONDS. The
+    stuck worker thread cannot be forcibly killed and will leak until
+    the process restarts, but a fresh executor is installed
+    immediately so no further call queues up behind it -- this
+    specific call still fails, but the DB as a whole is not
+    permanently blocked by it."""
+
 
 # ------------------------------------------------------------------
 # Jobs table -- one row per job, reflecting the tiered decision engine.
@@ -576,9 +602,40 @@ class DBLogger:
         methods directly -- routing everything through the one worker
         thread makes every read/write strictly serial and keeps all
         blocking database I/O off the event loop.
+
+        Wrapped in a timeout for the same reason as app.state.run() --
+        see the comment above _DB_TIMEOUT_SECONDS. On timeout, the
+        presumed-stuck executor is replaced with a fresh one before
+        raising, so this one call fails but future calls are not
+        queued behind a permanently blocked thread.
         """
+        global _EXECUTOR
+
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(_EXECUTOR, lambda: func(*args, **kwargs))
+
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(_EXECUTOR, lambda: func(*args, **kwargs)),
+                timeout=_DB_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            _EXECUTOR = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="db-logger"
+            )
+            func_name = getattr(func, "__name__", repr(func))
+            print(
+                f"[DB] {func_name} did not return within "
+                f"{_DB_TIMEOUT_SECONDS}s -- its worker thread is "
+                f"presumed permanently stuck and has been replaced so "
+                f"the database isn't silently blocked forever. This "
+                f"one call failed; the caller's normal retry/recovery "
+                f"path handles it from here."
+            )
+            raise StuckExecutorError(
+                f"{func_name} did not complete within "
+                f"{_DB_TIMEOUT_SECONDS}s; its worker thread was "
+                f"replaced."
+            ) from None
 
     # ------------------------------------------------------------------
     # Generic row helpers
