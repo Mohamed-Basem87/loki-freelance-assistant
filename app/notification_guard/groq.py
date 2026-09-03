@@ -1,4 +1,5 @@
-from groq import Groq
+import httpx
+from groq import APITimeoutError, Groq
 
 from tenacity import (
     retry,
@@ -17,7 +18,11 @@ from app.notification_guard.prompt import build_prompt
 
 
 CLIENTS = [
-    Groq(api_key=key)
+    Groq(
+        api_key=key,
+        timeout=30.0,
+        max_retries=0,
+    )
     for key in NOTIFICATION_GUARD_API_KEYS
 ]
 
@@ -28,8 +33,6 @@ _TRANSIENT_ERROR_MARKERS = (
     "resource_exhausted",
     "quota exceeded",
     "unavailable",
-    "timeout",
-    "timed out",
 )
 
 
@@ -40,6 +43,18 @@ def _is_transient(exception: Exception) -> bool:
         marker in text
         for marker in _TRANSIENT_ERROR_MARKERS
     )
+
+
+def _is_timeout(exception: Exception) -> bool:
+    """Recognize Groq SDK/httpx timeouts by exception type."""
+    seen = set()
+    current = exception
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (APITimeoutError, httpx.TimeoutException)):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 @retry(
@@ -139,7 +154,15 @@ class GroqNotificationGuard:
         """
         error_text = str(error)
 
-        if rate_limit_tracker.is_quota_exhaustion(error_text):
+        if _is_timeout(error):
+            cooldown = rate_limit_tracker.mark_timeout(candidate_id)
+            print(
+                f"Groq guard key #{client_index + 1}, model '{model}' "
+                f"timed out after 30s: {error}\n"
+                f"Marking it unavailable for {cooldown:.0f}s before "
+                f"it's tried again."
+            )
+        elif rate_limit_tracker.is_quota_exhaustion(error_text):
             cooldown = rate_limit_tracker.mark_rate_limited(
                 candidate_id, error_text
             )
@@ -150,8 +173,8 @@ class GroqNotificationGuard:
                 f"it's tried again."
             )
         elif _is_transient(error):
-            # Overload/timeout -- momentary, not informative about
-            # this key/model's own state, so it is deliberately left
+            # Momentary overload -- not informative about this
+            # key/model's own state, so it is deliberately left
             # untouched in the cooldown tracker rather than marked.
             print(
                 f"Groq guard key #{client_index + 1}, model '{model}' "

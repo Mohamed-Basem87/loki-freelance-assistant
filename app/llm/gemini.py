@@ -1,4 +1,6 @@
+import httpx
 from google import genai
+from google.genai import types
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
 
 from app.config import GEMINI_API_KEYS
@@ -7,7 +9,13 @@ from app.llm.utils import build_prompt, build_arbitration_prompt, parse_response
 
 
 CLIENTS = [
-    genai.Client(api_key=key)
+    genai.Client(
+        api_key=key,
+        http_options=types.HttpOptions(
+            timeout=30_000,
+            retry_options=types.HttpRetryOptions(attempts=1),
+        ),
+    )
     for key in GEMINI_API_KEYS
 ]
 
@@ -17,14 +25,30 @@ _TRANSIENT_ERROR_MARKERS = (
     "resource_exhausted",
     "quota exceeded",
     "unavailable",
-    "timeout",
-    "timed out",
 )
 
 
 def _is_transient(exception: Exception) -> bool:
     text = str(exception).lower()
     return any(marker in text for marker in _TRANSIENT_ERROR_MARKERS)
+
+
+def _is_timeout(exception: Exception) -> bool:
+    """Recognize transport timeouts by exception type, not message text.
+
+    google-genai uses httpx for its synchronous HTTP transport, so read/connect
+    timeout subclasses are all covered by httpx.TimeoutException. Walking the
+    exception chain also handles SDK wrappers that preserve the transport error
+    as __cause__ or __context__.
+    """
+    seen = set()
+    current = exception
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, httpx.TimeoutException):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 @retry(
@@ -108,7 +132,14 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
             failures.append(f"key #{index}: {e}")
             last_exception = e
 
-            if rate_limit_tracker.is_quota_exhaustion(str(e)):
+            if _is_timeout(e):
+                cooldown = rate_limit_tracker.mark_timeout(candidate_id)
+                print(
+                    f"Gemini key #{index} timed out after 30s: {e}\n"
+                    f"Marking key #{index} unavailable for "
+                    f"{cooldown:.0f}s before it's tried again."
+                )
+            elif rate_limit_tracker.is_quota_exhaustion(str(e)):
                 cooldown = rate_limit_tracker.mark_rate_limited(
                     candidate_id, str(e)
                 )
@@ -181,7 +212,14 @@ def evaluate_category_arbitration(
             failures.append(f"key #{index}: {e}")
             last_exception = e
 
-            if rate_limit_tracker.is_quota_exhaustion(str(e)):
+            if _is_timeout(e):
+                cooldown = rate_limit_tracker.mark_timeout(candidate_id)
+                print(
+                    f"Gemini key #{index} timed out after 30s: {e}\n"
+                    f"Marking key #{index} unavailable for "
+                    f"{cooldown:.0f}s before it's tried again."
+                )
+            elif rate_limit_tracker.is_quota_exhaustion(str(e)):
                 cooldown = rate_limit_tracker.mark_rate_limited(
                     candidate_id, str(e)
                 )

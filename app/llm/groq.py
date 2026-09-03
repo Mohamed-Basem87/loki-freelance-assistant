@@ -1,4 +1,5 @@
-from groq import Groq
+import httpx
+from groq import APITimeoutError, Groq
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
 
 from app.config import GROQ_API_KEY
@@ -6,7 +7,7 @@ from app.llm import rate_limit_tracker
 from app.llm.utils import build_prompt, build_arbitration_prompt, parse_response, parse_arbitration_response
 
 
-CLIENT = Groq(api_key=GROQ_API_KEY)
+CLIENT = Groq(api_key=GROQ_API_KEY, timeout=30.0, max_retries=0)
 
 GROQ_MODELS = [
     "openai/gpt-oss-120b",
@@ -21,14 +22,24 @@ _TRANSIENT_ERROR_MARKERS = (
     "resource_exhausted",
     "quota exceeded",
     "unavailable",
-    "timeout",
-    "timed out",
 )
 
 
 def _is_transient(exception: Exception) -> bool:
     text = str(exception).lower()
     return any(marker in text for marker in _TRANSIENT_ERROR_MARKERS)
+
+
+def _is_timeout(exception: Exception) -> bool:
+    """Recognize Groq SDK/httpx timeouts by exception type."""
+    seen = set()
+    current = exception
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (APITimeoutError, httpx.TimeoutException)):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 @retry(
@@ -78,7 +89,14 @@ def _record_failure(model: str, error: Exception):
     error_text = str(error)
     candidate_id = f"groq-model-{model}"
 
-    if rate_limit_tracker.is_quota_exhaustion(error_text):
+    if _is_timeout(error):
+        cooldown = rate_limit_tracker.mark_timeout(candidate_id)
+        print(
+            f"Groq model '{model}' timed out after 30s: {error}\n"
+            f"Marking '{model}' unavailable for {cooldown:.0f}s "
+            f"before it's tried again."
+        )
+    elif rate_limit_tracker.is_quota_exhaustion(error_text):
         cooldown = rate_limit_tracker.mark_rate_limited(candidate_id, error_text)
         print(
             f"Groq model '{model}' failed: {error}\n"
@@ -86,9 +104,9 @@ def _record_failure(model: str, error: Exception):
             f"before it's tried again."
         )
     elif _is_transient(error):
-        # Overload/timeout -- momentary, not informative about this
-        # model's own state, so it is deliberately left untouched in
-        # the cooldown tracker rather than marked either way.
+        # Momentary overload -- not informative about this model's
+        # own state, so it is deliberately left untouched in the
+        # cooldown tracker rather than marked either way.
         print(
             f"Groq model '{model}' failed (transient, not quota-"
             f"related, not marked unavailable): {error}"

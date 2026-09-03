@@ -45,6 +45,12 @@ _cooldowns: dict[str, float] = {}
 # error message.
 _DEFAULT_COOLDOWN_SECONDS = 60
 
+# Applied when an external LLM request itself times out. A timeout is
+# different from quota exhaustion: the candidate may recover soon, but
+# should not be retried immediately on every job while the provider/network
+# is unhealthy.
+_TIMEOUT_COOLDOWN_SECONDS = 60
+
 # Applied for failures that are not a quota/rate-limit at all and
 # cannot resolve on their own (e.g. a model name the provider doesn't
 # recognize, as seen in production logs for a stale
@@ -216,6 +222,14 @@ def mark_rate_limited(candidate_id: str, error_message: str) -> float:
     with _lock:
         _cooldowns[candidate_id] = time.monotonic() + delay
 
+    return delay
+
+
+def mark_timeout(candidate_id: str) -> float:
+    """Temporarily skip a candidate after an API request timeout."""
+    delay = _TIMEOUT_COOLDOWN_SECONDS
+    with _lock:
+        _cooldowns[candidate_id] = time.monotonic() + delay
     return delay
 
 
