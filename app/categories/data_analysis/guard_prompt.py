@@ -195,8 +195,35 @@ data for a machine-learning project."
 
 This is still Data Analysis / data preparation and should be approved.
 
+HARD RULE AGAINST MISSED IN-SCOPE DATA-ENGINEERING + BI BUILDS
+(2026-09-03 run 32): A job whose PRIMARY DELIVERABLE is a data
+pipeline plus interactive dashboards and operational KPIs/reporting IS
+a genuine Data Analysis / BI build and MUST be approved -- even when the
+description also says to run "predictive" or "prescriptive" modeling.
+When the client is paying for an automated, well-documented data pipeline
+that feeds self-refreshing Tableau/Power BI dashboards and KPI/bottleneck
+analytics, the modeling is a supporting component of the analytical
+deliverable, not a trained-model artifact. The model is NOT the delivered
+product; the analysis, dashboards, and operational insights ARE. Only
+reject when the PRIMARY DELIVERABLE is a trained/evaluated model or
+accuracy-oriented model report.
+
+For example:
+
+ACCEPT:
+"Clean mining sensor/log data into a documented pipeline, run predictive
+modeling to surface KPIs and bottlenecks, and build Tableau/Power BI
+dashboards that refresh without manual intervention." -- the deliverable
+is dashboards + operational analytics; the modeling feeds the BI.
+
+REJECT:
+"Train and evaluate an XGBoost regression model and report accuracy,
+precision, and ROC-AUC." -- a trained-model artifact is the deliverable.
+
 REJECT jobs where machine learning is part of the requested deliverable,
-even if the job also requires EDA, cleaning, visualization, or reporting.
+even if the job also requires EDA, cleaning, visualization, or reporting
+(unless the primary deliverable is the analytical/BI output per the rule
+above).
 
 Also reject when the PRIMARY DELIVERABLE is:
 

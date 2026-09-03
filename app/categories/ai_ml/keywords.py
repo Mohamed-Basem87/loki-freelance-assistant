@@ -240,6 +240,15 @@ POSITIVE_KEYWORDS = {
         # direct-notify (lone-core rule), otherwise it arbitrates.
         "core": {
             "مساعد ذكي": 7,
+            # Definite-article form (2026-09-03 run 32): 13039 mostaql
+            # 'AuditAI المساعد الذكي للمحاسبين' (accounting system with
+            # built-in AI chat assistant that explains figures/transactions
+            # step-by-step + audit trail) rejected insufficient_signal. The
+            # indefinite 'مساعد ذكي' can't match 'المساعد الذكي' because the
+            # 'ال' prefix on 'ذكي' breaks the bare word (same definite-form
+            # gap class as لمنصة تعليمية). Corpus blast radius = exactly
+            # 13039 (0 window collateral).
+            "المساعد الذكي": 7,
             "متخصص في الذكاء الاصطناعي": 7,
             "مطور ذكاء اصطناعي": 7,
             "أتمتة و ذكاء اصطناعي": 7,
@@ -649,6 +658,12 @@ HARD_REJECT_KEYWORDS = {
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",
+    # Crash/binary-Gambling variant phrases wrapped in benign-sounding
+    # reward/spin language (2026-09-03 run 32). spin-win/lucky-jet/satta-matka
+    # were missing here but present in frontend/backend/game_dev - a job naming
+    # these would slip past data_analysis/ai_ml hard-reject. All unambiguous
+    # gambling; 0 expected window/corpus innocent collateral.
+    "spin and win", "spin win", "lucky jet", "satta matka",
 }
 
 

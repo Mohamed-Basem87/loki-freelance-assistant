@@ -257,6 +257,13 @@ POSITIVE_KEYWORDS = {
             "منصت تعليمية": 7,
             "لمنصة تعليمية": 7,
             "لمنصت تعليمية": 7,
+            # Generic Arabic web-platform build (2026-09-03 run 32). Mirrors
+            # frontend 'منصة ويب' so a generic platform build produces two
+            # direct matches -> needs_gemini -> full_stack (12804 subscriptions
+            # platform, 13035 travel-planning platform). Concrete 'منصة ويب'
+            # phrase only, not bare منصة (collateral).
+            "منصة ويب": 7,
+            "منصت ويب": 7,
         },
         "supporting": {},
     },

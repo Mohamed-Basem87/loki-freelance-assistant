@@ -46,6 +46,21 @@ core of what is being built is an LLM-driven conversational agent or
 AI automation, approve it. Only reject when there is NO AI/LLM
 component at all.
 
+RULE-BASED CONVERSATIONAL-BOT BUILDS (2026-09-03 run 32, rowid 12936):
+A posting that asks the freelancer to BUILD a conversational chatbot or
+support agent -- even a rule-based/keyword-decision-tree one -- IS a
+genuine engineering build worth notifying, not "pure rule-based
+automation". Approve a chatbot/agent build when it involves real
+engineering in what is being constructed: messaging-API integration
+(Twilio/360dialog/Telegram webhook), a keyword decision tree / dialog
+logic, an admin panel, FAQ/response management, human-escalation
+commands, and logging. The "pure rule-based automation, RPA, scraping,
+or marketing-funnel work" REJECT below applies to unattended
+screen-scraping / robotic-process-automation / mass-funnel jobs with no
+conversational-agent build and no backend construction -- NOT to
+building a conversational bot itself. When in doubt about a bot build,
+approve it rather than suppressing a genuine construction task.
+
 ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
 A posting that engages a developer on a recurring/part-time/month-to-month
 basis to develop, maintain, and evolve an existing AI/ML application --

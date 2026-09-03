@@ -267,6 +267,17 @@ POSITIVE_KEYWORDS = {
             "منصت تعليمية": 8,
             "لمنصة تعليمية": 8,
             "لمنصت تعليمية": 8,
+            # Generic Arabic web-platform build (2026-09-03 run 32). 12804
+            # 'منصة ويب للاشتراكات الشهرية' + 13035 'تطوير منصة ويب لتصميم
+            # خطط السفر' rejected - complete platform builds (payment+
+            # reports; admin dashboard+DB+maps) lost to insufficient_signal
+            # because 'منصة' bare is NOISE and 'تطوير منصة' is a data_analysis
+            # negative. Mirrors منصة تعليمية: CORE here (and in backend) so
+            # 'منصة ويب' produces two direct matches -> needs_gemini ->
+            # full_stack via arbitration. Deliberately the concrete
+            # 'منصة ويب' phrase, NOT bare منصة (high collateral).
+            "منصة ويب": 8,
+            "منصت ويب": 8,
         },
         "supporting": {
             # Store mention alone is not web-dev evidence (customer service,

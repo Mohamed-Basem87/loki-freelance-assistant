@@ -874,6 +874,12 @@ HARD_REJECT_KEYWORDS = {
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",
+    # Crash/binary-Gambling variant phrases wrapped in benign-sounding
+    # reward/spin language (2026-09-03 run 32). spin-win/lucky-jet/satta-matka
+    # were missing here but present in frontend/backend/game_dev - a job naming
+    # these would slip past data_analysis/ai_ml hard-reject. All unambiguous
+    # gambling; 0 expected window/corpus innocent collateral.
+    "spin and win", "spin win", "lucky jet", "satta matka",
 }
 
 
