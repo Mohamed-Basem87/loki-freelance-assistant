@@ -61,6 +61,24 @@ conversational-agent build and no backend construction -- NOT to
 building a conversational bot itself. When in doubt about a bot build,
 approve it rather than suppressing a genuine construction task.
 
+COMPUTER-VISION ENGINEERING BUILDS (2026-09-04 run 33, rowid 13340):
+A posting that asks the freelancer to BUILD automation whose core
+engineering challenge is computer vision -- using OpenCV, template
+matching, OCR, or similar image-recognition to detect on-screen state
+and drive a decision/retry loop -- IS genuine AI/ML engineering worth
+notifying, even when the resulting software is a desktop/Windows app
+and even when it also needs controller/HID passthrough or a small
+hardware dongle to send inputs. The "Pure rule-based automation, RPA,
+scraping, or marketing-funnel work that has NO AI/LLM component" REJECT
+below applies only when the deliverable has NO vision/ML component at
+all (e.g. a fixed-delay macro, unattended screen-scraping, web
+scraping). When computer vision is the actual hard problem being built
+-- not an incidental use of a library -- approve it. This does NOT
+cover jobs whose PRIMARY deliverable is physical hardware/
+firmware/IoT manufacturing (e.g. sensor-embedded garments, embedded
+boards) with only a minor software companion; those remain out of scope
+(no fitting category).
+
 ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
 A posting that engages a developer on a recurring/part-time/month-to-month
 basis to develop, maintain, and evolve an existing AI/ML application --

@@ -753,6 +753,10 @@ HARD_REJECT_KEYWORDS = {
     # target-user types were listed). The marketing NEGATIVE core already
     # rejects pure-marketing work; mixing with build vocab correctly routes
     # to arbitration instead of a blind hard kill.
+    # Hardware/IoT/firmware manufacturing is out of scope (same rationale
+    # as mobile_app).  Rowid 13128 reached frontend via guard; hard-rejecting
+    # at keyword layer avoids wasting Gemini API calls.
+    "wearable electronics", "embedded firmware",
 }
 
 

@@ -696,6 +696,10 @@ HARD_REJECT_KEYWORDS = {
     # enumeration-misfire pattern as data entry/illustrator
     # (freelancer:40676186). Marketing negative core still rejects pure
     # marketing; build+marketing hybrids route to arbitration.
+    # Hardware/IoT/firmware manufacturing is out of scope (same rationale
+    # as mobile_app).  Rowid 13128 reached backend via guard; hard-rejecting
+    # at keyword layer avoids wasting Gemini API calls.
+    "wearable electronics", "embedded firmware",
 }
 
 

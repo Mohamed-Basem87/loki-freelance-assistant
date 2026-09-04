@@ -597,6 +597,12 @@ HARD_REJECT_KEYWORDS = {
     "betting", "wager", "wagering",
     "1xbet", "dragon tiger", "dragon vs tiger",
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",
+    # PCB/hardware engineering misfires reach game_dev via generic vocab.
+    "pcb",
+    # Hardware/IoT/firmware manufacturing is out of scope (same rationale
+    # as mobile_app).  Rowid 13128 contains these phrases literally;
+    # hard-rejecting avoids wasting Gemini API calls.
+    "wearable electronics", "embedded firmware",
 }
 
 

@@ -664,6 +664,12 @@ HARD_REJECT_KEYWORDS = {
     # these would slip past data_analysis/ai_ml hard-reject. All unambiguous
     # gambling; 0 expected window/corpus innocent collateral.
     "spin and win", "spin win", "lucky jet", "satta matka",
+    # PCB/hardware engineering misfires reach ai_ml via generic AI vocab.
+    "pcb",
+    # Hardware/IoT/firmware manufacturing is out of scope (same rationale
+    # as mobile_app).  Rowid 13128 reached ai_ml via guard; hard-rejecting
+    # at keyword layer avoids wasting Gemini API calls.
+    "wearable electronics", "embedded firmware",
 }
 
 

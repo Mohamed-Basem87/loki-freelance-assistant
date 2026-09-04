@@ -94,6 +94,25 @@ belongs to this category's scope (backend/API/ERP developer or maintainer):
 approve them even with no concrete project spec. Only do_not_notify when
 the role is outside this category's scope.
 
+RPA / SCRIPTED AUTOMATION ON THE CLIENT'S OWN ACCOUNT IS BACKEND WORK
+(2026-09-04 run 33, rowid 13132; settled precedent runs 31 & 32):
+A posting that asks the freelancer to BUILD a scripted/RPA automation bot
+-- UiPath, Automation Anywhere, Power Automate, Python + Selenium, or
+similar -- that logs into the CLIENT'S OWN account (a bank/payment portal,
+admin console, etc.), polls/pulls a data status on a schedule, detects
+changes, and fires Email/SMS alerts with transaction details IS genuine
+backend/automation engineering worth notifying. This is scripted
+data-pulling + notification logic built in code for the client's own
+credentials -- not credential misuse or malicious access -- and is the
+established Backend class after runs 31 (12576/12768) and 32 (12936).
+Approve it even though it is "automation" rather than a REST API or web
+app. The "pure automation" REJECT below applies to unattended
+screen-scraping / mass-funnel / scrape-for-scraping jobs or third-party
+tool configuration with no code construction on the client's own account
+-- NOT to building an automation robot itself. When in doubt about a
+scripted-automation build with real engineering (scheduling, change
+detection, dual-channel alerting, session/2FA handling), approve it.
+
 REJECT when the PRIMARY DELIVERABLE is operational or clerical rather
 than engineering. Common patterns:
 

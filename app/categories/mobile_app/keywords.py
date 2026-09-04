@@ -708,6 +708,12 @@ HARD_REJECT_KEYWORDS = {
     # enumeration-misfire pattern as data entry/illustrator
     # (freelancer:40676186). Marketing negative core still rejects pure
     # marketing; build+marketing hybrids correctly route to arbitration.
+    # Hardware/IoT/firmware manufacturing is out of scope: physical product
+    # builds (wearables, sensors, embedded) that reach any category via
+    # generic software vocab (gps, analytics, mobile).  Rowid 13128
+    # 'AI-Powered Football Shorts Prototype' literally contains both phrases;
+    # hard-rejecting avoids wasting Gemini API calls.
+    "wearable electronics", "embedded firmware",
 }
 
 
