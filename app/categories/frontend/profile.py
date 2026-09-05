@@ -31,15 +31,14 @@ PROFILE = CategoryProfile(
     description="Frontend Development and UI Implementation freelance work.",
     arbitration_context=(
         "Primary deliverables are frontend development, UI implementation, "
-        "responsive web design, component development, and web UI work. "
-        "Portfolio, media/rental-catalog, informational, and blog/news "
-        "websites built in code are in scope, as are CMS/site-builder "
-        "site builds (WordPress, Shopify, Wix, Webflow, Squarespace, "
-        "Odoo) when the site itself is the deliverable. Reject when the "
-        "primary deliverable is backend development, "
-        "mobile app development, game development, data analysis, "
-        "machine learning, enterprise software administration/configuration, "
-        "or another non-frontend-related task."
+        "responsive web design, and web UI work. Portfolio, media/"
+        "rental-catalog, informational, and blog/news sites built in code "
+        "are in scope, as are CMS builds (WordPress, Shopify, Wix, "
+        "Webflow, Squarespace, Odoo) when the site is the deliverable. "
+        "Custom WordPress/CMS plugin development is frontend/CMS work in "
+        "scope even in PHP. Reject backend development, mobile apps, "
+        "games, data analysis, ML, enterprise administration, or other "
+        "non-frontend tasks."
     ),
     positive_keywords=POSITIVE_KEYWORDS,
     negative_keywords=NEGATIVE_KEYWORDS,

@@ -236,6 +236,16 @@ POSITIVE_KEYWORDS = {
             "website build": 6,
             "website redesign": 7,
             "landing page": 6,
+            # Page-build class (2026-09-04 run 34): adding styled
+            # standalone pages to an existing site. freelancer:40690409
+            # 'Contact & Waitlist Pages Build' was arbitration-none
+            # because frontend was never offered as a candidate -- only
+            # backend (a lone 'back-end script' mention) was. Title
+            # 'Waitlist Pages' matches the plural form directly.
+            "contact page": 6,
+            "contact us page": 6,
+            "waitlist page": 6,
+            "waitlist pages": 6,
             # Arabic: "landing page".
             "صفحة هبوط": 6,
             # Arabic plural "landing pages" (2026-08-31 run 28): Salla

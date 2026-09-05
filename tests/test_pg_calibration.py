@@ -208,3 +208,17 @@ def test_frontend_prompt_recognizes_portfolio_and_rental_sites():
     # The guard path must mirror the same recognition.
     from app.categories.frontend.guard_prompt import SYSTEM_PROMPT as GUARD
     assert "rental-catalog" in GUARD
+
+
+def test_frontend_guard_recognizes_booking_platform_builds():
+    # fn_guard run-34 (job 13704): a custom booking platform built on
+    # WordPress by extending an existing plugin (Easy Appointments)
+    # with hooks/APIs and custom business-layer pages was wrongly
+    # suppressed. Building the platform around an existing plugin's
+    # engine is development, not plugin configuration.
+    from app.categories.frontend.guard_prompt import SYSTEM_PROMPT as GUARD
+    assert "EXTENDING an existing plugin" in GUARD
+    assert "booking engine" in GUARD
+    assert "Easy Appointments" in GUARD
+    assert "Reusing a plugin's engine is NOT a reason" in GUARD
+    assert "wrongly suppressed in" in GUARD and "run 34" in GUARD

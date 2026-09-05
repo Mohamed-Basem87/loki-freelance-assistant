@@ -30,14 +30,13 @@ PROFILE = CategoryProfile(
     name="Backend Development",
     description="Backend Development and Server-side freelance work.",
     arbitration_context=(
-        "Primary deliverables are backend development, API design and "
-        "implementation, database management, server-side logic, and "
-        "infrastructure. Backend development on enterprise systems such as "
-        "Odoo (custom modules, server-side logic, database/API work) is in "
-        "scope; ERP administration or configuration without development is "
-        "not. Reject when the primary deliverable is frontend "
-        "development, mobile app development, game development, data "
-        "analysis, machine learning, or another non-backend-related task."
+        "Primary deliverables are backend development, API design, "
+        "database management, server-side logic, and infrastructure. Odoo "
+        "backend development (custom modules, database/API work) is in "
+        "scope; ERP administration without development is not. "
+        "Make.com/n8n/Zapier automation and API-to-feed pipelines are "
+        "backend integration work. Reject frontend, mobile, game, "
+        "data analysis, ML, or other non-backend tasks."
     ),
     positive_keywords=POSITIVE_KEYWORDS,
     negative_keywords=NEGATIVE_KEYWORDS,

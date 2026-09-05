@@ -58,7 +58,15 @@ IMPORTANT CMS / SITE-BUILDER DISTINCTION:
 
 Building, developing, or heavily customizing a website ON a CMS or
 e-commerce platform IS frontend/web development work and MUST be
-approved when the deliverable is the website itself.
+approved when the deliverable is the website itself. In particular,
+building a platform BY EXTENDING an existing plugin with custom code
+is development: working with WordPress hooks/APIs to build a custom
+business layer around an existing plugin (e.g. a booking engine such
+as Easy Appointments) is frontend work whenever the deliverable is
+the custom platform, even if the plugin already supplies much of the
+underlying functionality. Reusing a plugin's engine is NOT a reason
+to reject the build around it; only installing/configuring a plugin
+with no custom code is.
 
 For example:
 
@@ -73,6 +81,13 @@ search, filters, payment gateway integration, and responsive design."
 ACCEPT:
 "Redesign and redevelop our professional association website built on
 WordPress: new layout, new features, migration of content."
+
+ACCEPT:
+"Build a booking platform on WordPress: a custom front-end/business
+layer around the Easy Appointments plugin, extended with hooks/APIs,
+instructor-specific booking pages, custom availability, and calendar
+integration -- build the layer around the existing plugin's booking
+engine rather than rebuilding it."
 
 REJECT:
 "Set up a new WordPress install on my hosting account" -- hosting/
@@ -119,6 +134,14 @@ development work:
   built for a business or creator -- these are website builds and are
   approved regardless of the "portfolio"/"rental"/"catalog"/"content"
   framing.
+- Custom platform builds around an existing plugin (booking/scheduling
+  engines such as Easy Appointments, customer portals, membership apps):
+  "build the business layer around an existing booking engine", "extend
+  the appointment plugin with custom pages/instructor profiles". The
+  deliverable is the custom platform/website; reusing the plugin's
+  engine is not configuration-only. These were wrongly suppressed in
+  run 34 and MUST be approved whenever the custom work centers on the
+  website/portal itself.
 
 ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
 A posting that engages a developer on a recurring/part-time/month-to-month

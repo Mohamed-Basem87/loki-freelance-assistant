@@ -216,7 +216,7 @@ NEGATIVE_KEYWORDS = {
         "supporting": {},
     },
 
-    # Developer-console account trading/transfer services, not app builds.
+# Developer-console account trading/transfer services, not app builds.
     "account_services": {
         "core": {
             "app transfer": 6,
@@ -228,6 +228,40 @@ NEGATIVE_KEYWORDS = {
             # hard-rejecting genuine deployment or release-engineering work.
             "فتح حساب ابل ستور": 8,
             "فتح حساب في apple developer": 8,
+        },
+        "supporting": {},
+    },
+
+    # App-store publishing/maintenance operations, not app builds
+    # (2026-09-04 run 34). mostaql:1274541 (rowid 13471) 'نشر تطبيق Marché
+    # على Apple App Store وGoogle Play' -- D-U-N-S extraction, company
+    # developer-account creation, build upload, store-review follow-up,
+    # no engineering -- was keyword_direct NOTIFIED (app store/google play
+    # positives) and DELIVERED despite the mobile Guard prompt already
+    # rejecting account admin. Guard prompt is not editable, so the
+    # classifier now routes pure publishing/account-ops to arbitration via
+    # this negative core: title 'نشر تطبيق' + google play/app store =
+    # mixed_core_signals -> needs_gemini -> LLM arbitration, whose context
+    # explicitly rejects store-publishing/account administration without
+    # development. Follows the run-22 (mostaql:1272649 app-store
+    # publishing) and run-28/29 (developer-account opening) FP lineage.
+    "store_publishing": {
+        "core": {
+            "نشر تطبيق": 8,
+            "نشر التطبيق": 8,
+            "نشر تطبيقات": 8,
+            "رفع التطبيق": 8,
+            "رفع تطبيق": 8,
+            "d-u-n-s": 8,
+            "استخراج d-u-n-s": 8,
+            "حسابات المطور": 8,
+            "متابعة مراجعة": 8,
+            "publish the app": 8,
+            "publishing the app": 8,
+            "app publishing": 8,
+            "app store submission": 8,
+            "submit the app": 8,
+            "submit the application": 8,
         },
         "supporting": {},
     },

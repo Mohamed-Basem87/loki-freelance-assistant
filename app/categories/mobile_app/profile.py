@@ -30,12 +30,13 @@ PROFILE = CategoryProfile(
     name="Mobile App Development",
     description="Mobile App Development for iOS and Android platforms.",
     arbitration_context=(
-        "Primary deliverables are mobile application development, "
-        "including native iOS/Android apps, cross-platform apps "
-        "(Flutter, React Native), and mobile-specific features. "
-        "Reject when the primary deliverable is web development, "
-        "game development, data analysis, machine learning, or "
-        "another non-mobile-related task."
+        "Primary deliverables are mobile application development "
+        "(native iOS/Android, Flutter, React Native). Releasing an app "
+        "the freelancer also builds is in scope. Reject pure "
+        "store-publishing/account administration of an already-built "
+        "app: account opening, D-U-N-S, submitting an existing build, "
+        "review follow-up. Also reject web, game, data analysis, ML, "
+        "or other non-mobile tasks."
     ),
     positive_keywords=POSITIVE_KEYWORDS,
     negative_keywords=NEGATIVE_KEYWORDS,

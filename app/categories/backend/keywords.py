@@ -288,6 +288,53 @@ POSITIVE_KEYWORDS = {
         "supporting": {},
     },
 
+    # Data-pipeline/feed engineering. API pull -> transform (CSV) ->
+    # publish as a live feed/ticker. 2026-09-04 run 34 fn_llm:
+    # freelancer:40690663 'Real-time Data Integration for Webpage' only
+    # matched frontend 'web development', Gemini had no backend candidate
+    # and chose none. The Sharekhan API->CSV->live-feed task is backend
+    # integration/scripting; explicit feed-pipeline cores claim it.
+    "data_feed_pipelines": {
+        "core": {
+            "data integration": 8,
+            "real-time data": 7,
+            "real time data": 7,
+            "live data": 7,
+            "live feed": 6,
+            "live feeds": 6,
+            "live ticker": 6,
+        },
+        "supporting": {
+            "csv": 2,
+            "csv file": 2,
+            "csv files": 2,
+        },
+    },
+
+    # No-code / low-code automation-platform engineering. Certified
+    # routing rule (2026-09-04 run 34): Make.com and sibling
+    # workflow-automation platforms are BACKEND integration canvases.
+    # fn_guard freelancer:40691106 'Make.com Automated Invoicing Setup'
+    # direct-selected frontend via an HTML invoice template and was
+    # guard-suppressed; the deliverable is a Make.com scenario/blueprint
+    # wired to a checkout event. Recurring family (12576/12936/13132).
+    # 'webhook' stays OUT (2026-09-02 run 31 broad-collateral lesson).
+    "automation_platforms": {
+        "core": {
+            "make.com": 8,
+            "make scenario": 7,
+            "make scenarios": 7,
+            "make automation": 7,
+            "make automations": 7,
+            "make blueprint": 7,
+            "make.com account": 8,
+            "zapier": 7,
+            "rpa": 6,
+            "rpa automation": 7,
+        },
+        "supporting": {},
+    },
+
     # Auction/marketplace platform builds (VIN-search, live bidding,
     # membership, payments).
     "marketplace": {
