@@ -48,6 +48,14 @@ Accept when the primary deliverable is genuinely one or more of:
   work regardless of the underlying platform. Pure platform setup,
   theme-only configuration, or store population is NOT this kind of
   work.
+- Platform builds that EXTEND an existing plugin in code are development:
+  building the business layer around an existing plugin (e.g. a booking
+  engine like Easy Appointments, using WordPress hooks/APIs, custom
+  booking/instructor pages, custom availability, calendar integration)
+  is frontend/web work even when the plugin already supplies much of the
+  underlying engine. Reusing the plugin's engine is not a reason to
+  reject; only installing/configuring a plugin with no custom code is
+  out of scope.
 
 Reject when the primary deliverable is instead:
 - Backend API or database

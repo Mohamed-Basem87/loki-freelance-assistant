@@ -222,3 +222,19 @@ def test_frontend_guard_recognizes_booking_platform_builds():
     assert "Easy Appointments" in GUARD
     assert "Reusing a plugin's engine is NOT a reason" in GUARD
     assert "wrongly suppressed in" in GUARD and "run 34" in GUARD
+
+
+def test_frontend_arbitration_mirrors_booking_platform_builds():
+    # Same fn_guard run-34 class (job 13704) must also be recognized by
+    # the arbitration layer, both in the Groq compact fallback and in
+    # the Gemini full-depth system prompt, so a booking-platform build
+    # that reaches arbitration is not dropped to "none"/rejected.
+    from app.categories.frontend.llm_prompt import SYSTEM_PROMPT as GEMINI
+
+    ctx = get_category("frontend").arbitration_context or ""
+    assert "Easy Appointments" in ctx
+    assert "hooks/APIs" in ctx
+    assert "booking engines" in ctx
+    assert "Easy Appointments" in GEMINI
+    assert "hooks/APIs" in GEMINI
+    assert "only installing/configuring a plugin with no custom code is" in GEMINI
