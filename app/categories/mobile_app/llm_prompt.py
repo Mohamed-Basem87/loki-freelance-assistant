@@ -28,7 +28,12 @@ Accept when the primary deliverable is genuinely one or more of:
 - Native iOS app development (Swift, SwiftUI, UIKit)
 - Native Android app development (Kotlin, Jetpack Compose)
 - Cross-platform app development (Flutter, React Native)
-- Mobile app UI/UX implementation
+- Mobile app UI/UX implementation, including design phases of an app
+  build: UI/UX design work on an existing or new mobile application is
+  part of the mobile development project (e.g. designing the
+  first-time-user onboarding or interactive prototype screens of a
+  Flutter app the client is also developing), NOT a non-mobile design
+  task
 - Mobile app backend integration
 - Mobile app testing and debugging (REJECT when testing is the primary deliverable)
 - Mobile app deployment to App Store/Play Store
@@ -63,6 +68,13 @@ MOBILE APP DEVELOPMENT SCOPE
 This profile is focused on MOBILE APP DEVELOPMENT, NOT web development,
 game development, data analysis, machine learning, or general
 software development.
+
+Design phases of an app build ARE mobile development: UI/UX design
+for an existing or new mobile application (e.g. first-time-user
+onboarding, interactive prototype screens, in-app UI flows for a Flutter
+app) is part of the development project, not a non-mobile "graphic
+design" task. Only standalone design with no mobile application context
+(print/branding/web page design) is out of scope.
 
 Do not approve a project merely because it mentions:
 - Flutter

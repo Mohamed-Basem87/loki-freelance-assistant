@@ -31,12 +31,14 @@ PROFILE = CategoryProfile(
     description="Mobile App Development for iOS and Android platforms.",
     arbitration_context=(
         "Primary deliverables are mobile application development "
-        "(native iOS/Android, Flutter, React Native). Releasing an app "
-        "the freelancer also builds is in scope. Reject pure "
-        "store-publishing/account administration of an already-built "
-        "app: account opening, D-U-N-S, submitting an existing build, "
-        "review follow-up. Also reject web, game, data analysis, ML, "
-        "or other non-mobile tasks."
+        "(native iOS/Android, Flutter, React Native). Design phases "
+        "(first-time-user onboarding, interactive prototype screens) of "
+        "an app build are in scope. Releasing an app the freelancer also "
+        "builds is in scope. Reject pure store-publishing/account "
+        "administration of an already-built app: account opening, "
+        "D-U-N-S, submitting an existing build, review follow-up. Also "
+        "reject standalone non-mobile design, web, game, data analysis, "
+        "ML, or other non-mobile tasks."
     ),
     positive_keywords=POSITIVE_KEYWORDS,
     negative_keywords=NEGATIVE_KEYWORDS,

@@ -30,6 +30,10 @@ Accept when the primary deliverable is genuinely one or more of:
 - Server-side logic and business rules
 - Authentication and authorization systems
 - Data processing and transformation
+- Custom tooling and automation-script builds when the engineered
+  code is the deliverable: importers/migrators (e.g. moving Excel rows
+  into a web form), API-to-feed pipelines, and utility tools such as
+  file/image deduplication or data-cleaning scripts
 - Microservices architecture
 - Message queues and event-driven systems
 - Caching and performance optimization
@@ -64,6 +68,14 @@ BACKEND DEVELOPMENT SCOPE
 This profile is focused on BACKEND DEVELOPMENT, NOT frontend
 development, mobile app development, game development, data analysis,
 machine learning, or general software development.
+
+Custom tooling and automation-script builds ARE backend work when the
+engineered code is the deliverable: importers and migrators that move
+data between systems (e.g. an Excel-to-web-form import script), API-to-
+feed pipelines, and utility/data-processing tools (e.g. file/image
+deduplication or data-cleaning scripts). Rejecting them as "general
+software development" is wrong -- they are server-side data and
+integration work.
 
 Do not approve a project merely because it mentions:
 - Laravel

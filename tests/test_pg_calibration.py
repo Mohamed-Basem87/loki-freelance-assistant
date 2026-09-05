@@ -26,6 +26,7 @@ offline pattern of test_llm_manager.py / test_full_stack.py.
 """
 
 import pytest
+import re
 
 from app.llm.manager import (
     build_category_arbitration_system_prompt,
@@ -238,3 +239,37 @@ def test_frontend_arbitration_mirrors_booking_platform_builds():
     assert "Easy Appointments" in GEMINI
     assert "hooks/APIs" in GEMINI
     assert "only installing/configuring a plugin with no custom code is" in GEMINI
+
+
+def test_backend_arbitration_mirrors_automation_script_and_tool_builds():
+    # fn_llm run-35 (jobs 13844, 13888): an automation script moving
+    # Excel rows into a web form and a Python image-deduplication tool
+    # delivered "none" on the Gemini full-depth path. Engineered
+    # importers/migrators and data-processing tooling are backend
+    # integration/data work and must be accepted by both the compact
+    # Groq fallback and the Gemini full-depth system prompt.
+    from app.categories.backend.llm_prompt import SYSTEM_PROMPT as GEMINI
+
+    g = re.sub(r"\s+", " ", GEMINI)
+    assert "Excel-to-web-form import script" in g
+    assert "file/image deduplication or data-cleaning scripts" in g
+    assert "importers and migrators that move data between systems" in g
+
+
+def test_mobile_app_arbitration_mirrors_design_phase_of_app_build():
+    # fn_llm run-35 (job 13862): a Flutter app brief dominated by
+    # designing the first-time-user onboarding/interactive prototype
+    # screens was dropped to "none" because the model classified it as
+    # non-mobile design. Design phases of an existing/new mobile app are
+    # mobile development, accepted by both the compact Groq fallback and
+    # the Gemini full-depth system prompt.
+    from app.categories.mobile_app.llm_prompt import SYSTEM_PROMPT as GEMINI
+
+    ctx = get_category("mobile_app").arbitration_context or ""
+    assert "first-time-user onboarding" in ctx
+    assert "interactive prototype screens" in ctx
+
+    g = re.sub(r"\s+", " ", GEMINI)
+    assert "design phases of an app build" in g
+    assert "first-time-user onboarding" in g
+    assert "NOT a non-mobile design task" in g
