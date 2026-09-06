@@ -16,6 +16,7 @@ from app.notification_guard.config import (
     NOTIFICATION_GUARD_MODELS,
     NOTIFICATION_GUARD_MAX_RETRIES,
 )
+from app.notification_guard.provider import GuardProvider
 from app.notification_guard.prompt import build_prompt
 
 
@@ -121,7 +122,9 @@ def _parse_decision_with_category(content: str, original_category_id: str) -> tu
     return True, category
 
 
-class GroqNotificationGuard:
+class GroqNotificationGuard(GuardProvider):
+
+    id = "groq"
 
     def __init__(self):
         self.models = list(NOTIFICATION_GUARD_MODELS)
@@ -200,3 +203,28 @@ class GroqNotificationGuard:
 
         result, _ = run_with_rotation("Groq guard", self._candidates(make_thunk))
         return result
+
+
+# Module-level singleton + free functions, kept for backward
+# compatibility with existing callers/tests that import
+# app.notification_guard.groq.evaluate / evaluate_with_category
+# directly (and that monkeypatch app.notification_guard.groq.CLIENTS /
+# NOTIFICATION_GUARD_MODELS -- GroqNotificationGuard reads the module-
+# level CLIENTS/models list at construction, from `self.models`/
+# `self.clients`, so a fresh provider instance picks up changes).
+_provider = GroqNotificationGuard()
+
+
+def evaluate(title: str, description: str, system_prompt: str) -> bool:
+    return _provider.evaluate(title, description, system_prompt)
+
+
+def evaluate_with_category(
+    title: str,
+    description: str,
+    system_prompt: str,
+    original_category_id: str,
+) -> tuple[bool, str]:
+    return _provider.evaluate_with_category(
+        title, description, system_prompt, original_category_id
+    )

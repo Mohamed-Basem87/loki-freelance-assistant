@@ -2,13 +2,117 @@ import asyncio
 import importlib
 import time
 
-from app.notification_guard.config import NOTIFICATION_GUARD_ENABLED
+from app.notification_guard import config as guard_config
 from app.notification_guard.groq import GroqNotificationGuard
 from app.notification_guard.logger import log_guard_decision
 from app.categories.registry import get_category
 
 
 FULL_STACK_CATEGORY_ID = "full_stack"
+
+
+# ---------------------------------------------------------------------------
+# Guard provider orchestration.
+#
+# Mirror of app.llm.manager: every registered guard provider is tried,
+# in order, stopping at the first success. Adding another guard
+# provider means:
+#   1. implement app.notification_guard.provider.GuardProvider (see
+#      app.notification_guard.groq for the pattern -- providers build
+#      their own candidate list and use the shared
+#      app.llm.rotation.run_with_rotation executor internally, so every
+#      provider gets the same cooldown/classification behavior for free
+#      without reimplementing it);
+#   2. add its (provider_id, factory) here.
+# Nothing else in this file, or in app.job_processor, needs to change.
+#
+# GroqNotificationGuard is referenced by bare name inside the factory
+# lambdas (not tucked inside a class or list comprehension) so tests
+# can keep monkeypatching it directly by name -- same convention
+# app.llm.manager uses for gemini_evaluate/groq_evaluate.
+_GUARD_PROVIDERS = [
+    ("groq", lambda: GroqNotificationGuard()),
+]
+
+
+def _evaluate_guard(title: str, description: str, system_prompt: str):
+    """Try every registered guard provider, first success wins.
+
+    Mirrors app.llm.manager._EVALUATE_PROVIDERS orchestration. The
+    calling wrapper (NotificationGuard.allow) runs this in a worker
+    thread so blocking provider I/O never stalls the event loop.
+
+    Returns (allowed, winning_provider_id, winning_model) so the
+    wrapper can log which backend actually decided -- manager.py only
+    needs the raw result, the guard's persistence layer records
+    provider/model.
+
+    Raises RuntimeError, with every provider's failure message joined,
+    if every registered provider fails (or none are registered).
+    """
+    failures = []
+    last_exception = None
+
+    for index, (provider_id, factory) in enumerate(_GUARD_PROVIDERS):
+        provider = factory()
+        try:
+            allowed = provider.evaluate(title, description, system_prompt)
+            return allowed, provider.id, provider.model
+        except Exception as e:
+            print(f"{provider_id.capitalize()} guard failed: {e}")
+            failures.append(f"{provider_id}: {e}")
+            last_exception = e
+            if index + 1 < len(_GUARD_PROVIDERS):
+                next_id = _GUARD_PROVIDERS[index + 1][0]
+                print(f"Falling back to {next_id.capitalize()} guard...")
+            continue
+
+    raise RuntimeError(
+        "All guard providers failed. " + " | ".join(failures)
+    ) from last_exception
+
+
+def _evaluate_guard_with_category(
+    title: str,
+    description: str,
+    system_prompt: str,
+    original_category_id: str,
+):
+    """Try every registered guard provider, first success wins.
+
+    Returns (allowed, resolved_category_id, winning_provider_id,
+    winning_model). resolved_category_id is always either
+    original_category_id or "full_stack" (see GuardProvider.
+    evaluate_with_category). Same fallback/fail behavior as
+    _evaluate_guard.
+    """
+    failures = []
+    last_exception = None
+
+    for index, (provider_id, factory) in enumerate(_GUARD_PROVIDERS):
+        provider = factory()
+        try:
+            allowed, resolved_category_id = provider.evaluate_with_category(
+                title, description, system_prompt, original_category_id
+            )
+            return (
+                allowed,
+                resolved_category_id,
+                provider.id,
+                provider.model,
+            )
+        except Exception as e:
+            print(f"{provider_id.capitalize()} guard failed: {e}")
+            failures.append(f"{provider_id}: {e}")
+            last_exception = e
+            if index + 1 < len(_GUARD_PROVIDERS):
+                next_id = _GUARD_PROVIDERS[index + 1][0]
+                print(f"Falling back to {next_id.capitalize()} guard...")
+            continue
+
+    raise RuntimeError(
+        "All guard providers failed. " + " | ".join(failures)
+    ) from last_exception
 
 
 def _build_combined_system_prompt(
@@ -29,7 +133,7 @@ def _build_combined_system_prompt(
 
     Deliberately loads exactly two prompts, never more: the tiering
     system already narrowed this job to one specialist category, so
-    the only real ambiguity worth spending a Groq call on is
+    the only real ambiguity worth an extra guard call on is
     "this specialist, or actually full_stack" -- not a re-run of full
     multi-category arbitration.
     """
@@ -70,13 +174,7 @@ class NotificationGuard:
 
     def __init__(self):
 
-        self.enabled = NOTIFICATION_GUARD_ENABLED
-
-        self.provider = (
-            GroqNotificationGuard()
-            if self.enabled
-            else None
-        )
+        self.enabled = guard_config.NOTIFICATION_GUARD_ENABLED
 
     async def allow(
         self,
@@ -115,8 +213,8 @@ class NotificationGuard:
             prompt_module = importlib.import_module(profile.guard_prompt_module)
             system_prompt = prompt_module.SYSTEM_PROMPT
 
-            allowed = await asyncio.to_thread(
-                self.provider.evaluate,
+            allowed, provider_id, model = await asyncio.to_thread(
+                _evaluate_guard,
                 job.get("title", ""),
                 job.get("description", ""),
                 system_prompt,
@@ -137,8 +235,8 @@ class NotificationGuard:
                     if allowed
                     else "do_not_notify"
                 ),
-                provider="Groq",
-                model=self.provider.model,
+                provider=provider_id,
+                model=model,
                 response_time_ms=response_time_ms,
                 guard_category=category_id if allowed else "",
             )
@@ -158,12 +256,8 @@ class NotificationGuard:
                 title=job.get("title", ""),
                 original_decision=original_decision,
                 guard_decision="error",
-                provider="Groq",
-                model=(
-                    self.provider.model
-                    if self.provider is not None
-                    else "",
-                ),
+                provider="",
+                model="",
                 response_time_ms=response_time_ms,
                 error=str(exc),
             )
@@ -186,7 +280,7 @@ class NotificationGuard:
         Returns {"allowed": bool, "category_id": str}. category_id is
         always either the original category_id or "full_stack" --
         never blindly trusted from the provider response (see
-        GroqNotificationGuard._parse_decision_with_category).
+        GuardProvider.evaluate_with_category).
 
         Every fail-closed / persistence behavior matches allow()
         exactly; this additionally persists which category a
@@ -221,12 +315,14 @@ class NotificationGuard:
                 category_id,
             )
 
-            allowed, resolved_category_id = await asyncio.to_thread(
-                self.provider.evaluate_with_category,
-                job.get("title", ""),
-                job.get("description", ""),
-                combined_prompt,
-                category_id,
+            allowed, resolved_category_id, provider_id, model = (
+                await asyncio.to_thread(
+                    _evaluate_guard_with_category,
+                    job.get("title", ""),
+                    job.get("description", ""),
+                    combined_prompt,
+                    category_id,
+                )
             )
 
             response_time_ms = round(
@@ -244,8 +340,8 @@ class NotificationGuard:
                     if allowed
                     else "do_not_notify"
                 ),
-                provider="Groq",
-                model=self.provider.model,
+                provider=provider_id,
+                model=model,
                 response_time_ms=response_time_ms,
                 guard_category=resolved_category_id if allowed else "",
             )
@@ -268,12 +364,8 @@ class NotificationGuard:
                 title=job.get("title", ""),
                 original_decision=original_decision,
                 guard_decision="error",
-                provider="Groq",
-                model=(
-                    self.provider.model
-                    if self.provider is not None
-                    else "",
-                ),
+                provider="",
+                model="",
                 response_time_ms=response_time_ms,
                 error=str(exc),
             )

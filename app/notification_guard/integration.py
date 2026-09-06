@@ -22,7 +22,7 @@ class NotificationGuardIntegration:
       final decision and is reused forever for that job -- for the
       private/channel pair of a single process_job() invocation, for
       every later retry_incomplete_notifications() sweep pass, and
-      across process restarts. The guard's provider (Groq) is never
+      across process restarts. The guard's provider is never
       asked again for that job once a valid decision exists.
     - "error" (a transient provider/evaluation failure) is NOT a
       valid decision and is never reused -- the guard is evaluated

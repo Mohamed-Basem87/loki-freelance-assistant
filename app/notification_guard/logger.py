@@ -8,7 +8,7 @@ async def log_guard_decision(
     title="",
     original_decision="",
     guard_decision="",
-    provider="Groq",
+    provider="",
     model="",
     response_time_ms=None,
     error="",
