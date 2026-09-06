@@ -648,6 +648,7 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
                 response_time_ms=arbitration_time,
                 decision=selected,
                 confidence=arbitration["confidence"],
+                provider=arbitration.get("provider", ""),
                 save=False,
             )
 

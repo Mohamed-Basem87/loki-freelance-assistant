@@ -160,6 +160,7 @@ GEMINI_HEADERS = [
     "Response Time (ms)",
     "Decision",
     "Confidence",
+    "Provider",
 ]
 
 NOTIFICATION_HEADERS = [
@@ -900,6 +901,7 @@ class DBLogger:
         response_time_ms,
         decision,
         confidence,
+        provider="",
         save=True,
     ):
 
@@ -918,6 +920,7 @@ class DBLogger:
                 response_time_ms,
                 decision,
                 confidence,
+                provider,
             ],
         )
 

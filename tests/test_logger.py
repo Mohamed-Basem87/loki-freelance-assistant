@@ -380,3 +380,47 @@ def test_initialize_creates_current_schema_on_fresh_db(tmp_path):
     finally:
         logger.close()
         logger.path = original_path
+
+
+def test_log_gemini_persists_provider(tmp_path):
+    """The main LLM layer now records which provider (gemini vs groq)
+    actually produced an arbitration decision -- mirroring the
+    notification guard's provider column. Regression test: the
+    provider value passed to log_gemini must land on the gemini row."""
+    db = tmp_path / "gemini_provider.db"
+
+    original_path = logger.path
+    logger.close()
+    try:
+        logger.path = db
+        logger.initialize()
+
+        import asyncio
+
+        asyncio.run(
+            logger.run(
+                logger.log_gemini,
+                job_uuid="job-arb1",
+                decision_before="needs_gemini",
+                reason_before="mixed signals",
+                prompt_tokens="",
+                completion_tokens="",
+                response_time_ms=123.45,
+                decision="data_analysis",
+                confidence=90,
+                provider="groq",
+                save=True,
+            )
+        )
+
+        conn = sqlite3.connect(db)
+        try:
+            rows = conn.execute(
+                'SELECT "Job UUID", "Decision", "Provider" FROM gemini'
+            ).fetchall()
+            assert rows == [("job-arb1", "data_analysis", "groq")]
+        finally:
+            conn.close()
+    finally:
+        logger.close()
+        logger.path = original_path

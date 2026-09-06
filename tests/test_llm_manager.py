@@ -68,6 +68,7 @@ def test_arbitration_builds_system_prompt_from_candidate_category_prompts(monkey
     result = manager.arbitrate_category("Build an analytics API", candidates)
 
     assert result["selected_category"] == "data_analysis"
+    assert result["provider"] == "gemini"
     prompt = captured["system_prompt"]
     assert "CATEGORY: Data Analysis (data_analysis)" in prompt
     assert "CATEGORY: Backend Development (backend)" in prompt
@@ -92,6 +93,7 @@ def test_gemini_success_short_circuits_groq(monkeypatch):
     result = manager.evaluate_job(TEXT, FILTER_RESULT)
 
     assert result["decision"] == "accept"
+    assert result["provider"] == "gemini"
     assert calls == {"gemini": 1, "groq": 0}
 
 
@@ -112,6 +114,7 @@ def test_gemini_failure_falls_back_to_groq(monkeypatch):
     result = manager.evaluate_job(TEXT, FILTER_RESULT)
 
     assert result["decision"] == "reject"
+    assert result["provider"] == "groq"
     assert calls == {"gemini": 1, "groq": 1}
 
 

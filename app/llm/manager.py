@@ -221,7 +221,9 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
 
     for index, (provider_id, evaluate_fn) in enumerate(_EVALUATE_PROVIDERS):
         try:
-            return evaluate_fn(text, filter_result, system_prompt)
+            result = evaluate_fn(text, filter_result, system_prompt)
+            result["provider"] = provider_id
+            return result
         except Exception as e:
             print(f"{provider_id.capitalize()} failed: {e}")
             failures.append(f"{provider_id}: {e}")
