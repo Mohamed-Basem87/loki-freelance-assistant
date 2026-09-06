@@ -119,7 +119,7 @@ def test_gemini_falls_back_across_keys_on_failure(monkeypatch):
 def test_gemini_raises_when_no_keys_configured(monkeypatch):
     monkeypatch.setattr(gemini, "CLIENTS", [])
 
-    with pytest.raises(RuntimeError, match="No Gemini API keys"):
+    with pytest.raises(RuntimeError, match="No Gemini candidates are configured"):
         gemini.evaluate_job(TEXT, FILTER_RESULT)
 
 

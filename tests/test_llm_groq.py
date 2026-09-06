@@ -42,8 +42,9 @@ class _FakeMessage:
 
 
 class _FakeChoice:
-    def __init__(self, content):
+    def __init__(self, content, finish_reason="stop"):
         self.message = _FakeMessage(content)
+        self.finish_reason = finish_reason
 
 
 class _FakeCompletionResponse:
@@ -59,9 +60,14 @@ class _FakeCompletions:
         self._responses = list(responses)
         self.calls = []
 
-    def create(self, *, model, messages, response_format=None):
+    def create(self, *, model, messages, response_format=None, max_tokens=None):
         self.calls.append(
-            {"model": model, "messages": messages, "response_format": response_format}
+            {
+                "model": model,
+                "messages": messages,
+                "response_format": response_format,
+                "max_tokens": max_tokens,
+            }
         )
         outcome = self._responses.pop(0)
         if isinstance(outcome, Exception):

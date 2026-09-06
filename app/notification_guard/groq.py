@@ -1,5 +1,6 @@
-import httpx
-from groq import APITimeoutError, Groq
+import json
+
+from groq import Groq
 
 from tenacity import (
     retry,
@@ -9,6 +10,7 @@ from tenacity import (
 )
 
 from app.llm import rate_limit_tracker
+from app.llm.rotation import run_with_rotation
 from app.notification_guard.config import (
     NOTIFICATION_GUARD_API_KEYS,
     NOTIFICATION_GUARD_MODELS,
@@ -18,47 +20,13 @@ from app.notification_guard.prompt import build_prompt
 
 
 CLIENTS = [
-    Groq(
-        api_key=key,
-        timeout=30.0,
-        max_retries=0,
-    )
+    Groq(api_key=key)
     for key in NOTIFICATION_GUARD_API_KEYS
 ]
 
 
-_TRANSIENT_ERROR_MARKERS = (
-    "429",
-    "503",
-    "resource_exhausted",
-    "quota exceeded",
-    "unavailable",
-)
-
-
-def _is_transient(exception: Exception) -> bool:
-    text = str(exception).lower()
-
-    return any(
-        marker in text
-        for marker in _TRANSIENT_ERROR_MARKERS
-    )
-
-
-def _is_timeout(exception: Exception) -> bool:
-    """Recognize Groq SDK/httpx timeouts by exception type."""
-    seen = set()
-    current = exception
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        if isinstance(current, (APITimeoutError, httpx.TimeoutException)):
-            return True
-        current = current.__cause__ or current.__context__
-    return False
-
-
 @retry(
-    retry=retry_if_exception(_is_transient),
+    retry=retry_if_exception(rate_limit_tracker.is_transient),
     stop=stop_after_attempt(NOTIFICATION_GUARD_MAX_RETRIES),
     wait=wait_fixed(1),
     reraise=True,
@@ -69,7 +37,20 @@ def _generate_response(
     title: str,
     description: str,
     system_prompt: str,
+    max_tokens: int = 500,
 ):
+    """
+    max_tokens=500 default: the guard's response schema is tiny
+    ({"decision": ...} or {"decision": ..., "category": ...}), but
+    Groq's output-tokens-per-minute pre-flight check assumes the
+    model's own default maximum when no cap is given -- see the
+    matching comment in app.llm.groq._generate_response for the exact
+    production log line this is defending against (a reasoning model
+    rejected outright for an assumed-large output that was never
+    actually needed). 500 leaves ample headroom for a reasoning
+    model's inline chain-of-thought before its final JSON while
+    staying well under the range that triggered that rejection.
+    """
     return client.chat.completions.create(
         model=model,
         messages=[
@@ -88,7 +69,56 @@ def _generate_response(
         response_format={
             "type": "json_object",
         },
+        max_tokens=max_tokens,
     )
+
+
+def _raise_if_truncated(response):
+    """Same check as app.llm.groq._raise_if_truncated -- the guard
+    never had this protection before, despite sharing the exact same
+    Groq SDK and the exact same finish_reason=='length' failure mode.
+    Added here as part of unifying every provider/rotation on the
+    shared app.llm.rotation executor, which is the first point all
+    three (Gemini, main-pipeline Groq, guard Groq) go through the same
+    classification logic instead of each maintaining its own partial
+    copy.
+    """
+    finish_reason = response.choices[0].finish_reason
+    if finish_reason == "length":
+        raise rate_limit_tracker.TruncatedResponseError(
+            "Completion was cut off by max_tokens before finishing its "
+            "JSON (finish_reason='length')."
+        )
+
+
+def _parse_decision(content: str) -> bool:
+    data = json.loads(content)
+    decision = data.get("decision")
+    if decision == "notify":
+        return True
+    if decision == "do_not_notify":
+        return False
+    raise ValueError(f"Invalid guard decision: {decision!r}")
+
+
+def _parse_decision_with_category(content: str, original_category_id: str) -> tuple[bool, str]:
+    data = json.loads(content)
+    decision = data.get("decision")
+    category = data.get("category")
+
+    if decision not in ("notify", "do_not_notify"):
+        raise ValueError(f"Invalid guard decision: {decision!r}")
+
+    if decision == "do_not_notify":
+        # The category field is meaningless for a suppressed
+        # notification -- nothing is delivered under it either way --
+        # so it isn't validated here.
+        return False, original_category_id
+
+    if category not in (original_category_id, "full_stack"):
+        raise ValueError(f"Invalid guard category: {category!r}")
+
+    return True, category
 
 
 class GroqNotificationGuard:
@@ -100,182 +130,39 @@ class GroqNotificationGuard:
         # Kept for compatibility with the existing guard logger.
         self.model = self.models[0] if self.models else ""
 
-    def _candidates(self):
-        """(client_index, client, model) triples to try, in the usual
-        key-major/model-minor order, with any candidate still in a
-        rate-limit or permanent-failure cooldown (see
-        app.llm.rate_limit_tracker) skipped -- unless *every*
-        candidate is currently in cooldown, in which case the full,
-        unfiltered list is returned (see filter_available's own
-        docstring for why: attempting a call that might still fail
-        beats hard-refusing to try anything over a cooldown estimate
-        that could simply be wrong).
+    def _candidates(self, thunk_factory):
+        """(candidate_id, display_label, thunk) triples, one per
+        (client, model) combination, in the usual key-major/model-minor
+        order. thunk_factory(client, model) must return a zero-argument
+        callable performing that combination's actual request + parse.
 
-        Skipping matters a lot here specifically: this rotation is
-        the notification guard, called once per keyword-direct-match
-        job, every single one -- an exhausted daily-token-budget model
-        (as opposed to a per-request rate limit) fails identically for
-        every remaining job that day, so re-attempting it from
-        scratch each time is pure wasted latency on a request that
-        cannot succeed until the provider's quota window resets.
+        See app.llm.rotation.run_with_rotation for the cooldown-skip
+        and failure-classification behavior this now shares with every
+        other provider in the codebase (Gemini's key rotation, the
+        main pipeline's Groq model rotation) instead of maintaining its
+        own separate copy of that logic.
         """
-        all_candidates = [
-            (client_index, client, model)
+        return [
+            (
+                f"groq-guard-key{client_index + 1}-{model}",
+                f"key #{client_index + 1}, model: {model}",
+                thunk_factory(client, model),
+            )
             for client_index, client in enumerate(self.clients)
             for model in self.models
         ]
-        all_ids = [
-            f"groq-guard-key{client_index + 1}-{model}"
-            for client_index, _, model in all_candidates
-        ]
-        available_ids = set(rate_limit_tracker.filter_available(all_ids))
 
-        skipped = len(all_ids) - len(available_ids)
-        if skipped:
-            print(
-                f"Skipping {skipped} Groq guard key/model combination(s) "
-                f"still in cooldown from a recent failure."
-            )
+    def evaluate(self, title: str, description: str, system_prompt: str) -> bool:
 
-        return [
-            (client_index, client, model)
-            for (client_index, client, model), candidate_id in zip(
-                all_candidates, all_ids
-            )
-            if candidate_id in available_ids
-        ]
+        def make_thunk(client, model):
+            def thunk():
+                response = _generate_response(client, model, title, description, system_prompt)
+                _raise_if_truncated(response)
+                return _parse_decision(response.choices[0].message.content)
+            return thunk
 
-    @staticmethod
-    def _record_failure(candidate_id: str, client_index: int, model: str, error: Exception):
-        """See app.llm.groq._record_failure for the full reasoning --
-        identical three-way classification (quota exhaustion / momentary
-        overload / permanent), applied here to the guard's key+model
-        rotation instead of the main pipeline's model-only rotation.
-        """
-        error_text = str(error)
-
-        if _is_timeout(error):
-            cooldown = rate_limit_tracker.mark_timeout(candidate_id)
-            print(
-                f"Groq guard key #{client_index + 1}, model '{model}' "
-                f"timed out after 30s: {error}\n"
-                f"Marking it unavailable for {cooldown:.0f}s before "
-                f"it's tried again."
-            )
-        elif rate_limit_tracker.is_quota_exhaustion(error_text):
-            cooldown = rate_limit_tracker.mark_rate_limited(
-                candidate_id, error_text
-            )
-            print(
-                f"Groq guard key #{client_index + 1}, model '{model}' "
-                f"failed: {error}\n"
-                f"Marking it unavailable for {cooldown:.0f}s before "
-                f"it's tried again."
-            )
-        elif _is_transient(error):
-            # Momentary overload -- not informative about this
-            # key/model's own state, so it is deliberately left
-            # untouched in the cooldown tracker rather than marked.
-            print(
-                f"Groq guard key #{client_index + 1}, model '{model}' "
-                f"failed (transient, not quota-related, not marked "
-                f"unavailable): {error}"
-            )
-        else:
-            # Not a rate limit or an overload -- e.g. an unrecognized
-            # model name (404 model_not_found) -- so waiting and
-            # retrying it on every future call would fail identically
-            # forever until the config itself is fixed.
-            rate_limit_tracker.mark_permanently_broken(candidate_id)
-            print(
-                f"Groq guard key #{client_index + 1}, model '{model}' "
-                f"failed: {error}\n"
-                f"This does not look like a rate limit or transient "
-                f"overload -- marking it unavailable for a while "
-                f"rather than retrying it on every future job."
-            )
-
-    def evaluate(
-        self,
-        title: str,
-        description: str,
-        system_prompt: str,
-    ) -> bool:
-
-        last_exception = None
-
-        for client_index, client, model in self._candidates():
-
-            candidate_id = f"groq-guard-key{client_index + 1}-{model}"
-
-            print(
-                f"Using Groq guard key #{client_index + 1}, model: {model}"
-            )
-
-            try:
-
-                response = _generate_response(
-                    client,
-                    model,
-                    title,
-                    description,
-                    system_prompt,
-                )
-
-                content = (
-                    response
-                    .choices[0]
-                    .message
-                    .content
-                )
-
-                decision = self._parse_decision(
-                    content
-                )
-
-                rate_limit_tracker.mark_success(candidate_id)
-
-                # A valid decision is final.
-                # Do NOT rotate models after a valid
-                # notify/do_not_notify response.
-                return decision
-
-            except Exception as e:
-
-                self._record_failure(candidate_id, client_index, model, e)
-
-                last_exception = e
-
-                # Continue to the next model regardless
-                # of failure type, matching the main
-                # project's Groq behavior.
-
-                continue
-
-        if last_exception:
-            raise last_exception
-
-        raise RuntimeError(
-            "No Groq notification guard models are configured."
-        )
-
-    @staticmethod
-    def _parse_decision(content: str) -> bool:
-        import json
-
-        data = json.loads(content)
-
-        decision = data.get("decision")
-
-        if decision == "notify":
-            return True
-
-        if decision == "do_not_notify":
-            return False
-
-        raise ValueError(
-            f"Invalid guard decision: {decision!r}"
-        )
+        result, _ = run_with_rotation("Groq guard", self._candidates(make_thunk))
+        return result
 
     def evaluate_with_category(
         self,
@@ -302,77 +189,14 @@ class GroqNotificationGuard:
         app.llm.utils.parse_arbitration_response).
         """
 
-        last_exception = None
-
-        for client_index, client, model in self._candidates():
-
-            candidate_id = f"groq-guard-key{client_index + 1}-{model}"
-
-            print(
-                f"Using Groq guard key #{client_index + 1}, model: {model}"
-            )
-
-            try:
-
-                response = _generate_response(
-                    client,
-                    model,
-                    title,
-                    description,
-                    system_prompt,
+        def make_thunk(client, model):
+            def thunk():
+                response = _generate_response(client, model, title, description, system_prompt)
+                _raise_if_truncated(response)
+                return _parse_decision_with_category(
+                    response.choices[0].message.content, original_category_id
                 )
+            return thunk
 
-                content = (
-                    response
-                    .choices[0]
-                    .message
-                    .content
-                )
-
-                rate_limit_tracker.mark_success(candidate_id)
-
-                return self._parse_decision_with_category(
-                    content,
-                    original_category_id,
-                )
-
-            except Exception as e:
-
-                self._record_failure(candidate_id, client_index, model, e)
-
-                last_exception = e
-
-                continue
-
-        if last_exception:
-            raise last_exception
-
-        raise RuntimeError(
-            "No Groq notification guard models are configured."
-        )
-
-    @staticmethod
-    def _parse_decision_with_category(
-        content: str,
-        original_category_id: str,
-    ) -> tuple[bool, str]:
-        import json
-
-        data = json.loads(content)
-
-        decision = data.get("decision")
-        category = data.get("category")
-
-        if decision not in ("notify", "do_not_notify"):
-            raise ValueError(f"Invalid guard decision: {decision!r}")
-
-        if decision == "do_not_notify":
-            # The category field is meaningless for a suppressed
-            # notification -- nothing is delivered under it either
-            # way -- so it isn't validated here.
-            return False, original_category_id
-
-        if category not in (original_category_id, "full_stack"):
-            raise ValueError(f"Invalid guard category: {category!r}")
-
-        return True, category
+        result, _ = run_with_rotation("Groq guard", self._candidates(make_thunk))
+        return result

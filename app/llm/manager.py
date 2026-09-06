@@ -160,54 +160,115 @@ def build_compact_arbitration_system_prompt(candidates: list[dict]) -> str:
     ).strip()
 
 
+# ---------------------------------------------------------------------------
+# Provider orchestration.
+#
+# Both evaluate_job and arbitrate_category try each provider in this list,
+# in order, stopping at the first success. Adding a third provider means:
+#   1. write a new module exposing evaluate_job(text, filter_result,
+#      system_prompt) and evaluate_category_arbitration(text, candidates,
+#      system_prompt) -- see app.llm.gemini / app.llm.groq for the pattern
+#      (both build on the shared app.llm.rotation.run_with_rotation
+#      executor internally, so a new provider gets the same cooldown/
+#      classification behavior for free without reimplementing it);
+#   2. add its (id, evaluate_fn, arbitrate_fn) here; and, if it needs a
+#      non-default arbitration prompt strategy (see _PROMPT_BUILDERS
+#      below -- only relevant for a provider with its own request-size
+#      constraints the way Groq has), add an entry there too.
+# Nothing else in this file, or in app.job_processor, needs to change.
+#
+# gemini_evaluate/groq_evaluate/gemini_arbitrate/groq_arbitrate remain
+# plain module-level names (not tucked inside a class or list comprehension)
+# specifically so existing tests can keep monkeypatching them directly by
+# name (e.g. monkeypatch.setattr(manager, "gemini_evaluate", fake_gemini));
+# _EVALUATE_PROVIDERS/_ARBITRATE_PROVIDERS below reference them by bare name
+# so a monkeypatch is picked up at call time, not frozen at import time.
+# ---------------------------------------------------------------------------
+
+_EVALUATE_PROVIDERS = [
+    ("gemini", lambda text, filter_result, system_prompt: gemini_evaluate(text, filter_result, system_prompt)),
+    ("groq", lambda text, filter_result, system_prompt: groq_evaluate(text, filter_result, system_prompt)),
+]
+
+# (provider_id, arbitrate_fn, build_prompt_fn, prepare_text_fn). Only Groq
+# currently needs a non-default prompt/text strategy (see
+# build_compact_arbitration_system_prompt's own docstring for why); a
+# provider without special constraints can reuse the full-depth builder
+# and pass its text through unchanged, the same way Gemini does.
+_ARBITRATE_PROVIDERS = [
+    (
+        "gemini",
+        lambda text, candidates, system_prompt: gemini_arbitrate(text, candidates, system_prompt),
+        build_category_arbitration_system_prompt,
+        lambda text: text,
+    ),
+    (
+        "groq",
+        lambda text, candidates, system_prompt: groq_arbitrate(text, candidates, system_prompt),
+        build_compact_arbitration_system_prompt,
+        truncate_job_text,
+    ),
+]
+
+
 def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
     if system_prompt is None:
         from app.categories.data_analysis.llm_prompt import SYSTEM_PROMPT
         system_prompt = SYSTEM_PROMPT
-    try:
-        return gemini_evaluate(text, filter_result, system_prompt)
-    except Exception as gemini_error:
-        print(f"Gemini failed: {gemini_error}")
-        print("Falling back to Groq...")
+
+    failures = []
+    last_exception = None
+
+    for index, (provider_id, evaluate_fn) in enumerate(_EVALUATE_PROVIDERS):
         try:
-            return groq_evaluate(text, filter_result, system_prompt)
-        except Exception as groq_error:
-            print(f"Groq failed: {groq_error}")
-            raise RuntimeError(
-                f"All LLM providers failed. "
-                f"Gemini: {gemini_error} | Groq: {groq_error}"
-            ) from groq_error
+            return evaluate_fn(text, filter_result, system_prompt)
+        except Exception as e:
+            print(f"{provider_id.capitalize()} failed: {e}")
+            failures.append(f"{provider_id}: {e}")
+            last_exception = e
+            if index + 1 < len(_EVALUATE_PROVIDERS):
+                next_id = _EVALUATE_PROVIDERS[index + 1][0]
+                print(f"Falling back to {next_id.capitalize()}...")
+            continue
+
+    raise RuntimeError(
+        "All LLM providers failed. " + " | ".join(failures)
+    ) from last_exception
 
 
 def arbitrate_category(text: str, candidates: list[dict], system_prompt: str = None):
     """Make exactly one provider arbitration request for all candidates.
 
-    When no system prompt is supplied, the primary Gemini path composes
-    the full-depth policy from the live category-specific ``llm_prompt.py``
-    modules while the Groq fallback gets a compact policy built from each
-    candidate's registry scope summary plus a truncated job text -- Groq
-    rejects oversized requests before inference, so an unmodified fallback
-    can never succeed there. An explicitly supplied system prompt is used
-    verbatim on both paths.
+    When no system prompt is supplied, each provider in
+    _ARBITRATE_PROVIDERS builds its own prompt/text via its configured
+    builder (Gemini: full-depth policy from the live category-specific
+    ``llm_prompt.py`` modules, untruncated text; Groq: compact policy
+    from each candidate's registry scope summary, truncated text --
+    Groq rejects oversized requests before inference, so an unmodified
+    fallback can never succeed there). An explicitly supplied system
+    prompt is used verbatim, with unmodified text, on every provider.
     """
-    if system_prompt is None:
-        gemini_system_prompt = build_category_arbitration_system_prompt(candidates)
-        groq_system_prompt = build_compact_arbitration_system_prompt(candidates)
-        groq_text = truncate_job_text(text)
-    else:
-        gemini_system_prompt = system_prompt
-        groq_system_prompt = system_prompt
-        groq_text = text
-    try:
-        return gemini_arbitrate(text, candidates, gemini_system_prompt)
-    except Exception as gemini_error:
-        print(f"Gemini arbitration failed: {gemini_error}")
-        print("Falling back to Groq arbitration...")
+    failures = []
+    last_exception = None
+
+    for index, (provider_id, arbitrate_fn, build_prompt, prepare_text) in enumerate(_ARBITRATE_PROVIDERS):
+
+        provider_prompt = system_prompt if system_prompt is not None else build_prompt(candidates)
+        provider_text = text if system_prompt is not None else prepare_text(text)
+
         try:
-            return groq_arbitrate(groq_text, candidates, groq_system_prompt)
-        except Exception as groq_error:
-            print(f"Groq arbitration failed: {groq_error}")
-            raise RuntimeError(
-                f"All category-arbitration providers failed. "
-                f"Gemini: {gemini_error} | Groq: {groq_error}"
-            ) from groq_error
+            result = arbitrate_fn(provider_text, candidates, provider_prompt)
+            result["provider"] = provider_id
+            return result
+        except Exception as e:
+            print(f"{provider_id.capitalize()} arbitration failed: {e}")
+            failures.append(f"{provider_id}: {e}")
+            last_exception = e
+            if index + 1 < len(_ARBITRATE_PROVIDERS):
+                next_id = _ARBITRATE_PROVIDERS[index + 1][0]
+                print(f"Falling back to {next_id.capitalize()} arbitration...")
+            continue
+
+    raise RuntimeError(
+        "All category-arbitration providers failed. " + " | ".join(failures)
+    ) from last_exception

@@ -45,12 +45,6 @@ _cooldowns: dict[str, float] = {}
 # error message.
 _DEFAULT_COOLDOWN_SECONDS = 60
 
-# Applied when an external LLM request itself times out. A timeout is
-# different from quota exhaustion: the candidate may recover soon, but
-# should not be retried immediately on every job while the provider/network
-# is unhealthy.
-_TIMEOUT_COOLDOWN_SECONDS = 60
-
 # Applied for failures that are not a quota/rate-limit at all and
 # cannot resolve on their own (e.g. a model name the provider doesn't
 # recognize, as seen in production logs for a stale
@@ -184,6 +178,52 @@ def is_quota_exhaustion(error_message: str) -> bool:
     return any(marker in text for marker in _QUOTA_EXHAUSTION_MARKERS)
 
 
+class TruncatedResponseError(RuntimeError):
+    """Raised when a completion was cut off by its output-token cap
+    before it could finish its JSON (Groq: finish_reason == "length";
+    Gemini: FinishReason.MAX_TOKENS).
+
+    Deliberately distinct from a JSON parse failure caused by
+    anything else -- a truncated response says nothing bad about the
+    candidate itself (a different job's shorter answer would have fit
+    fine), so run_with_rotation (see app.llm.rotation) never marks it
+    unavailable the way a genuinely malformed/unparseable response
+    would be.
+    """
+
+
+# Shared across every provider (Gemini key rotation, Groq model
+# rotation, the notification guard's key x model rotation) so this
+# list -- and the transient/permanent distinction it encodes -- lives
+# in exactly one place instead of being hand-duplicated per provider.
+# Confirmed against real production error text from both Gemini
+# ("503 UNAVAILABLE... The model is overloaded") and Groq ("Groq
+# infrastructure issue, model overloaded"). Deliberately narrower than
+# is_quota_exhaustion's markers -- see that function's own docstring
+# for why a 503-shaped overload must never be treated as quota
+# exhaustion even though both are worth retrying within the same call.
+_TRANSIENT_ERROR_MARKERS = (
+    "429",
+    "503",
+    "resource_exhausted",
+    "quota exceeded",
+    "unavailable",
+    "timeout",
+    "timed out",
+)
+
+
+def is_transient(exception: Exception) -> bool:
+    """True for an error worth retrying (rate limit, transient
+    overload) within the same call -- see each provider's tenacity
+    @retry decorator, which gates on this. Distinct from
+    is_quota_exhaustion: this is deliberately broader (also matches a
+    503 overload), used only for the in-call retry decision, never for
+    deciding whether to mark a candidate unavailable across calls."""
+    text = str(exception).lower()
+    return any(marker in text for marker in _TRANSIENT_ERROR_MARKERS)
+
+
 def is_available(candidate_id: str) -> bool:
     with _lock:
         until = _cooldowns.get(candidate_id)
@@ -222,14 +262,6 @@ def mark_rate_limited(candidate_id: str, error_message: str) -> float:
     with _lock:
         _cooldowns[candidate_id] = time.monotonic() + delay
 
-    return delay
-
-
-def mark_timeout(candidate_id: str) -> float:
-    """Temporarily skip a candidate after an API request timeout."""
-    delay = _TIMEOUT_COOLDOWN_SECONDS
-    with _lock:
-        _cooldowns[candidate_id] = time.monotonic() + delay
     return delay
 
 
