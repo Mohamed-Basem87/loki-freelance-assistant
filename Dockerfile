@@ -11,15 +11,13 @@ FROM python:3.11-slim AS builder
 WORKDIR /build
 
 COPY requirements.txt .
-COPY scraper/requirements.txt scraper/requirements.txt
 
 # Install into a separate prefix so the runtime stage can copy exactly
 # what pip resolved, leaving no build toolchain in the final image.
-# The second file is the in-container LinkedIn/Wuzzuf scraper and its
-# pinned deps (scrapling + curl_cffi import chain); it ships in the same
-# image and is driven by app.scraper_scheduler (no host-side cron/script).
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt \
-    && pip install --no-cache-dir --prefix=/install -r scraper/requirements.txt
+# requirements.txt also carries the in-container LinkedIn/Wuzzuf scraper
+# deps (scrapling + curl_cffi import chain) and pytest; the scraper is
+# driven by app.scraper_scheduler (no host-side cron/script).
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 
 FROM python:3.11-slim AS runtime

@@ -368,7 +368,6 @@ indefinitely.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pip install -r requirements-dev.txt
 ```
 
 Windows PowerShell:
@@ -377,7 +376,6 @@ Windows PowerShell:
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-pip install -r requirements-dev.txt
 ```
 
 Copy `.env.example` to `.env` and provide the required
@@ -409,7 +407,7 @@ Preferred:
 Manual:
 
 ``` bash
-pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements.txt
 pytest tests/ -q
 ```
 
@@ -496,7 +494,6 @@ Dockerfile
 docker-compose.yml
 .env.example
 requirements.txt
-requirements-dev.txt
 run.py
 run_guarded.py
 README.md

@@ -85,7 +85,6 @@ fixed destination   subscriber routing
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pip install -r requirements-dev.txt
 ```
 
 On Windows PowerShell:
@@ -94,7 +93,6 @@ On Windows PowerShell:
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-pip install -r requirements-dev.txt
 ```
 
 Create `.env` from `.env.example`.
@@ -715,7 +713,7 @@ Run:
 or:
 
 ``` bash
-pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements.txt
 pytest tests/ -q
 ```
 

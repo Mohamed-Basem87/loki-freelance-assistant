@@ -20,7 +20,6 @@ opencode.json
 # actually needs).
 *.md
 LICENSE
-requirements-dev.txt
 
 # Secrets — never baked into the image. Mount .env at runtime instead.
 .env

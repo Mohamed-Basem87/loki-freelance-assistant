@@ -28,7 +28,7 @@ import json
 import pytest
 from scrapling.parser import Selector
 
-from scraper import (
+from scraper.scraper import (
     build_output_record,
     extract_jsonld_jobposting,
     extract_wuzzuf_embedded_state,
@@ -323,7 +323,7 @@ def test_build_output_record_never_exceeds_size_cap():
     if some other code path manages to put something huge into
     job["Description"].
     """
-    from scraper import MAX_STORED_DESCRIPTION_CHARS
+    from scraper.scraper import MAX_STORED_DESCRIPTION_CHARS
 
     job = {
         "Title": "Test Job",

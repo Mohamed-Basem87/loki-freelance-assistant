@@ -3,11 +3,11 @@
 #
 # A developer cloning this repository previously had no documented,
 # single command that reliably ran the test suite: requirements.txt
-# alone does not include pytest, and the exact working `pip install`
-# invocation only existed inside .github/workflows/ci.yml. This script
-# is that single documented entrypoint -- it is exactly what CI itself
-# should be able to delegate to as well, so local and CI test runs
-# never drift apart.
+# alone did not include pytest, and the exact working `pip install`
+# invocation only existed inside .github/workflows/ci.yml. pytest is now
+# folded into requirements.txt, but this script remains the single
+# documented entrypoint -- it is exactly what CI itself delegates to, so
+# local and CI test runs never drift apart.
 #
 # Usage:
 #   ./scripts/test.sh            # install deps + run the full suite
@@ -16,6 +16,6 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 python -m pip install --upgrade pip
-pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements.txt
 
 pytest tests/ -q "$@"
