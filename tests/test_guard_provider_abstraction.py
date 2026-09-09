@@ -275,21 +275,54 @@ class _CapturingGuard(FakeGuard):
 
 
 def test_guard_bound_defaults_fit_groq_per_minute_budgets():
-    """Pin the default bounds to values that keep the FULL request under
-    Groq's on-demand per-minute budgets (measured in production:
-    gpt-oss 8,000 TPM / qwen 7,000 ITPM, rejected deterministically with
-    HTTP 413 "Request too large"). Text and title are lengths in
-    characters; even the largest combined system prompt
-    (data_analysis+full_stack) is ~21.8K chars (~5.9K tokens at the
-    measured ~0.27 tok/char), so the default description bound must leave
-    the worst-case total comfortably under the tightest 7,000-token
-    budget. A regression here reintroduces an unrecoverable 413 storm.
+    """Pin the default budget so the FULL request stays under Groq's
+    on-demand per-minute buckets (measured in production: gpt-oss 8,000
+    TPM / qwen 7,000 ITPM, rejected deterministically with HTTP 413
+    "Request too large"). The description cap is computed dynamically
+    from the actual composed system prompt, so the total-estimate check
+    uses the largest measured combined prompt (data_analysis+full_stack,
+    ~21.8K chars). A regression here reintroduces an unrecoverable 413
+    storm.
     """
-    assert guard_config.MAX_GUARD_TEXT_CHARS <= 4000, (
-        "default MAX_GUARD_TEXT_CHARS too large for Groq free-tier "
-        "per-minute budgets"
+    assert guard_config.MAX_GUARD_TOTAL_TOKENS < 7000, (
+        "default MAX_GUARD_TOTAL_TOKENS must sit below the tightest "
+        "per-minute budget (qwen 7,000 ITPM)"
     )
-    assert guard_config.MAX_GUARD_TITLE_CHARS <= 2000
+    rate = guard_config.GUARD_ESTIMATED_TOKENS_PER_CHAR
+    assert 0.25 <= rate <= 0.35
+
+    worst_sys_chars = 21_806
+    _, bounded_desc = guard_module._bound_guard_input(
+        "t" * 1_000,
+        "x" * 200_000,
+        "x" * worst_sys_chars,
+    )
+    est = lambda s: int(len(s) * rate)
+    estimate = (
+        est("x" * worst_sys_chars) + est(bounded_desc) + est("t" * 1_000) + 40
+    )
+    assert estimate <= guard_config.MAX_GUARD_TOTAL_TOKENS, (
+        f"worst-case guard request estimated at {estimate} tokens "
+        f"> budget {guard_config.MAX_GUARD_TOTAL_TOKENS}"
+    )
+    assert len(bounded_desc) >= guard_config.GUARD_MIN_TEXT_CHARS
+
+
+def test_guard_bound_scales_with_system_prompt_size():
+    """A bigger composed system prompt leaves less headroom for the
+    description: the cap is 'just below the limit', not a fixed value."""
+    small = guard_module._bound_guard_input(
+        "t" * 50, "x" * 200_000, "small prompt"
+    )[1]
+    big = guard_module._bound_guard_input(
+        "t" * 50, "x" * 200_000, "x" * 21_800
+    )[1]
+    rate = guard_config.GUARD_ESTIMATED_TOKENS_PER_CHAR
+    est = lambda s: int(len(s) * rate)
+    assert len(small) > len(big)
+    for desc, sysp in ((small, "small prompt"), (big, "x" * 21_800)):
+        total = est(sysp) + est(desc) + est("t" * 50) + 40
+        assert total <= guard_config.MAX_GUARD_TOTAL_TOKENS
 
 
 def test_evaluate_bounds_oversized_description_and_title(monkeypatch):
@@ -360,7 +393,10 @@ def test_guard_input_small_inputs_pass_through_unchanged(monkeypatch):
 def test_notification_guard_decision_bounds_input_end_to_end(monkeypatch):
     """The production path (resolve_category -> decide -> provider) with
     a 200K description must hand the provider a bounded payload instead
-    of a deterministic 413."""
+    of a deterministic 413. The cap is dynamic: computed from the real
+    combined system prompt, so it must (a) be well under the raw input,
+    (b) never exceed the absolute MAX_GUARD_TEXT_CHARS ceiling, and
+    (c) never drop below the GUARD_MIN_TEXT_CHARS floor."""
     capturing = _CapturingGuard()
 
     monkeypatch.setattr(
@@ -386,7 +422,10 @@ def test_notification_guard_decision_bounds_input_end_to_end(monkeypatch):
 
     assert result["allowed"] is True
     assert capturing.evaluate_with_category_calls == 1
-    assert len(capturing.last_description) == guard_config.MAX_GUARD_TEXT_CHARS
+    bounded = len(capturing.last_description)
+    assert bounded < 200_000
+    assert bounded <= guard_config.MAX_GUARD_TEXT_CHARS
+    assert bounded >= guard_config.GUARD_MIN_TEXT_CHARS
 
 
 def test_adding_a_fallback_provider_needs_no_wrapper_change(monkeypatch):

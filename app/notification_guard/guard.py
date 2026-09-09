@@ -6,6 +6,9 @@ from app.notification_guard import config as guard_config
 from app.notification_guard.config import (
     MAX_GUARD_TEXT_CHARS,
     MAX_GUARD_TITLE_CHARS,
+    MAX_GUARD_TOTAL_TOKENS,
+    GUARD_ESTIMATED_TOKENS_PER_CHAR,
+    GUARD_MIN_TEXT_CHARS,
 )
 from app.runtime_config import RUNTIME
 GroqNotificationGuard = None  # legacy monkeypatch seam; resolved lazily
@@ -74,26 +77,41 @@ def get_guard_providers():
     return _GUARD_PROVIDERS
 
 
-def _bound_guard_input(title: str, description: str):
-    """Cap the title/description that reach any guard provider.
+def _bound_guard_input(title: str, description: str, system_prompt: str = ""):
+    """Cap the title/description that reach any guard provider, sized to
+    sit just below Groq's per-minute token budget.
 
-    The guard runs on Groq's on-demand tier, which rejects requests that
-    exceed its small per-minute budgets with a deterministic HTTP 413
-    "Request too large" (verified: gpt-oss 8,000 TPM / qwen 7,000 ITPM).
-    A stored Wuzzuf description can sit at the scraper's 200K-char cap --
-    ~11K+ tokens even after trimming to 40K, larger than the ENTIRE
-    per-minute allowance, so such a request can NEVER succeed no matter
-    how often the rotation retries it. Bounding here, at the single choke
-    point every evaluation path (allow / decide) flows through, makes
-    that failure mode impossible instead of retryable. Defaults keep the
-    request (largest combined system prompt + title + description) under
-    the tightest budget; wins can tune via MAX_GUARD_TEXT_CHARS /
-    MAX_GUARD_TITLE_CHARS. Keeps the head of the text, matching
-    app.classification._bounded_input.
+    Groq's on-demand tier rejects requests that exceed its small
+    per-minute budgets with a deterministic HTTP 413 "Request too large"
+    (verified: gpt-oss 8,000 TPM / qwen 7,000 ITPM). A stored Wuzzuf
+    description can sit at the scraper's 200K-char cap (~11K+ tokens
+    even after trimming to 40K -- larger than the ENTIRE per-minute
+    allowance), so such a request can NEVER succeed no matter how often
+    the rotation retries it. The description cap therefore shrinks the
+    text to the headroom left after the (large) combined system prompt,
+    title, and framing overhead are paid from MAX_GUARD_TOTAL_TOKENS --
+    the max that fits, rather than a fixed conservative value. Keeps the
+    head of the text, matching app.classification._bounded_input.
     """
-    if description is not None and len(description) > MAX_GUARD_TEXT_CHARS:
-        description = description[:MAX_GUARD_TEXT_CHARS]
-    if title is not None and len(title) > MAX_GUARD_TITLE_CHARS:
+    rate = GUARD_ESTIMATED_TOKENS_PER_CHAR
+    title_len = len(title or "")
+    sys_tokens = int(len(system_prompt or "") * rate)
+    title_tokens = int(title_len * rate)
+    framing_tokens = 40
+
+    remaining = (
+        MAX_GUARD_TOTAL_TOKENS - sys_tokens - title_tokens - framing_tokens
+    )
+    if rate > 0:
+        text_cap = int(remaining / rate)
+    else:
+        text_cap = MAX_GUARD_TEXT_CHARS
+    text_cap = max(GUARD_MIN_TEXT_CHARS, text_cap)
+    text_cap = min(MAX_GUARD_TEXT_CHARS, text_cap)
+
+    if description is not None and len(description) > text_cap:
+        description = description[:text_cap]
+    if title is not None and title_len > MAX_GUARD_TITLE_CHARS:
         title = title[:MAX_GUARD_TITLE_CHARS]
     return title, description
 
@@ -113,7 +131,7 @@ def _evaluate_guard(title: str, description: str, system_prompt: str, deadline=N
     Raises RuntimeError, with every provider's failure message joined,
     if every registered provider fails (or none are registered).
     """
-    title, description = _bound_guard_input(title, description)
+    title, description = _bound_guard_input(title, description, system_prompt)
     providers = get_guard_providers()
     failures = []
     last_exception = None
@@ -155,7 +173,7 @@ def _evaluate_guard_with_category(
     evaluate_with_category). Same fallback/fail behavior as
     _evaluate_guard.
     """
-    title, description = _bound_guard_input(title, description)
+    title, description = _bound_guard_input(title, description, system_prompt)
     providers = get_guard_providers()
     failures = []
     last_exception = None

@@ -58,17 +58,37 @@ NOTIFICATION_GUARD_PROVIDERS = tuple(x.strip() for x in os.getenv("NOTIFICATION_
 # large" (type rate_limit_exceeded). A 40K-char description alone is
 # ~11K tokens -- larger than the entire per-minute allowance -- so that
 # failure is deterministic and the provider rotation retries it forever
-# ("error" guard rows are deliberately non-durable). Bound title and
-# description before they reach any provider, mirroring
-# app.classification._bounded_input, and sized so that even the largest
-# combined system prompt (data_analysis+full_stack, ~21.8K chars / ~5.9K
-# tokens measured in production) plus bounding stays under the tightest
-# budget (qwen 7K ITPM). The head of the text is kept; the guard only
-# needs enough to make a notify/category decision.
+# ("error" guard rows are deliberately non-durable).
+#
+# The description cap is computed per request so it sits JUST below the
+# budget rather than at a fixed conservative value: the guard's combined
+# system prompt is large (~19.9K chars for frontend, ~21.8K for the
+# largest, data_analysis) and consumes most of the allowance, so the
+# remaining headroom varies by category. MAX_GUARD_TOTAL_TOKENS is the
+# ceiling for the whole request (worst request must stay under the
+# tightest bucket, qwen's 7,000 ITPM); the text cap for the description is
+# (budget - prompt_tokens - title_tokens - framing) / tokens-per-char,
+# floored at GUARD_MIN_TEXT_CHARS and capped at MAX_GUARD_TEXT_CHARS.
+# GUARD_ESTIMATED_TOKENS_PER_CHAR is a measured ~0.27-0.28 (verified
+# against Groq's reported "Requested" token counts for these messages).
+MAX_GUARD_TOTAL_TOKENS = int(
+    os.getenv(
+        "MAX_GUARD_TOTAL_TOKENS",
+        "6800",
+    )
+)
+
+GUARD_ESTIMATED_TOKENS_PER_CHAR = float(
+    os.getenv(
+        "GUARD_ESTIMATED_TOKENS_PER_CHAR",
+        "0.28",
+    )
+)
+
 MAX_GUARD_TEXT_CHARS = int(
     os.getenv(
         "MAX_GUARD_TEXT_CHARS",
-        "3000",
+        "8000",
     )
 )
 
@@ -76,6 +96,13 @@ MAX_GUARD_TITLE_CHARS = int(
     os.getenv(
         "MAX_GUARD_TITLE_CHARS",
         "1000",
+    )
+)
+
+GUARD_MIN_TEXT_CHARS = int(
+    os.getenv(
+        "GUARD_MIN_TEXT_CHARS",
+        "800",
     )
 )
 
