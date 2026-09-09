@@ -155,7 +155,7 @@
       "adapter": "app.adapters.sources.scraper_file:WuzzufFileJobSource",
       "poll_interval": 300,
       "enabled": true,
-      "display_name": "وظف",
+      "display_name": "Wuzzuf",
       "aliases": [
         "wuzzuf"
       ],

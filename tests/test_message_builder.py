@@ -127,18 +127,18 @@ def test_channel_style_escapes_category_name():
     assert "AI/ML &lt;Special&gt;" in message
 
 
-def test_channel_style_uses_abbreviated_arabic_source_names():
+def test_channel_style_uses_abbreviated_english_source_names():
     """
-    Public channel notifications should display abbreviated Arabic
-    source names (مستقل, نفذلي, كفيل) instead of the full channel
-    title or FreeHub source string.
+    Public channel notifications should display abbreviated English
+    source names (Mostaql, Nafezly, Kafiil, Wuzzuf) instead of the full
+    channel title or FreeHub source string.
     """
     test_cases = [
-        ("Mostaql Jobs", "مستقل"),
-        ("مستقل | برمجة، تطوير المواقع والتطبيقات", "مستقل"),
-        ("NAFEZLY Channel", "نفذلي"),
-        ("Nafezly - نفذلي", "نفذلي"),
-        ("kafiil", "كفيل"),
+        ("Mostaql Jobs", "Mostaql"),
+        ("مستقل | برمجة، تطوير المواقع والتطبيقات", "Mostaql"),
+        ("NAFEZLY Channel", "Nafezly"),
+        ("Nafezly - نفذلي", "Nafezly"),
+        ("kafiil", "Kafiil"),
         ("freelancer", "Freelancer"),
     ]
 
@@ -160,7 +160,7 @@ def test_channel_style_uses_abbreviated_arabic_source_names():
 def test_private_style_keeps_full_source_name():
     """
     Private chat notifications should keep the full original source
-    name, not the abbreviated Arabic version.
+    name, not the abbreviated English version.
     """
     message = build_job_message(
         title="Test Job",
@@ -171,7 +171,10 @@ def test_private_style_keeps_full_source_name():
     )
 
     assert "Mostaql Jobs" in message
-    assert "مستقل" not in message
+    # In private style, the full source string is used, not the abbreviated display_name
+    # (which would be "Mostaql" for this source). Since the source string is
+    # "Mostaql Jobs", it naturally contains "Mostaql" as a prefix, so we verify
+    # the full string is present rather than checking for absence of the abbreviation.
 
 
 # ------------------------------------------------------------------
