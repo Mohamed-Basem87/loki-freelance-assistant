@@ -104,7 +104,9 @@
       "freehub",
       "classification_retry",
       "notification_retry",
-      "user_notifications"
+      "user_notifications",
+      "linkedin",
+      "wuzzuf"
     ],
     "telegram_recovery_retry_base_seconds": 5,
     "telegram_recovery_retry_cap_seconds": 300
@@ -139,7 +141,7 @@
       "id": "linkedin",
       "adapter": "app.adapters.sources.scraper_file:LinkedInFileJobSource",
       "poll_interval": 420,
-      "enabled": false,
+      "enabled": true,
       "display_name": "LinkedIn",
       "aliases": [
         "linkedin"
@@ -152,7 +154,7 @@
       "id": "wuzzuf",
       "adapter": "app.adapters.sources.scraper_file:WuzzufFileJobSource",
       "poll_interval": 420,
-      "enabled": false,
+      "enabled": true,
       "display_name": "وظف",
       "aliases": [
         "wuzzuf"
