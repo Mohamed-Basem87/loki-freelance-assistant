@@ -46,4 +46,14 @@ USER loki
 # survive container restarts / rebuilds.
 VOLUME ["/app/sessions", "/app/database"]
 
+# The deploy workflow (docker.yml) gates on .State.Health.Status ==
+# "healthy", and the host-side compose file is a stale manual copy that
+# does not declare a healthcheck. Bake it into the image so every
+# container has one regardless of how it was brought up. app.healthcheck
+# verifies DB/state integrity plus per-worker heartbeat liveness.
+# Interval/retries are tuned so a fresh container reaches "healthy"
+# well inside the deploy gate's 60s polling window.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \
+    CMD ["python", "-m", "app.healthcheck"]
+
 CMD ["python", "run_guarded.py"]
