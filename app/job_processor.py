@@ -479,7 +479,13 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
         return
 
     filter_text = f"{job['title']}\n{job['description']}"
-    classification = classify_and_select(
+    # Deterministic profiling is CPU-heavy (thousands of regex passes over the
+    # text) and would freeze the shared event loop -- and with it heartbeats
+    # and the healthcheck -- for seconds to minutes on large descriptions. Run
+    # it in the executor so the loop stays responsive; keyword_filter is
+    # thread-safe by design (immutable cached profiles + a compile lock).
+    classification = await asyncio.to_thread(
+        classify_and_select,
         filter_text,
         title=job["title"],
     )
