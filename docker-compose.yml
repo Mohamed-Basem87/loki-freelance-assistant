@@ -24,16 +24,6 @@ services:
       #   New-Item loki_freelance_bot.db    (Windows)
       #   touch loki_freelance_bot.db       (Linux/macOS)
       - ./loki_freelance_bot.db:/app/loki_freelance_bot.db
-      # Scraper output consumed by the LinkedIn/Wuzzuf job sources
-      # (app.adapters.sources.scraper_file reads
-      # scraper/jobs_results.json relative to BASE_DIR). The scraper
-      # writes this file where it runs; point this mount at that file
-      # so the container sees the latest snapshot.
-      #
-      # NOTE: the file must exist on the host before the first
-      # `docker compose up` -- Docker turns a missing bind-mount file
-      # path into a directory, which the JSON reader cannot open.
-      - ./scraper/jobs_results.json:/app/scraper/jobs_results.json
     # Guarded entry point (adds the Notification Guard on top of the
     # standard pipeline). To deploy the standard entry point instead
     # (no Notification Guard), replace this with:

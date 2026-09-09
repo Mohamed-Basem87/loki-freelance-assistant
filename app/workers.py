@@ -184,6 +184,34 @@ def default_registry(runtime=None):
         )
         if hasattr(source, "aclose"):
             registry.register_shutdown(source.aclose)
+    # The scraper that feeds the LinkedIn/Wuzzuf FileJobSource adapters
+    # ships inside the image (see app/scraper_scheduler.py). It only makes
+    # sense to schedule it when an enabled JobSource actually reads the
+    # scraper snapshot, so the scheduler worker is started exactly when a
+    # scraper_file-backed job source is running. It runs the scraper as a
+    # subprocess on the source's poll cadence, so there is nothing
+    # host-side (no cron, no host script) in the pipeline.
+    scraper_file_sources = [
+        cfg for cfg in _enabled_source_cfgs
+        if str(cfg.adapter or "").startswith("app.adapters.sources.scraper_file:")
+    ]
+    if scraper_file_sources:
+        from app.scraper_scheduler import (
+            scraper_scheduler_factory,
+            WORKER_ID,
+            SCRAPER_SCRIPT,
+            SCRAPER_WORKDIR,
+        )
+        _scraper_interval = min(cfg.poll_interval for cfg in scraper_file_sources)
+        registry.register(
+            WORKER_ID,
+            scraper_scheduler_factory(
+                script_path=SCRAPER_SCRIPT,
+                workdir=SCRAPER_WORKDIR,
+                interval=_scraper_interval,
+                worker_id=WORKER_ID,
+            ),
+        )
     if "classification_retry" in enabled:
         from app.job_processor import classification_retry_loop
         registry.register("classification_retry", lambda: classification_retry_loop(RUNTIME.notification_retry_interval))
