@@ -146,10 +146,26 @@ def strip_html_tags(value):
     if not value:
         return ""
 
+    text = str(value)
+
+    # Remove script/style/noscript blocks WHOLESALE (tag + inner
+    # content) before generic tag-stripping below. Otherwise, on a
+    # whole-page fallback, the tag-only strip below turns
+    # "<style>.foo{color:red}</style>" into ".foo{color:red}" -
+    # CSS/JS text leaks straight into the stored description instead
+    # of being removed. This showed up in production as CSS rules
+    # appearing inside a job's description text.
+    text = re.sub(
+        r"<(script|style|noscript)\b[^>]*>.*?</\1>",
+        " ",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
     text = re.sub(
         r"<[^>]+>",
         " ",
-        str(value)
+        text
     )
 
     text = html_module.unescape(text)
@@ -243,6 +259,170 @@ def extract_jsonld_jobposting(response):
                 return result
 
     return None
+
+
+def extract_wuzzuf_embedded_state(response):
+    """
+    Wuzzuf job pages do NOT embed JSON-LD (confirmed: 0/45 sampled
+    pages had a JobPosting script). The DOM itself is also unusable
+    for a text-node fallback selector - the server-rendered
+    `<div class="css-n7fcne">` job-description container's text IS
+    present, but only reliably so on some page variants; the sturdier
+    source across page variants is the client-side React state blob
+    Wuzzuf inlines for hydration:
+
+        <script> (function(){
+            var Wuzzuf = window.Wuzzuf = window.Wuzzuf || {};
+            ...
+            Wuzzuf.initialStoreState = { ... big JSON ... };
+            Wuzzuf.serverRenderedURL = "/jobs/p/<slug>";
+            ...
+        })(); </script>
+
+    `initialStoreState.entities.job.collection` is a dict of ALL jobs
+    referenced on the page (the viewed job PLUS its "Similar Jobs"
+    sidebar entries), keyed by job UUID. To identify which entry is
+    the job actually being viewed, we use (in order):
+
+      1. `initialStoreState.jobPage.similarJobs` - its only top-level
+         key IS the viewed job's own ID (confirmed: the value under
+         that key holds the *other* jobs' ids as
+         `similar.ids`/`featured.ids`, i.e. the sidebar). This needs
+         no URL parsing at all and is robust to page variants (e.g.
+         confidential/hidden-title postings) where the visible URL
+         or the job's "uri" attribute may not line up with
+         `serverRenderedURL` the way a normal listing does.
+      2. Fallback: match `serverRenderedURL` against each candidate
+         job's own "uri" attribute (works for the common case, but
+         was observed to miss on at least one hidden-title/
+         confidential job page).
+      3. Fallback: if there's exactly one job in the collection at
+         all, use it.
+
+    Once found, we read that job's
+    `attributes.userContentTranslations.description.en` - already
+    plain text (no HTML tags at all), not just HTML-stripped. This
+    is the actual quality-of-service description text an applicant
+    would read, not page chrome.
+
+    Falls back to `attributes.description` (HTML, run through
+    strip_html_tags) if the translation block is missing.
+
+    Returns a dict with any of "title", "description", "company"
+    that were found, or None if the state blob isn't present/parseable
+    or no matching job entry is found.
+    """
+
+    try:
+        html_text = response.body.decode("utf-8", "ignore")
+    except Exception:
+        try:
+            html_text = response.text
+        except Exception:
+            return None
+
+    if not html_text:
+        return None
+
+    marker = re.search(
+        r"Wuzzuf\.initialStoreState\s*=\s*",
+        html_text
+    )
+
+    if not marker:
+        return None
+
+    decoder = json.JSONDecoder()
+
+    try:
+        state, _ = decoder.raw_decode(
+            html_text,
+            marker.end()
+        )
+    except Exception:
+        return None
+
+    try:
+        jobs = state["entities"]["job"]["collection"]
+    except Exception:
+        return None
+
+    if not jobs:
+        return None
+
+    target_attrs = None
+
+    # Method 1: jobPage.similarJobs top-level key = viewed job's ID.
+    try:
+        similar_jobs_keys = list(
+            state.get("jobPage", {})
+            .get("similarJobs", {})
+            .keys()
+        )
+    except Exception:
+        similar_jobs_keys = []
+
+    for candidate_id in similar_jobs_keys:
+
+        if candidate_id in jobs:
+            target_attrs = jobs[candidate_id].get(
+                "attributes", {}
+            )
+            break
+
+    # Method 2: match serverRenderedURL against each job's own "uri".
+    if target_attrs is None:
+
+        server_url_match = re.search(
+            r'Wuzzuf\.serverRenderedURL\s*=\s*"([^"]+)"',
+            html_text
+        )
+
+        server_url = (
+            server_url_match.group(1)
+            if server_url_match
+            else ""
+        )
+
+        for job_entry in jobs.values():
+
+            attrs = job_entry.get("attributes", {})
+            uri = attrs.get("uri", "")
+
+            if (
+                uri
+                and server_url
+                and uri.lstrip("/") in server_url.lstrip("/")
+            ):
+                target_attrs = attrs
+                break
+
+    # Method 3: sole entry in the collection.
+    if target_attrs is None and len(jobs) == 1:
+        target_attrs = next(iter(jobs.values())).get("attributes", {})
+
+    if target_attrs is None:
+        return None
+
+    result = {}
+
+    if target_attrs.get("title"):
+        result["title"] = clean_text(target_attrs["title"])
+
+    translated_description = (
+        target_attrs.get("userContentTranslations", {})
+        .get("description", {})
+        .get("en")
+    )
+
+    if translated_description:
+        result["description"] = clean_text(translated_description)
+    elif target_attrs.get("description"):
+        result["description"] = strip_html_tags(
+            target_attrs["description"]
+        )
+
+    return result if result else None
 
 
 def canonical_url(url):
@@ -1624,62 +1804,58 @@ def parse_wuzzuf_detail(
 
     try:
 
-        text = ""
-
-        # response.text can be empty for this response type,
-        # so use body as fallback.
-        try:
-
-            text = clean_text(
-                response.text
-            )
-
-        except Exception:
-
-            pass
-
-        if not text:
-
-            try:
-
-                text = strip_html_tags(
-                    response.body.decode(
-                        "utf-8",
-                        "ignore"
-                    )
-                )
-
-            except Exception:
-
-                pass
-
         # ----------------------------------------------------
-        # PREFER CLEAN STRUCTURED DATA (JSON-LD JobPosting)
+        # STRUCTURED EXTRACTION ONLY - NO WHOLE-PAGE FALLBACK
         # ----------------------------------------------------
-        # Wuzzuf job pages embed schema.org JobPosting JSON-LD for
-        # Google for Jobs - a clean title/description/company with
-        # none of the nav/footer/ad noise the raw page dump above
-        # carries. Fall back to that raw text only when no
-        # JobPosting JSON-LD is present.
+        # 1) JSON-LD JobPosting - clean and standard, but confirmed
+        #    ABSENT on every sampled Wuzzuf page (0/45). Kept first
+        #    in case Wuzzuf adds it later.
+        # 2) The embedded React hydration state
+        #    (Wuzzuf.initialStoreState) - confirmed PRESENT and the
+        #    actual source of the visible job description on every
+        #    sampled page. This is the real fix: the description text
+        #    genuinely isn't in the server-rendered DOM or in any
+        #    JSON-LD, only in this inline script's JSON blob.
+        #
+        # There is intentionally NO third tier that dumps the raw
+        # page as a description. That fallback previously let CSS,
+        # JS, nav chrome, and unrelated page content (up to hundreds
+        # of KB) become a job's "Description" whenever both
+        # structured extractions above missed - which fed 60k-70k
+        # token payloads into the downstream LLM/guard pipeline and
+        # caused Groq 413s. A failed extraction is not a job
+        # description, degraded or otherwise: it's not data, so we
+        # do not fabricate a substitute for it. If both structured
+        # extractions fail, record it as a clean failure instead.
 
         structured = extract_jsonld_jobposting(
             response
         )
 
+        if not structured or not structured.get("description"):
+            structured = extract_wuzzuf_embedded_state(
+                response
+            )
+
         if structured and structured.get("description"):
+
             job["Description"] = structured["description"]
+
+            if structured.get("title"):
+                job["Title"] = structured["title"]
+
+            if structured.get("company"):
+                job["Company"] = structured["company"]
+
         else:
-            # Safety net: `text` above comes from response.text in
-            # the common case, which is NOT tag-stripped (only the
-            # response.body fallback was). Strip here unconditionally
-            # so a full HTML page can never end up as a description.
-            job["Description"] = strip_html_tags(text)
 
-        if structured and structured.get("title"):
-            job["Title"] = structured["title"]
-
-        if structured and structured.get("company"):
-            job["Company"] = structured["company"]
+            job["Description"] = ""
+            job["DetailError"] = (
+                "Wuzzuf description extraction failed: no "
+                "JSON-LD JobPosting and no usable "
+                "initialStoreState job entry found. Refusing to "
+                "fall back to the raw page as a description."
+            )
 
         job["DetailStatus"] = (
             response.status
@@ -1797,6 +1973,39 @@ def parse_linkedin_detail(
             if structured and structured.get("description"):
                 description = structured["description"]
 
+        # ----------------------------------------------------
+        # LOGIN-WALL / BLOCKED-RESPONSE DETECTION
+        # ----------------------------------------------------
+        # A confirmed source of empty LinkedIn descriptions in
+        # production: the archived rows had desc_len=0 even though a
+        # live re-fetch of the same client/IP/impersonation returned
+        # a fully populated page. The description selectors and the
+        # JSON-LD fallback above are correct for a normal guest page -
+        # they just have nothing to select on an authwall/consent/
+        # redirect variant. Flag that case explicitly instead of
+        # silently recording description="", so downstream tooling
+        # can tell "genuinely no description" apart from "blocked
+        # response, worth retrying on a later run" and can choose not
+        # to mark the job as seen.
+
+        looks_blocked = (
+            not description
+            and (
+                "authwall" in full_text.lower()
+                or "join now to see" in full_text.lower()
+                or "sign in to view" in full_text.lower()
+                or len(full_text) < 500
+            )
+        )
+
+        if looks_blocked:
+
+            print(
+                "[LinkedIn] Empty description looks like a "
+                "login-wall/blocked response, not a real empty "
+                f"posting: {job.get('Link', '')}"
+            )
+
         job["Description"] = (
             description
         )
@@ -1807,6 +2016,10 @@ def parse_linkedin_detail(
 
         job["FullText"] = (
             full_text
+        )
+
+        job["DetailBlocked"] = (
+            looks_blocked
         )
 
         job["DetailStatus"] = (
