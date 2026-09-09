@@ -4,8 +4,29 @@ from app.categories.registry import deterministic_categories
 from app.filters import keyword_filter
 
 
+# Bounds for the deterministic keyword-filter input. Scraper-backed sources can
+# ship full HTML pages as descriptions (megabytes of markup dominated by
+# boilerplate after the title/intro), and keyword_filter() runs one full-text
+# regex pass per keyword per tier per profile on the asyncio event loop. Without
+# a bound, a burst of fresh scraped jobs can stall the loop for minutes and trip
+# the container healthcheck. Truncating keeps each classification cost bounded
+# and source-agnostic while the meaningful content (title + body lead) is
+# preserved; the authoritative title is capped far tighter because it is short.
+MAX_CLASSIFY_TEXT_CHARS = 32_000
+MAX_CLASSIFY_TITLE_CHARS = 2_000
+
+
+def _bounded_input(text, title):
+    if text is not None and len(text) > MAX_CLASSIFY_TEXT_CHARS:
+        text = text[:MAX_CLASSIFY_TEXT_CHARS]
+    if title is not None and len(title) > MAX_CLASSIFY_TITLE_CHARS:
+        title = title[:MAX_CLASSIFY_TITLE_CHARS]
+    return text, title
+
+
 def classify_categories(text, title=""):
     """Return deterministic results for every deterministic category."""
+    text, title = _bounded_input(text, title)
     return {
         profile.id: {
             "category_id": profile.id,

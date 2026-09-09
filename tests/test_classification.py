@@ -78,6 +78,30 @@ def test_multiple_direct_matches_require_arbitration(monkeypatch):
     assert result["needs_category_arbitration"] is True
 
 
+def test_huge_description_is_bounded_before_classification():
+    from app.classification import MAX_CLASSIFY_TEXT_CHARS
+    word = "Power BI dashboard and Excel data analysis "
+    huge = word * (MAX_CLASSIFY_TEXT_CHARS // len(word) * 3 + 10)
+    result = classify_and_select(huge, title="Power BI Dashboard")
+    assert result["category_id"] == "data_analysis"
+    first_result = next(iter(result["categories"].values()))["result"]
+    assert len(first_result["normalized_text"]) <= MAX_CLASSIFY_TEXT_CHARS * 2
+
+
+def test_classify_and_select_is_bounded_with_runtime_limits():
+    from app.classification import MAX_CLASSIFY_TEXT_CHARS
+    word = "Power BI dashboard and Excel data analysis "
+    huge = word * (MAX_CLASSIFY_TEXT_CHARS // len(word) + 40)
+
+    import time
+    start = time.perf_counter()
+    result = classify_and_select(huge, title="Power BI Dashboard")
+    elapsed = time.perf_counter() - start
+
+    assert result["category_id"] == "data_analysis"
+    assert elapsed < 5.0
+
+
 def test_multiple_ambiguous_candidates_are_all_exposed_for_one_arbitration():
     results = {
         "data_analysis": {"category_id": "data_analysis", "result": {"decision": "needs_gemini"}},
