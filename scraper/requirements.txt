@@ -1,5 +1,0 @@
-scrapling==0.4.15
-curl_cffi==0.16.3
-playwright==1.62.0
-patchright==1.62.3
-browserforge==1.2.4
