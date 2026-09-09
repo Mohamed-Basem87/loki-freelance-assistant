@@ -66,6 +66,14 @@ class FileJobSource(JobSource):
         batch_seen = set()
         for record in self._client.read():
             normalized = self.normalize(record)
+            identity = normalized.get("job_id") or normalized.get("uid") or normalized.get("url")
+            if not identity or str(identity).strip() == "":
+                print(
+                    f"[WARNING] {self.id}: skipping snapshot record without a "
+                    f"URL/identity ({normalized.get('title', '')!r}); it would "
+                    f"collide onto a fixed job_uuid and be silently dropped."
+                )
+                continue
             key = self.job_identity(normalized)
             if key in self._seen or key in batch_seen:
                 continue

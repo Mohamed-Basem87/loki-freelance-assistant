@@ -95,7 +95,7 @@ async def _process_source_job(job, source):
     from app.job_processor import process_job
     normalized = source.normalize(job) if hasattr(source, "normalize") else job
     job_id = normalized.get("job_id", normalized.get("uid"))
-    if job_id is None:
+    if job_id is None or str(job_id).strip() == "":
         raise ValueError(f"Source {source.id!r} returned a job without a stable job_id/uid")
     identity_source = normalized.get("identity_source", source.identity_source)
     await process_job(job=normalized, job_id=str(job_id), identity_source=str(identity_source))

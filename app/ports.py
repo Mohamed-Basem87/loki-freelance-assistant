@@ -13,7 +13,8 @@ class JobSource(ABC):
     def normalize(self, job: dict[str, Any]) -> dict[str, Any]: raise NotImplementedError
     def job_identity(self, job: dict[str, Any]) -> str:
         value = job.get("job_id", job.get("uid"))
-        if value is None: raise ValueError(f"Source {self.id!r} returned a job without a stable identity")
+        if value is None or str(value).strip() == "":
+            raise ValueError(f"Source {self.id!r} returned a job without a stable identity")
         return str(value)
     async def mark_seen(self, job: dict[str, Any]) -> None: return None
     async def backfill(self) -> list[dict[str, Any]]: return []

@@ -136,3 +136,65 @@ def test_identity_source_matches_source_id():
     assert WuzzufFileJobSource(
         client=ScraperFileClient(file_path="unused.json", platform="Wuzzuf")
     ).identity_source == "wuzzuf"
+
+
+def test_poll_skips_blank_url_records_instead_of_collapsing_them(tmp_path):
+    snap = _write_snapshot(
+        tmp_path / "jobs_results.json",
+        [
+            _record(
+                title="No URL one",
+                url="",
+            ),
+            _record(
+                title="No URL two",
+                url="",
+            ),
+            _record(
+                title="Valid job",
+                url="https://linkedin.invalid/jobs/view/4",
+            ),
+        ],
+    )
+    source = LinkedInFileJobSource(
+        client=ScraperFileClient(file_path=str(snap), platform="LinkedIn")
+    )
+    jobs = asyncio.run(source.poll())
+    assert [job["title"] for job in jobs] == ["Valid job"]
+
+
+def test_poll_never_emits_jobs_with_a_blank_identity(tmp_path):
+    snap = _write_snapshot(
+        tmp_path / "jobs_results.json",
+        [
+            _record(title="Blank", url=""),
+            _record(title="Valid", url="https://linkedin.invalid/jobs/view/5"),
+        ],
+    )
+    source = LinkedInFileJobSource(
+        client=ScraperFileClient(file_path=str(snap), platform="LinkedIn")
+    )
+    jobs = asyncio.run(source.poll())
+    assert jobs, "valid job must still be produced"
+    for job in jobs:
+        identity = job.get("job_id") or job.get("uid") or job.get("url")
+        assert identity and str(identity).strip() != ""
+
+
+def test_job_identity_rejects_blank_identity():
+    source = LinkedInFileJobSource(
+        client=ScraperFileClient(file_path="unused.json", platform="LinkedIn")
+    )
+    for bad in (None, "", "   "):
+        try:
+            source.job_identity({"job_id": bad})
+        except ValueError:
+            continue
+        raise AssertionError(f"job_identity accepted a blank identity: {bad!r}")
+
+
+def test_job_identity_keeps_zero_like_ids():
+    source = LinkedInFileJobSource(
+        client=ScraperFileClient(file_path="unused.json", platform="LinkedIn")
+    )
+    assert source.job_identity({"job_id": "0"}) == "0"
