@@ -274,6 +274,24 @@ class _CapturingGuard(FakeGuard):
         )
 
 
+def test_guard_bound_defaults_fit_groq_per_minute_budgets():
+    """Pin the default bounds to values that keep the FULL request under
+    Groq's on-demand per-minute budgets (measured in production:
+    gpt-oss 8,000 TPM / qwen 7,000 ITPM, rejected deterministically with
+    HTTP 413 "Request too large"). Text and title are lengths in
+    characters; even the largest combined system prompt
+    (data_analysis+full_stack) is ~21.8K chars (~5.9K tokens at the
+    measured ~0.27 tok/char), so the default description bound must leave
+    the worst-case total comfortably under the tightest 7,000-token
+    budget. A regression here reintroduces an unrecoverable 413 storm.
+    """
+    assert guard_config.MAX_GUARD_TEXT_CHARS <= 4000, (
+        "default MAX_GUARD_TEXT_CHARS too large for Groq free-tier "
+        "per-minute budgets"
+    )
+    assert guard_config.MAX_GUARD_TITLE_CHARS <= 2000
+
+
 def test_evaluate_bounds_oversized_description_and_title(monkeypatch):
     """A description/title larger than every model's payload limit must
     be shrunk before it reaches the provider -- a 200K-char Wuzzuf

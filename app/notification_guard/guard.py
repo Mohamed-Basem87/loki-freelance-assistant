@@ -77,12 +77,19 @@ def get_guard_providers():
 def _bound_guard_input(title: str, description: str):
     """Cap the title/description that reach any guard provider.
 
-    A stored job description can sit at the scraper's full 200K chars,
-    which exceeds every guard model's request payload (Groq returns a
-    deterministic HTTP 413 "Request too large"). Bounding here, at the
-    single choke point every evaluation path (allow / decide) flows
-    through, makes that failure mode impossible instead of retryable.
-    Keeps the head of the text, matching app.classification._bounded_input.
+    The guard runs on Groq's on-demand tier, which rejects requests that
+    exceed its small per-minute budgets with a deterministic HTTP 413
+    "Request too large" (verified: gpt-oss 8,000 TPM / qwen 7,000 ITPM).
+    A stored Wuzzuf description can sit at the scraper's 200K-char cap --
+    ~11K+ tokens even after trimming to 40K, larger than the ENTIRE
+    per-minute allowance, so such a request can NEVER succeed no matter
+    how often the rotation retries it. Bounding here, at the single choke
+    point every evaluation path (allow / decide) flows through, makes
+    that failure mode impossible instead of retryable. Defaults keep the
+    request (largest combined system prompt + title + description) under
+    the tightest budget; wins can tune via MAX_GUARD_TEXT_CHARS /
+    MAX_GUARD_TITLE_CHARS. Keeps the head of the text, matching
+    app.classification._bounded_input.
     """
     if description is not None and len(description) > MAX_GUARD_TEXT_CHARS:
         description = description[:MAX_GUARD_TEXT_CHARS]

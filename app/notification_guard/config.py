@@ -51,24 +51,31 @@ NOTIFICATION_GUARD_PROVIDERS = tuple(x.strip() for x in os.getenv("NOTIFICATION_
 
 
 # Guard input bounding. Wuzzuf descriptions can legitimately sit at the
-# scraper's 200K-char cap, which exceeds every guard model's per-request
-# payload (Groq replies HTTP 413 "Request too large") and makes the
-# provider rotation retry a deterministic failure forever. Bound title
-# and description before they reach any provider, mirroring
-# app.classification._bounded_input: the guard only needs enough text to
-# make a notify/category decision, and a deterministic 413 should never
-# be a retryable error.
+# scraper's 200K-char cap. The guard runs on Groq's on-demand tier, whose
+# per-model budgets are small (verified in production: gpt-oss family
+# 8,000 tokens/min, qwen family 7,000 input-tokens/min) and which rejects
+# any single request that exceeds the budget with HTTP 413 "Request too
+# large" (type rate_limit_exceeded). A 40K-char description alone is
+# ~11K tokens -- larger than the entire per-minute allowance -- so that
+# failure is deterministic and the provider rotation retries it forever
+# ("error" guard rows are deliberately non-durable). Bound title and
+# description before they reach any provider, mirroring
+# app.classification._bounded_input, and sized so that even the largest
+# combined system prompt (data_analysis+full_stack, ~21.8K chars / ~5.9K
+# tokens measured in production) plus bounding stays under the tightest
+# budget (qwen 7K ITPM). The head of the text is kept; the guard only
+# needs enough to make a notify/category decision.
 MAX_GUARD_TEXT_CHARS = int(
     os.getenv(
         "MAX_GUARD_TEXT_CHARS",
-        "40000",
+        "3000",
     )
 )
 
 MAX_GUARD_TITLE_CHARS = int(
     os.getenv(
         "MAX_GUARD_TITLE_CHARS",
-        "2000",
+        "1000",
     )
 )
 
