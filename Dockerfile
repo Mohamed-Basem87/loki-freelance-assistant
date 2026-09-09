@@ -10,7 +10,8 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
-COPY requirements.txt scraper/requirements.txt .
+COPY requirements.txt .
+COPY scraper/requirements.txt scraper/requirements.txt
 
 # Install into a separate prefix so the runtime stage can copy exactly
 # what pip resolved, leaving no build toolchain in the final image.
