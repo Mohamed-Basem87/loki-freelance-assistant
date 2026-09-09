@@ -1642,7 +1642,7 @@ def parse_wuzzuf_detail(
 
             try:
 
-                text = clean_text(
+                text = strip_html_tags(
                     response.body.decode(
                         "utf-8",
                         "ignore"
@@ -1669,7 +1669,11 @@ def parse_wuzzuf_detail(
         if structured and structured.get("description"):
             job["Description"] = structured["description"]
         else:
-            job["Description"] = text
+            # Safety net: `text` above comes from response.text in
+            # the common case, which is NOT tag-stripped (only the
+            # response.body fallback was). Strip here unconditionally
+            # so a full HTML page can never end up as a description.
+            job["Description"] = strip_html_tags(text)
 
         if structured and structured.get("title"):
             job["Title"] = structured["title"]
@@ -1720,6 +1724,12 @@ def parse_linkedin_detail(
             )
             or response.css(
                 ".description__text"
+            )
+            # Looser fallback for layout/A-B variants where none of
+            # the specific selectors above match: any container whose
+            # class mentions "description" at all.
+            or response.css(
+                "[class*='description']"
             )
         )
 
@@ -2253,15 +2263,26 @@ def report_new_jobs(jobs, seen_keys):
 # jobs_results.json holds clean records instead of the raw page/
 # internal-tracking noise.
 
+
+# Even after HTML stripping, some pages can still yield a lot of
+# text. Cap at write time to keep jobs_results.json / the DB small;
+# the app-side 32 KB classification cap already protects the event
+# loop independently of this.
+MAX_STORED_DESCRIPTION_CHARS = 200_000
+
+
 def build_output_record(job):
 
     title = clean_text(
         job.get("Title", "")
     )
 
-    description = clean_text(
+    # Belt & braces: strip tags here too, so the emitted schema is
+    # guaranteed clean text regardless of what any detail parser put
+    # into the internal "Description" field.
+    description = strip_html_tags(
         job.get("Description", "")
-    )
+    )[:MAX_STORED_DESCRIPTION_CHARS]
 
     company = clean_text(
         job.get("Company", "")
