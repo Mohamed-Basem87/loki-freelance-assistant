@@ -2518,9 +2518,27 @@ def build_output_record(job):
 
 def to_output_schema(jobs):
 
+    # Skip jobs whose detail fetch hit a login-wall/blocked response
+    # (see parse_linkedin_detail's DetailBlocked flag). Emitting these
+    # with an empty description would let the app permanently commit
+    # a bad, empty-description classification for that URL -- once
+    # process_job() records a terminal decision for a job_uuid, a
+    # later run that gets past the authwall for the same URL will
+    # never be reprocessed. Leaving a blocked job out of this run's
+    # snapshot instead means it is simply retried on the next
+    # scrape, with no wrong data ever recorded in between.
+    skipped = sum(1 for job in jobs if job.get("DetailBlocked"))
+
+    if skipped:
+        print(
+            f"[Output] Skipping {skipped} blocked/authwalled job(s) "
+            f"this run; they will be retried on the next scrape."
+        )
+
     return [
         build_output_record(job)
         for job in jobs
+        if not job.get("DetailBlocked")
     ]
 
 
@@ -2675,6 +2693,14 @@ async def unified_job_scraper():
         )
     )
 
+    detail_blocked = sum(
+        1
+        for job in detailed
+        if job.get(
+            "DetailBlocked"
+        )
+    )
+
     elapsed = (
         asyncio.get_running_loop()
         .time()
@@ -2708,6 +2734,11 @@ async def unified_job_scraper():
     print(
         f"Detail errors:  "
         f"{detail_errors}"
+    )
+
+    print(
+        f"Detail blocked: "
+        f"{detail_blocked} (excluded from output, will retry next run)"
     )
 
     print(
