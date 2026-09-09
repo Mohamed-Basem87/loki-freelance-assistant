@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime, timedelta
 
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatMemberStatus, ParseMode
 from telegram.error import Forbidden, RetryAfter, TelegramError
 from telegram.ext import (
@@ -15,28 +15,19 @@ from telegram.ext import (
 )
 
 from app.categories.registry import enabled_categories
-from app.config import BOT_CHANNEL_CATEGORY_ID, BOT_CHANNEL_ID, BOT_TOKEN
-from app.logger import logger
-from app.message_builder import build_job_message, safe_button_url
+from app.config import BOT_CHANNEL_CATEGORY_ID, BOT_CHANNEL_ID, get_bot_token
+from app.dependencies import logger, user_messaging, user_renderer
+from app.heartbeat import STATE_RUNNING, sleep_with_beats
+from app.runtime_config import RUNTIME, SOURCES
 
-DELIVERY_CONCURRENCY = 10
-POLL_INTERVAL = 1.0
-BATCH_SIZE = 20
-MAX_ATTEMPTS = 5
+DELIVERY_CONCURRENCY = RUNTIME.delivery_concurrency
+POLL_INTERVAL = RUNTIME.user_bot_poll_interval
+BATCH_SIZE = RUNTIME.user_bot_batch_size
+MAX_ATTEMPTS = RUNTIME.user_bot_max_attempts
 
 # These are source IDs, not metadata entities. They are stored as a
 # comma-separated preference on the user row.
-SOURCE_OPTIONS = (
-    ("mostaql", "مستقل"),
-    ("nafezly", "نفذلي"),
-    ("kafiil", "كفيل"),
-    ("freelancer", "Freelancer"),
-)
-
-# Shared Bot instance for notification delivery. The existing source/channel
-# notifiers keep their own instance for backwards compatibility.
-bot = Bot(BOT_TOKEN)
-
+SOURCE_OPTIONS = tuple((p.id, p.display_name) for p in SOURCES)
 
 _INACTIVE_NOTICE = (
     "⏸ You're currently unsubscribed from Loki Jobs.\n"
@@ -64,7 +55,7 @@ async def _is_active(telegram_user_id) -> bool:
     row by the time this is called from any real command path, so
     this only matters for defensive callers.
     """
-    destination = await logger.run(logger.get_destination, telegram_user_id)
+    destination = await logger.get_destination(telegram_user_id)
     if destination is None:
         return True
     return str(destination.get("Is Active", "1")) == "1"
@@ -93,7 +84,7 @@ def _source_keyboard(selected_sources, *, inactive=False):
 
 
 async def _render_sources(query, user_id, telegram_user_id, *, edit=True):
-    selected = await logger.run(logger.get_user_sources, user_id)
+    selected = await logger.get_user_sources(user_id)
     inactive = not await _is_active(telegram_user_id)
     text = (
         (_INACTIVE_NOTICE if inactive else "")
@@ -130,7 +121,7 @@ def _category_keyboard(selected_ids, *, inactive=False):
 
 
 async def _render_categories(query, user_id, telegram_user_id, *, edit=True):
-    selected = await logger.run(logger.get_user_categories, user_id)
+    selected = await logger.get_user_categories(user_id)
     inactive = not await _is_active(telegram_user_id)
     text = (
         (_INACTIVE_NOTICE if inactive else "")
@@ -149,26 +140,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user is None or update.effective_chat is None:
         return
 
-    internal_id = await logger.run(
-        logger.ensure_user,
-        user.id,
-        user.username or "",
-        user.first_name or "",
-    )
-    await logger.run(
-        logger.record_subscription_event,
-        user.id,
-        user.first_name or "",
-        user.username or "",
-        True,
-        "start",
-    )
+    internal_id = await logger.ensure_user(user.id, user.username or "", user.first_name or "")
+    await logger.record_subscription_event(user.id, user.first_name or "", user.username or "", True, "start")
 
     await update.message.reply_text(
         "Welcome to Loki Jobs 👋\n\n"
         "Choose the categories you want to receive.",
         reply_markup=_category_keyboard(
-            await logger.run(logger.get_user_categories, internal_id)
+            await logger.get_user_categories(internal_id)
         ),
     )
 
@@ -177,12 +156,7 @@ async def sources_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user is None:
         return
-    internal_id = await logger.run(
-        logger.ensure_user,
-        user.id,
-        user.username or "",
-        user.first_name or "",
-    )
+    internal_id = await logger.ensure_user(user.id, user.username or "", user.first_name or "")
     inactive = not await _is_active(user.id)
     text = (
         (_INACTIVE_NOTICE if inactive else "")
@@ -192,7 +166,7 @@ async def sources_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         text,
         reply_markup=_source_keyboard(
-            await logger.run(logger.get_user_sources, internal_id),
+            await logger.get_user_sources(internal_id),
             inactive=inactive,
         ),
     )
@@ -202,12 +176,7 @@ async def categories_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user = update.effective_user
     if user is None:
         return
-    internal_id = await logger.run(
-        logger.ensure_user,
-        user.id,
-        user.username or "",
-        user.first_name or "",
-    )
+    internal_id = await logger.ensure_user(user.id, user.username or "", user.first_name or "")
     inactive = not await _is_active(user.id)
     text = (
         (_INACTIVE_NOTICE if inactive else "")
@@ -217,7 +186,7 @@ async def categories_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(
         text,
         reply_markup=_category_keyboard(
-            await logger.run(logger.get_user_categories, internal_id),
+            await logger.get_user_categories(internal_id),
             inactive=inactive,
         ),
     )
@@ -233,25 +202,24 @@ async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     only reliable in-band way for a user to unsubscribe. It sets
     Is Active=0 so the notification claim query stops picking the user
     up; /start re-activates them.
+
+    /stop is opt-out semantics, not pause-and-deliver-later: it also
+    cancels any notifications already queued but not yet delivered, so
+    a user who unsubscribes and later sends /start again does not get
+    hit with a burst of every job that piled up while they were
+    inactive (audit finding: user subscription semantics -- this is a
+    deliberate choice between "pause, preserve backlog" and "cancel
+    stale queued notifications"; deterministic and restart-safe since
+    it is a direct, persisted status write, not a timer or in-memory
+    flag).
     """
     user = update.effective_user
     if user is None or update.effective_chat is None:
         return
 
-    await logger.run(
-        logger.ensure_user,
-        user.id,
-        user.username or "",
-        user.first_name or "",
-    )
-    await logger.run(
-        logger.record_subscription_event,
-        user.id,
-        user.first_name or "",
-        user.username or "",
-        False,
-        "stop",
-    )
+    await logger.ensure_user(user.id, user.username or "", user.first_name or "")
+    await logger.record_subscription_event(user.id, user.first_name or "", user.username or "", False, "stop")
+    await logger.cancel_pending_user_notifications(user.id)
 
     try:
         await update.message.reply_text(
@@ -260,7 +228,7 @@ async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "To start receiving jobs again, send /start."
         )
     except Exception as exc:
-        await logger.run(logger.log_error, "Stop Command", exc, "", save=True)
+        await logger.log_error("Stop Command", exc, "", save=True)
 
 
 async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -270,35 +238,11 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     data = query.data or ""
+    internal_id = await logger.ensure_user(user.id, user.username or "", user.first_name or "")
 
-    # A callback query can only be answered once -- answer here with
-    # the reactivation toast when relevant, otherwise the usual silent
-    # ack, rather than calling query.answer() a second time below.
     if data.startswith("reactivate:"):
         await query.answer("Notifications resumed ✅")
-    else:
-        await query.answer()
-
-    internal_id = await logger.run(
-        logger.ensure_user,
-        user.id,
-        user.username or "",
-        user.first_name or "",
-    )
-
-    if data.startswith("reactivate:"):
-        # Reactivating from /categories or /sources must use the exact
-        # same durable path /start uses (record_subscription_event,
-        # not a bare set_destination_active) so it's indistinguishable
-        # from a real /start in the audit trail and analytics.
-        await logger.run(
-            logger.record_subscription_event,
-            user.id,
-            user.first_name or "",
-            user.username or "",
-            True,
-            "reactivate",
-        )
+        await logger.record_subscription_event(user.id, user.first_name or "", user.username or "", True, "reactivate")
         screen = data.split(":", 1)[1]
         if screen == "src":
             await _render_sources(query, internal_id, user.id)
@@ -307,6 +251,7 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "done":
+        await query.answer()
         await _render_sources(query, internal_id, user.id)
         return
 
@@ -314,24 +259,14 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         source_id = data[4:]
         valid_sources = {source_id for source_id, _ in SOURCE_OPTIONS}
         if source_id == "done":
-            selected = await logger.run(logger.get_user_sources, internal_id)
-            names = {
-                source_id: display_name
-                for source_id, display_name in SOURCE_OPTIONS
-            }
+            await query.answer()
+            selected = await logger.get_user_sources(internal_id)
+            names = {source_id: display_name for source_id, display_name in SOURCE_OPTIONS}
             if selected:
-                selected_names = [
-                    names[source_id] for source_id in selected
-                    if source_id in names
-                ]
-                text = "✅ Saved. You'll receive sources:\n\n" + "\n".join(
-                    f"• {name}" for name in selected_names
-                )
+                selected_names = [names[source_id] for source_id in selected if source_id in names]
+                text = "✅ Saved. You'll receive sources:\n\n" + "\n".join(f"• {name}" for name in selected_names)
             else:
-                text = (
-                    "✅ Saved. No source filter is active, so you'll receive "
-                    "jobs from all sources."
-                )
+                text = "✅ Saved. No source filter is active, so you'll receive jobs from all sources."
             await query.edit_message_text(text=text)
             return
 
@@ -339,19 +274,14 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("That source is no longer available.", show_alert=True)
             return
 
-        selected = set(await logger.run(logger.get_user_sources, internal_id))
-        enabled = source_id not in selected
-        await logger.run(
-            logger.set_user_source,
-            internal_id,
-            source_id,
-            enabled,
-            True,
-        )
+        await query.answer()
+        selected = set(await logger.get_user_sources(internal_id))
+        await logger.set_user_source(internal_id, source_id, source_id not in selected, True)
         await _render_sources(query, internal_id, user.id)
         return
 
     if not data.startswith("cat:"):
+        await query.answer()
         return
 
     category_id = data[4:]
@@ -360,16 +290,9 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("That category is no longer available.", show_alert=True)
         return
 
-    selected = set(await logger.run(logger.get_user_categories, internal_id))
-    enabled = category_id not in selected
-
-    await logger.run(
-        logger.set_user_category,
-        internal_id,
-        category_id,
-        enabled,
-        True,
-    )
+    await query.answer()
+    selected = set(await logger.get_user_categories(internal_id))
+    await logger.set_user_category(internal_id, category_id, category_id not in selected, True)
     await _render_categories(query, internal_id, user.id)
 
 
@@ -401,19 +324,8 @@ async def register_configured_channel(application: Application):
             "but does not have permission to post messages"
         )
 
-    destination_id = await logger.run(
-        logger.ensure_channel_destination,
-        BOT_CHANNEL_ID,
-        getattr(chat, "title", "") or "",
-        True,
-    )
-    await logger.run(
-        logger.set_user_category,
-        destination_id,
-        BOT_CHANNEL_CATEGORY_ID,
-        True,
-        True,
-    )
+    destination_id = await logger.ensure_channel_destination(BOT_CHANNEL_ID, getattr(chat, "title", "") or "", True)
+    await logger.set_user_category(destination_id, BOT_CHANNEL_CATEGORY_ID, True, True)
 
     print(
         f"[SUBSCRIBER CHANNEL] Registered '{getattr(chat, 'title', '')}' "
@@ -421,54 +333,18 @@ async def register_configured_channel(application: Application):
     )
 
 
-async def post_init(application: Application):
-    # Recover notifications that were in-flight when Loki stopped.
-    await logger.run(logger.reset_sending_user_notifications)
-    await register_configured_channel(application)
-
-
-def build_user_notification(job_row, category_id):
-    """Build the subscriber message using the exact public-channel format.
-
-    Subscriber delivery is a personalized destination, not a new message
-    format. Reuse the channel-style builder so subscribers receive the same
-    normalized source name, category heading, tags, description, and project
-    button content as the public category channel.
+def _next_backoff_attempt_at(attempts):
+    """Exponential backoff timestamp for the given (post-increment)
+    attempt count, or None once MAX_ATTEMPTS has been reached and no
+    further retry should be scheduled.
     """
-    categories = job_row.get("Categories") or ""
-    if isinstance(categories, str):
-        categories = [item.strip() for item in categories.split(",") if item.strip()]
-
-    # A legacy/recovery row may not have the stored keyword categories. Keep
-    # the final category available as a minimal fallback without changing the
-    # normal path, which uses the exact categories already used by the public
-    # channel.
-    if not categories and category_id:
-        profile = next(
-            (p for p in enabled_categories() if p.id == category_id),
-            None,
-        )
-        if profile is not None:
-            categories = [profile.id]
-
-    profile = next(
-        (p for p in enabled_categories() if p.id == category_id),
-        None,
+    if attempts >= MAX_ATTEMPTS:
+        return None
+    delay = min(
+        RUNTIME.notification_backoff_cap_seconds,
+        2 ** attempts * RUNTIME.notification_backoff_base_seconds,
     )
-    category_name = profile.name if profile is not None else ""
-
-    return build_job_message(
-        title=job_row.get("Title") or "",
-        description=job_row.get("Description") or "",
-        source=job_row.get("Source") or "",
-        reason=job_row.get("Decision Reason") or "",
-        url=job_row.get("URL") or "",
-        budget="",
-        categories=categories,
-        category_name=category_name,
-        ai_used=(job_row.get("Category Selection Method") == "llm"),
-        channel_style=True,
-    )
+    return (datetime.now() + timedelta(seconds=delay)).isoformat()
 
 
 async def _send_one(notification):
@@ -477,107 +353,93 @@ async def _send_one(notification):
     job_uuid = notification["Job UUID"]
     category_id = notification["Category ID"]
 
-    job = await logger.run(logger.get_job, job_uuid)
+    job = await logger.get_job(job_uuid)
     if not job:
-        await logger.run(
-            logger.update_user_notification,
-            notification_id,
-            "Failed",
-            notification.get("Attempts", "1"),
-            "Job record not found",
-            datetime.now().isoformat(),
-        )
+        # A missing job record can never be delivered: spend one real
+        # failure attempt and let the max-attempt gate stop further
+        # claims (claims themselves never spend attempts; see
+        # claim_pending_user_notifications). While Attempts is still
+        # under MAX_ATTEMPTS this must still schedule a real backoff
+        # window -- leaving "Next Attempt At" untouched (None) would
+        # keep whatever timestamp is already on the row, which is
+        # always already-expired for a freshly claimed "Sending" row,
+        # so the notification would be immediately reclaimable on the
+        # very next poll tick with no backoff at all.
+        attempts = int(notification.get("Attempts") or 0) + 1
+        next_attempt = _next_backoff_attempt_at(attempts)
+        await logger.update_user_notification(notification_id, "Failed", attempts, "Job record not found", next_attempt)
         return
 
-    message = build_user_notification(job, category_id)
+    rendered = user_renderer.render_user(job, category_id)
+    message = rendered["text"]
 
     reply_markup = None
-    button_url = safe_button_url(job.get("URL") or "")
+    button_url = rendered.get("button_url")
     if button_url:
         reply_markup = InlineKeyboardMarkup(
             [[InlineKeyboardButton("🔗 Open Project", url=button_url)]]
         )
 
     try:
-        await bot.send_message(
-            chat_id=telegram_user_id,
-            text=message,
-            parse_mode=ParseMode.HTML,
-            reply_markup=reply_markup,
-            disable_web_page_preview=True,
+        await user_messaging.notify_user(
+            telegram_user_id,
+            {
+                "text": message,
+                "parse_mode": ParseMode.HTML,
+                "reply_markup": reply_markup,
+                "disable_web_page_preview": True,
+            },
         )
     except RetryAfter as exc:
         # Telegram backpressure, not a delivery failure: record it under a
         # distinct status so it never shares the MAX_ATTEMPTS budget with
         # genuine failures (see claim_pending_user_notifications).
         retry_at = datetime.now() + timedelta(seconds=float(exc.retry_after))
-        await logger.run(
-            logger.update_user_notification,
-            notification_id,
-            "RateLimited",
-            notification.get("Attempts", "1"),
-            f"Telegram rate limit: retry after {exc.retry_after}s",
-            retry_at.isoformat(),
-        )
+        await logger.update_user_notification(notification_id, "RateLimited", notification.get("Attempts", "0"), f"Telegram rate limit: retry after {exc.retry_after}s", retry_at.isoformat())
     except Forbidden:
         # User blocked the bot or otherwise made the chat unavailable.
-        await logger.run(
-            logger.set_destination_active,
-            telegram_user_id,
-            False,
-            False,
-        )
-        await logger.run(
-            logger.update_user_notification,
+        # Deactivate the destination so no further notifications are even
+        # queued for them (claim_pending_user_notifications excludes
+        # inactive users), and cancel their entire not-yet-delivered backlog
+        # -- the same discard-on-unsubscribe semantics /stop uses. Without
+        # the cancel, the pending rows would only defer and then ALL become
+        # claimable again the moment /start flips "Is Active" back to 1, so
+        # a user who blocked the bot would come back to a burst of stale
+        # jobs. The row being delivered right now is Cancelled terminally so
+        # it, too, can never re-enter the claim set.
+        await logger.set_destination_active(telegram_user_id, False, False)
+        await logger.cancel_pending_user_notifications(telegram_user_id, save=False)
+        await logger.update_user_notification(
             notification_id,
-            "Failed",
-            notification.get("Attempts", "1"),
+            "Cancelled",
+            notification.get("Attempts", "0"),
             "Telegram user blocked the bot or chat is unavailable",
             None,
         )
     except TelegramError as exc:
-        attempts = int(notification.get("Attempts") or 1)
+        attempts = int(notification.get("Attempts") or 0) + 1
         if attempts >= MAX_ATTEMPTS:
             status = "Failed"
             next_attempt = None
         else:
             status = "Failed"
-            delay = min(300, 2 ** attempts * 5)
+            delay = min(RUNTIME.notification_backoff_cap_seconds, 2 ** attempts * RUNTIME.notification_backoff_base_seconds)
             next_attempt = (datetime.now() + timedelta(seconds=delay)).isoformat()
 
-        await logger.run(
-            logger.update_user_notification,
-            notification_id,
-            status,
-            attempts,
-            str(exc),
-            next_attempt,
-        )
+        await logger.update_user_notification(notification_id, status, attempts, str(exc), next_attempt)
     except Exception as exc:
-        attempts = int(notification.get("Attempts") or 1)
+        attempts = int(notification.get("Attempts") or 0) + 1
         next_attempt = None
         if attempts < MAX_ATTEMPTS:
             next_attempt = (
-                datetime.now() + timedelta(seconds=min(300, 2 ** attempts * 5))
+                datetime.now() + timedelta(seconds=min(RUNTIME.notification_backoff_cap_seconds, 2 ** attempts * RUNTIME.notification_backoff_base_seconds))
             ).isoformat()
 
-        await logger.run(
-            logger.update_user_notification,
-            notification_id,
-            "Failed",
-            attempts,
-            str(exc),
-            next_attempt,
-        )
+        await logger.update_user_notification(notification_id, "Failed", attempts, str(exc), next_attempt)
     else:
-        await logger.run(
-            logger.update_user_notification,
-            notification_id,
-            "Sent",
-            notification.get("Attempts", "1"),
-            "",
-            "",
-        )
+        # Success: the failure count stays untouched -- Attempts counts
+        # real delivery failures, not deliveries.
+        await logger.update_user_notification(notification_id, "Sent", notification.get("Attempts", "0"), "", "")
 
 
 async def my_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -611,11 +473,7 @@ async def my_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = str(chat.id)
 
     if new_status in (ChatMemberStatus.BANNED, ChatMemberStatus.LEFT):
-        await logger.run(
-            logger.set_destination_active,
-            chat_id,
-            False,
-        )
+        await logger.set_destination_active(chat_id, False)
     elif new_status == ChatMemberStatus.MEMBER:
         # Becoming reachable again does not mean the user subscribed again.
         # Only /start reactivates the subscription.
@@ -623,6 +481,9 @@ async def my_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def user_notification_worker():
+    # Beats per-worker liveness while idling so the healthcheck can observe
+    # this worker as alive even when the poll interval exceeds the staleness
+    # window (see heartbeat.sleep_with_beats).
     semaphore = asyncio.Semaphore(DELIVERY_CONCURRENCY)
 
     async def limited_send(notification):
@@ -631,32 +492,36 @@ async def user_notification_worker():
 
     while True:
         try:
-            batch = await logger.run(
-                logger.claim_pending_user_notifications,
-                BATCH_SIZE,
-            )
+            batch = await logger.claim_pending_user_notifications(BATCH_SIZE)
             if batch:
                 await asyncio.gather(
                     *(limited_send(item) for item in batch),
                     return_exceptions=True,
                 )
             else:
-                await asyncio.sleep(POLL_INTERVAL)
+                await sleep_with_beats(POLL_INTERVAL, "user_notifications", STATE_RUNNING)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            await logger.run(
-                logger.log_error,
-                "User Notification Worker",
-                exc,
-                "",
-                save=True,
-            )
-            await asyncio.sleep(POLL_INTERVAL)
+            await logger.log_error("User Notification Worker", exc, "", save=True)
+            await sleep_with_beats(POLL_INTERVAL, "user_notifications", STATE_RUNNING)
 
 
 def create_user_bot_application():
-    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    # NOTE: this application's lifecycle is driven manually by
+    # TelegramCommandSurface (initialize() -> start() ->
+    # updater.start_polling(), and stop() -> updater.stop() ->
+    # application.stop()/shutdown()), and the equivalent manual
+    # startup sequence in app.startup.default_startup_steps(). A
+    # `post_init` hook registered on the builder here is only ever
+    # invoked by python-telegram-bot's own run_polling()/run_webhook()
+    # convenience methods, neither of which this codebase uses, so it
+    # would never run -- it previously sat on the builder looking like
+    # part of the startup path while silently never firing.
+    # register_channel() and reset_inflight_notifications() in
+    # app.startup are the single authoritative place those two steps
+    # happen; do not reintroduce a second one here.
+    application = Application.builder().token(get_bot_token()).build()
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("categories", categories_command))
     application.add_handler(CommandHandler("sources", sources_command))

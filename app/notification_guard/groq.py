@@ -1,4 +1,5 @@
 import json
+import os
 
 from groq import Groq
 
@@ -18,18 +19,35 @@ from app.notification_guard.config import (
 )
 from app.notification_guard.provider import GuardProvider
 from app.notification_guard.prompt import build_prompt
+from app.categories.registry import arbitration_only_categories
+from app.runtime_config import LLM_PROVIDERS, RUNTIME
 
 
-CLIENTS = [
-    Groq(api_key=key)
-    for key in NOTIFICATION_GUARD_API_KEYS
-]
+# BUG #2: bounded HTTP lifetime on the guard's Groq SDK (see app.llm.gemini
+# for the full reasoning) so a synchronous guard call can never indefinitely
+# block the dedicated asyncio.to_thread worker that runs it.
+_HTTP_TIMEOUT_SECONDS = float(RUNTIME.http_timeout_seconds)
+
+
+CLIENTS = []
+
+def _clients():
+    global CLIENTS
+    if not CLIENTS:
+        CLIENTS = [
+            Groq(
+                api_key=key,
+                timeout=_HTTP_TIMEOUT_SECONDS,
+            )
+            for key in NOTIFICATION_GUARD_API_KEYS
+        ]
+    return CLIENTS
 
 
 @retry(
     retry=retry_if_exception(rate_limit_tracker.is_transient),
     stop=stop_after_attempt(NOTIFICATION_GUARD_MAX_RETRIES),
-    wait=wait_fixed(1),
+    wait=wait_fixed(next(p.retry.wait_seconds for p in LLM_PROVIDERS if p.provider_id == "groq")),
     reraise=True,
 )
 def _generate_response(
@@ -38,7 +56,7 @@ def _generate_response(
     title: str,
     description: str,
     system_prompt: str,
-    max_tokens: int = 500,
+    max_tokens: int | None = None,
 ):
     """
     max_tokens=500 default: the guard's response schema is tiny
@@ -52,6 +70,9 @@ def _generate_response(
     model's inline chain-of-thought before its final JSON while
     staying well under the range that triggered that rejection.
     """
+    if max_tokens is None:
+        max_tokens = int(os.getenv("GROQ_NOTIFICATION_GUARD_MAX_OUTPUT_TOKENS", "500"))
+
     return client.chat.completions.create(
         model=model,
         messages=[
@@ -116,7 +137,8 @@ def _parse_decision_with_category(content: str, original_category_id: str) -> tu
         # so it isn't validated here.
         return False, original_category_id
 
-    if category not in (original_category_id, "full_stack"):
+    meta_categories = {p.id for p in arbitration_only_categories()}
+    if category not in ({original_category_id} | meta_categories):
         raise ValueError(f"Invalid guard category: {category!r}")
 
     return True, category
@@ -126,12 +148,33 @@ class GroqNotificationGuard(GuardProvider):
 
     id = "groq"
 
-    def __init__(self):
-        self.models = list(NOTIFICATION_GUARD_MODELS)
-        self.clients = list(CLIENTS)
+    def __init__(self, *, clients=None, models=None):
+        # Resolve credentials at construction time rather than copying the
+        # import-time CLIENTS placeholder. Production composition therefore
+        # receives configured clients without relying on a prior monkeypatch.
+        self.models = list(NOTIFICATION_GUARD_MODELS if models is None else models)
+        self.clients = list(_clients() if clients is None else clients)
 
-        # Kept for compatibility with the existing guard logger.
+        # Kept for compatibility with the existing guard logger. With more
+        # than one (client, model) combination this is only a nominal
+        # default: the winning candidate's concrete model is written back
+        # to `self.model` after every rotate call (see _winning_model_for),
+        # so the decision log reports the model that actually produced the
+        # decision rather than the first configured one.
         self.model = self.models[0] if self.models else ""
+
+    def _winning_model_for(self, candidate_id: str) -> str:
+        """Map a run_with_rotation candidate_id back to its concrete
+        model name. Built by replicating _candidates' exact
+        key-major/model-minor enumeration (rather than string-splitting
+        candidate_id, which is ambiguous because model names
+        themselves can contain '-'): ``groq-guard-key{client_index+1}
+        -{model}`` -> model."""
+        return {
+            f"groq-guard-key{client_index + 1}-{model}": model
+            for client_index in range(len(self.clients))
+            for model in self.models
+        }.get(candidate_id, self.model)
 
     def _candidates(self, thunk_factory):
         """(candidate_id, display_label, thunk) triples, one per
@@ -155,7 +198,7 @@ class GroqNotificationGuard(GuardProvider):
             for model in self.models
         ]
 
-    def evaluate(self, title: str, description: str, system_prompt: str) -> bool:
+    def evaluate(self, title: str, description: str, system_prompt: str, deadline=None) -> bool:
 
         def make_thunk(client, model):
             def thunk():
@@ -164,7 +207,8 @@ class GroqNotificationGuard(GuardProvider):
                 return _parse_decision(response.choices[0].message.content)
             return thunk
 
-        result, _ = run_with_rotation("Groq guard", self._candidates(make_thunk))
+        result, candidate_id, _ = run_with_rotation("Groq guard", self._candidates(make_thunk), deadline=deadline)
+        self.model = self._winning_model_for(candidate_id)
         return result
 
     def evaluate_with_category(
@@ -173,6 +217,7 @@ class GroqNotificationGuard(GuardProvider):
         description: str,
         system_prompt: str,
         original_category_id: str,
+        deadline=None,
     ) -> tuple[bool, str]:
         """
         Like evaluate(), but the guard is also allowed to say the job
@@ -201,7 +246,8 @@ class GroqNotificationGuard(GuardProvider):
                 )
             return thunk
 
-        result, _ = run_with_rotation("Groq guard", self._candidates(make_thunk))
+        result, candidate_id, _ = run_with_rotation("Groq guard", self._candidates(make_thunk), deadline=deadline)
+        self.model = self._winning_model_for(candidate_id)
         return result
 
 
@@ -212,11 +258,18 @@ class GroqNotificationGuard(GuardProvider):
 # NOTIFICATION_GUARD_MODELS -- GroqNotificationGuard reads the module-
 # level CLIENTS/models list at construction, from `self.models`/
 # `self.clients`, so a fresh provider instance picks up changes).
-_provider = GroqNotificationGuard()
+_provider = None
 
 
-def evaluate(title: str, description: str, system_prompt: str) -> bool:
-    return _provider.evaluate(title, description, system_prompt)
+def _provider_instance():
+    global _provider
+    if _provider is None:
+        _provider = GroqNotificationGuard()
+    return _provider
+
+
+def evaluate(title: str, description: str, system_prompt: str, deadline=None) -> bool:
+    return _provider_instance().evaluate(title, description, system_prompt, deadline=deadline)
 
 
 def evaluate_with_category(
@@ -224,7 +277,8 @@ def evaluate_with_category(
     description: str,
     system_prompt: str,
     original_category_id: str,
+    deadline=None,
 ) -> tuple[bool, str]:
-    return _provider.evaluate_with_category(
-        title, description, system_prompt, original_category_id
+    return _provider_instance().evaluate_with_category(
+        title, description, system_prompt, original_category_id, deadline=deadline
     )

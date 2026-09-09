@@ -5,10 +5,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from app.runtime_config import RUNTIME
 
-STATE_FILE = Path(__file__).resolve().parent.parent / "database" / "state.json"
+
+STATE_FILE = Path(RUNTIME.state_file_path)
 
 _FREEHUB_KEY = "_freehub_seen"
+_FREEHUB_PENDING_KEY = "_freehub_pending"
+_FREEHUB_CURSOR_KEY = "_freehub_backfill_cursor"
 
 # Cross-source dedup records are stored as:
 # {
@@ -18,9 +22,32 @@ _FREEHUB_KEY = "_freehub_seen"
 # Keeping the timestamp lets us prune old IDs instead of growing
 # state.json forever.
 _CROSS_SOURCE_SEEN_KEY = "_cross_source_seen"
+
+# How long a cross-source dedup claim lives before it expires.
+#
+# This is the window during which the SAME project id advertised by two
+# different sources (e.g. FreeHub and Telegram) is recognized as one
+# project and only delivered once. After a claim is older than this it is
+# pruned from state.json (see _prune_cross_source_seen) and a project id
+# can be claimed again -- which is intentional: the value is the work
+# against repeat notification of a project that is *actively* being
+# advertised. A project reposted/re-listed after the window may reasonably
+# be treated as new, and the bounded window is what keeps state.json from
+# growing without bound over the life of the process.
+#
+# 30 days was chosen as ample margin over any realistic reprocessing
+# horizon: retry sweeps (classification_retry / notification_retry) and
+# crash-recovery re-claims all complete far within it, so a legitimate
+# retry of an already-owned job never loses its claim (see
+# claim_cross_source_project), while genuinely distinct re-listings
+# eventually clear the window. Cross-source dedup is only best-effort at
+# the JSON/state layer; the durable per-identity SQLite job_uuid dedup in
+# app.job_processor remains the strong guarantee even after this window
+# expires.
 _CROSS_SOURCE_TTL_SECONDS = 30 * 24 * 60 * 60
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="state-persist")
+_EXECUTOR_POISONED = False
 
 # save() does two rounds of blocking disk I/O (write_text + os.replace,
 # for both state.json and its backup) with no timeout of its own. This
@@ -35,22 +62,27 @@ _EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="state-persist"
 # kept working, the container stayed alive, and nothing appeared in
 # the errors table -- exactly the signature this class of failure
 # would produce, with a restart (a fresh executor) being what actually
-# fixed it. _run_with_timeout below exists to turn that same failure
+# fixed it. run() below exists to turn that same failure
 # mode into a loud, recoverable error instead of a silent, permanent
 # freeze the next time it happens.
-_STATE_TIMEOUT_SECONDS = 30
+_STATE_TIMEOUT_SECONDS = RUNTIME.state_timeout_seconds
 
 
 class StuckExecutorError(RuntimeError):
     """Raised when a state-persistence call didn't return within
     _STATE_TIMEOUT_SECONDS. See the comment above _STATE_TIMEOUT_SECONDS
-    for why this exists. The stuck worker thread cannot be forcibly
-    killed and will leak until the process restarts, but a fresh
-    executor is installed immediately so no further call queues up
-    behind it -- this specific call still fails (its caller's existing
+    for why this exists.
+
+    The stuck worker thread cannot be forcibly killed, so the shared
+    state backend is QUARANTINED rather than replaced:
+    _EXECUTOR_POISONED is set and every subsequent state.run() call
+    fails closed with this exception until the process restarts. A
+    fresh executor is deliberately NOT installed -- it could let a
+    second worker mutate the same JSON state concurrently with the
+    still-stuck one. The failing call is loud (its caller's existing
     per-item exception handling, e.g. the Telegram/FreeHub worker
-    loops, is what recovers it, same as any other job-level failure),
-    but ingestion as a whole is not permanently blocked by it."""
+    loops, surfaces it), and a restart (a fresh process, hence a fresh
+    executor) is the only recovery."""
 
 
 class StateCorruptionError(RuntimeError):
@@ -130,12 +162,21 @@ class StateManager:
         Wrapped in a timeout specifically because the underlying
         writes are blocking disk I/O with no timeout of their own --
         see the comment above _STATE_TIMEOUT_SECONDS for the incident
-        this is defending against. On timeout, the presumed-stuck
-        executor is replaced with a fresh one before raising, so this
-        one call fails but future calls are not queued behind a
-        permanently blocked thread.
+        this is defending against. On timeout the shared state backend
+        is QUARANTINED: _EXECUTOR_POISONED is set and this and every
+        later call raises StuckExecutorError (fail-closed) until the
+        process restarts. The stuck worker thread is never forcibly
+        killed and no fresh executor is installed -- installing one
+        could let two workers mutate the same JSON state concurrently.
+        Restart (a fresh executor) is the only safe recovery.
         """
-        global _EXECUTOR
+        global _EXECUTOR_POISONED
+
+        if _EXECUTOR_POISONED:
+            raise StuckExecutorError(
+                "State worker is quarantined after a timed-out operation; "
+                "restart the process before reusing the state backend."
+            )
 
         loop = asyncio.get_running_loop()
 
@@ -145,23 +186,20 @@ class StateManager:
                 timeout=_STATE_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
-            _EXECUTOR = ThreadPoolExecutor(
-                max_workers=1, thread_name_prefix="state-persist"
-            )
+            # wait_for cancels the Future, not the running thread. Starting
+            # another executor here could let two workers mutate the same
+            # JSON state concurrently. Quarantine instead; restart is the
+            # only safe lifecycle boundary for a potentially stuck writer.
+            _EXECUTOR_POISONED = True
             func_name = getattr(func, "__name__", repr(func))
             print(
-                f"[STATE] {func_name} did not return within "
-                f"{_STATE_TIMEOUT_SECONDS}s -- its worker thread is "
-                f"presumed permanently stuck (e.g. a stalled disk "
-                f"write) and has been replaced so ingestion isn't "
-                f"silently blocked forever. This one call failed; the "
-                f"caller's normal retry/recovery path handles it from "
-                f"here."
+                f"[STATE] {func_name} timed out after {_STATE_TIMEOUT_SECONDS}s. "
+                "The worker thread cannot be killed safely, so the shared "
+                "state backend is quarantined until process restart."
             )
             raise StuckExecutorError(
                 f"{func_name} did not complete within "
-                f"{_STATE_TIMEOUT_SECONDS}s; its worker thread was "
-                f"replaced."
+                f"{_STATE_TIMEOUT_SECONDS}s; state backend quarantined."
             ) from None
 
     def get_last_message_id(self, channel_id):
@@ -188,6 +226,34 @@ class StateManager:
 
     async def async_set_freehub_seen(self, source: str, seen_ids: list):
         await self.run(self.set_freehub_seen, source, seen_ids)
+
+    def get_freehub_pending(self, source: str) -> list[dict]:
+        bucket = self.data.get(_FREEHUB_PENDING_KEY, {})
+        values = bucket.get(source, []) if isinstance(bucket, dict) else []
+        return list(values) if isinstance(values, list) else []
+
+    def set_freehub_pending(self, source: str, projects: list[dict]):
+        bucket = self.data.setdefault(_FREEHUB_PENDING_KEY, {})
+        bucket[source] = list(projects)
+        self.save()
+
+    async def async_set_freehub_pending(self, source: str, projects: list[dict]):
+        await self.run(self.set_freehub_pending, source, projects)
+
+    def get_freehub_backfill_page(self, source: str) -> int:
+        bucket = self.data.get(_FREEHUB_CURSOR_KEY, {})
+        try:
+            return max(2, int(bucket.get(source, 2)))
+        except (AttributeError, TypeError, ValueError):
+            return 2
+
+    def set_freehub_backfill_page(self, source: str, page: int):
+        bucket = self.data.setdefault(_FREEHUB_CURSOR_KEY, {})
+        bucket[source] = max(2, int(page))
+        self.save()
+
+    async def async_set_freehub_backfill_page(self, source: str, page: int):
+        await self.run(self.set_freehub_backfill_page, source, page)
 
     # ------------------------------------------------------------
     # Cross-source dedup.
@@ -282,6 +348,17 @@ class StateManager:
             project_id,
             job_uuid,
         )
+
+    def shutdown(self):
+        """Deterministic lifecycle end: shut down the shared state
+        persistence executor. Idempotent. Call only at process shutdown
+        (see app.bot.run); after this call no state persistence can run."""
+        global _EXECUTOR_POISONED
+        try:
+            _EXECUTOR.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+        _EXECUTOR_POISONED = True
 
 
 state = StateManager()

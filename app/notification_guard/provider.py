@@ -40,12 +40,17 @@ class GuardProvider(ABC):
     model: str
 
     @abstractmethod
-    def evaluate(self, title: str, description: str, system_prompt: str) -> bool:
+    def evaluate(self, title: str, description: str, system_prompt: str, deadline=None) -> bool:
         """Single-category notify/suppress evaluation.
 
         Returns True to allow notification, False to suppress it.
         Raises on total failure (every internal candidate exhausted) --
-        the wrapper is fail-closed, so any exception denies."""
+        the wrapper is fail-closed, so any exception denies.
+
+        deadline: optional monotonic timestamp (time.monotonic()) by
+        which the rotation must not start any NEW candidate attempts.
+        In-flight provider calls are bounded by their own HTTP timeouts.
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -55,6 +60,7 @@ class GuardProvider(ABC):
         description: str,
         system_prompt: str,
         original_category_id: str,
+        deadline=None,
     ) -> tuple[bool, str]:
         """Like evaluate(), but the provider may also reclassify the job
         as "full_stack" rather than its original single-category match.
@@ -63,5 +69,10 @@ class GuardProvider(ABC):
         and a category. Returns (allowed, resolved_category_id), where
         resolved_category_id is always either `original_category_id` or
         "full_stack" -- never blindly trusted from the response.
-        Raises on total failure (fail-closed)."""
+        Raises on total failure (fail-closed).
+
+        deadline: optional monotonic timestamp (time.monotonic()) by
+        which the rotation must not start any NEW candidate attempts.
+        In-flight provider calls are bounded by their own HTTP timeouts.
+        """
         raise NotImplementedError

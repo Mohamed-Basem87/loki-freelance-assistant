@@ -1,6 +1,3 @@
-from app.logger import logger as excel_logger
-
-
 async def log_guard_decision(
     *,
     job_uuid,
@@ -13,6 +10,7 @@ async def log_guard_decision(
     response_time_ms=None,
     error="",
     guard_category="",
+    repository=None,
 ):
     """
     Persist one guard decision through the shared DB logger.
@@ -24,10 +22,15 @@ async def log_guard_decision(
     so the two are always durably consistent together -- see
     NOTIFICATION_GUARD_HEADERS / get_latest_guard_decision_with_category
     in app.logger for why this atomicity matters.
-    """
 
-    await excel_logger.run(
-        excel_logger.log_notification_guard,
+    ``repository`` is injected by the notification guard (which owns its
+    configured repository). When omitted -- e.g. tests or standalone
+    callers that have not been wired by the composition root -- the
+    legacy service-locator binding is used as a fallback.
+    """
+    repository = repository or _default_repository()
+
+    await repository.log_notification_guard(
         job_uuid,
         source,
         title,
@@ -39,3 +42,10 @@ async def log_guard_decision(
         error,
         guard_category,
     )
+
+
+def _default_repository():
+    # Legacy fallback for callers that have not been wired by the
+    # composition root (the guard path always injects its own repository).
+    from app.dependencies import logger as _logger
+    return _logger

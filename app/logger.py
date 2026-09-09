@@ -1,15 +1,38 @@
+"""SQLite audit/notification persistence engine.
+
+SINGLE-PROCESS ASSUMPTION (explicit):
+This codebase intentionally runs ONE bot process against ONE
+``loki_freelance_bot.db`` file. All reads/writes flow through a single
+dedicated worker thread (``DBLogger.run`` / the ``_EXECUTOR`` below),
+which serializes every statement -- that serialization is what makes
+check-then-act sequences (e.g. ``claim_pending_classification``,
+``claim_pending_user_notifications``) atomic within this process.
+
+This is NOT atomic across processes. Nothing here implements file-level
+locking, a multi-process lease, or WAL coordination, and the schema does
+not claim to. Running a second bot process against the same database
+file concurrently is unsupported and can produce races that the
+single-process design never anticipated. If multi-process operation is
+ever required, the claim semantics must move to a real multi-process
+transaction coordinator rather than relying on this module's
+single-thread serialization.
+"""
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+from app.runtime_config import RUNTIME
 import sqlite3
+import time
+
+from app.runtime_config import RUNTIME, SOURCES
 import uuid
 
 
 # The audit log lives in a SQLite database file next to docker-compose.yml
 # (bind-mounted read/write, never baked into the image), so it is directly
 # visible/inspectable on the host and survives container rebuilds.
-DB_FILE = Path(__file__).resolve().parent.parent / "loki_freelance_bot.db"
+DB_FILE = Path(RUNTIME.database_file_path)
 
 # All DBLogger reads/writes must go through this single worker thread
 # (see DBLogger.run below). Funneling every access through one dedicated
@@ -31,17 +54,21 @@ _EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="db-logger")
 # migration (_rebuild_table, on a large historical table) can
 # legitimately take longer than a routine single-row write without
 # actually being stuck.
-_DB_TIMEOUT_SECONDS = 60
+_DB_TIMEOUT_SECONDS = RUNTIME.database_timeout_seconds
 
 
 class StuckExecutorError(RuntimeError):
     """Raised when a DBLogger call didn't return within
-    _DB_TIMEOUT_SECONDS. See the comment above _DB_TIMEOUT_SECONDS. The
-    stuck worker thread cannot be forcibly killed and will leak until
-    the process restarts, but a fresh executor is installed
-    immediately so no further call queues up behind it -- this
-    specific call still fails, but the DB as a whole is not
-    permanently blocked by it."""
+    _DB_TIMEOUT_SECONDS. See the comment above _DB_TIMEOUT_SECONDS.
+
+    The stuck worker thread cannot be forcibly killed and will leak
+    until the process restarts, so the shared SQLite backend is
+    QUARANTINED rather than replaced: _executor_poisoned is set and
+    every subsequent DBLogger.run() call fails closed with this
+    exception until process restart. A fresh executor is deliberately
+    NOT installed -- it could let a second worker touch the same
+    connection concurrently with the still-stuck one. Restart is the
+    only safe recovery."""
 
 
 # ------------------------------------------------------------------
@@ -60,6 +87,7 @@ JOB_HEADERS = [
     "Job UUID",
     "Job ID",
     "Source",
+    "Identity Source",
     "Title",
     "Description",
     "Raw Message",
@@ -99,6 +127,19 @@ JOB_HEADERS = [
     "Category Selection Method",
     "Category Candidates",
     "Filter Time (ms)",
+
+    # Explicit classification-retry scheduling (audit finding P1-3):
+    # set whenever an LLM classification/arbitration attempt fails and
+    # the job is durably parked as Final Decision=Pending / Decision
+    # Reason=LLM Error. Holds a unix timestamp (as text) before which
+    # process_job() must not attempt another real LLM call for this
+    # job, no matter how many independent callers re-surface it (the
+    # dedicated classification_retry_loop sweep AND FreeHub's own
+    # pending-project rediscovery on every poll both funnel through
+    # process_job() and, before this, both could trigger a fresh LLM
+    # request for the same job every time they ran -- see the audit's
+    # "LLM retry amplification" finding for the quota/cost impact).
+    "Classification Retry Not Before",
 ]
 
 # snake_case keyword -> SQL column name (the human-readable header).
@@ -107,6 +148,7 @@ COLUMN_MAP = {
     "job_uuid": "Job UUID",
     "job_id": "Job ID",
     "source": "Source",
+    "identity_source": "Identity Source",
 
     "title": "Title",
     "description": "Description",
@@ -148,6 +190,7 @@ COLUMN_MAP = {
     "category_selection_method": "Category Selection Method",
     "category_candidates": "Category Candidates",
     "filter_time_ms": "Filter Time (ms)",
+    "classification_retry_not_before": "Classification Retry Not Before",
 }
 
 GEMINI_HEADERS = [
@@ -228,6 +271,7 @@ USER_NOTIFICATION_HEADERS = [
     "Telegram User ID",
     "Category ID",
     "Status",
+    "Claimed At",
     "Attempts",
     "Last Error",
     "Created At",
@@ -244,6 +288,35 @@ SUBSCRIPTION_EVENT_HEADERS = [
     "Occurred At",
     "Trigger",
 ]
+
+# How long a claimed-but-undelivered "Sending" lease may go untouched
+# before it is assumed abandoned (the claiming process crashed or was
+# killed mid-delivery) and returned to the "Pending" queue without
+# charging the notification an attempt. See
+# DBLogger._recover_stale_sending_user_notifications. A single delivery
+# (_send_one) normally completes in well under this window; it is only
+# ever blown through by a dead process, not by a slow-but-alive one.
+USER_NOTIFICATION_CLAIM_LEASE_SECONDS = 300
+
+# Deterministic precedence used when _migrate_user_uniqueness must
+# resolve a ("Job UUID", "User ID") collision between a duplicate
+# user's queued user_notifications row and a row the survivor already
+# owns for the same job (both rows exist because lookup-before-insert
+# is only best-effort -- the dedup migration is the first point
+# uniqueness is enforced, so legacy data can contain both). The
+# row representing the most-completed delivery wins: a real "Sent"
+# must outrank one that merely got rate-limited, and a delivery that
+# was canceled must not block a live one. Unknown/malformed status
+# values sort below every known one (they lose to "Cancelled" and,
+# by tie-with-lowest, lose to the survivor).
+_USER_NOTIFICATION_STATUS_PRECEDENCE = {
+    "Sent": 5,
+    "Sending": 4,
+    "Pending": 3,
+    "RateLimited": 2,
+    "Failed": 1,
+    "Cancelled": 0,
+}
 
 
 def _column_defs(headers, primary_key=None):
@@ -265,8 +338,20 @@ _CREATE_TABLES = (
     f'CREATE TABLE IF NOT EXISTS subscription_events ({_column_defs(SUBSCRIPTION_EVENT_HEADERS, primary_key=0)});',
     f'CREATE UNIQUE INDEX IF NOT EXISTS idx_user_notifications_job_user '
     f'ON user_notifications ("Job UUID", "User ID");',
+    # Queue-claim predicates are exercised on every polling cycle. These
+    # indexes avoid repeated full scans as notification volume grows.
+    'CREATE INDEX IF NOT EXISTS idx_user_notifications_claim '
+    'ON user_notifications ("Status", "Next Attempt At", "Attempts");',
+    'CREATE INDEX IF NOT EXISTS idx_jobs_notification_status '
+    'ON jobs ("Notification Status");',
+    # P2-4: the classification retry sweep (see
+    # get_incomplete_classification_jobs above) filters on this exact
+    # (Final Decision, Decision Reason) pair on every
+    # classification_retry_loop tick. Without a dedicated index this
+    # degrades into a full table scan of `jobs` as it grows.
+    'CREATE INDEX IF NOT EXISTS idx_jobs_final_decision_reason '
+    'ON jobs ("Final Decision", "Decision Reason");',
 )
-
 
 # ------------------------------------------------------------------
 # Legacy schema migration.
@@ -327,11 +412,97 @@ def _join_matches(matches):
     )
 
 
+# ------------------------------------------------------------------
+# Legacy notification-state normalization.
+#
+# Historically the code wrote a single-sink plain-text status straight
+# into jobs."Notification Status" ("Telegram: Sent", "Telegram:
+# Failed", "Telegram: Suppressed"). The current per-sink
+# representation is "Sink:<id>=Sent"/"Sink:<id>=Failed", with multiple
+# sinks joined by "; ". Existing databases can still contain rows in
+# the legacy format.
+#
+# The legacy format is indistinguishable from "unresolved" to the
+# retry sweep and to NotificationService's per-sink parser:
+#   * "Telegram: Sent" is selected by get_incomplete_notification_jobs
+#     (it is not 'Complete'/'Suppressed') AND its token does not match
+#     the "Sink:telegram=" marker, so the send gate does not fire and
+#     the Telegram sink is RE-SENT -- a duplicate notification for a
+#     message a user already received.
+#   * "Telegram: Failed" is re-attempted (which is the desired retry
+#     behavior, but only if it is normalized to the per-sink marker so
+#     a later sibling sink's success is not clobbered).
+#   * "Telegram: Suppressed" is re-sent and rolled to 'Complete',
+#     permanently overriding the suppression.
+#
+# _normalize_legacy_notification_state rewrites the legacy token into
+# the current per-sink form (or the terminal 'Suppressed' rollup) so
+# every one of those legacy rows means exactly what it always meant,
+# without re-sending anything that was already delivered.
+# ------------------------------------------------------------------
+_LEGACY_NOTIFICATION_SINK = "telegram"
+_LEGACY_STATUS_PATTERN = "Telegram: "
+
+
+def _normalize_legacy_notification_state(value):
+    """Translate one job's legacy 'Notification Status' into the current
+    per-sink form.
+
+    Accepts a raw column value (any mix of legacy "Telegram: X" tokens
+    and current "Sink:<id>=Y" tokens). Returns the normalized string, or
+    None if there was no legacy token to translate (so callers can skip
+    the write entirely). Terminal 'Suppressed' is preserved as-is.
+
+    Rules (each idempotent):
+      * "Telegram: Sent"      -> "Sink:telegram=Sent"   (never re-send)
+      * "Telegram: Failed"    -> "Sink:telegram=Failed" (retryable)
+      * "Telegram: Suppressed"-> "Suppressed"           (terminal)
+      * Already-present current Sink:telegram= markers win over a
+        contradicting legacy token (the per-sink record is newer).
+      * A row that was wholly "Telegram: Suppressed" becomes the
+        terminal "Suppressed" rollup and is excluded from the sweep.
+    """
+    if not value:
+        return None
+
+    parts = [p.strip() for p in str(value).split(";") if p.strip()]
+    legacy_token = next(
+        (p for p in parts if p.startswith(_LEGACY_STATUS_PATTERN)), None
+    )
+    if legacy_token is None:
+        return None
+
+    legacy_state = legacy_token[len(_LEGACY_STATUS_PATTERN):].strip()
+
+    # Current per-sink tokens for the legacy sink take precedence over
+    # the legacy token (they are a later, more precise record).
+    sink_marker = f"Sink:{_LEGACY_NOTIFICATION_SINK}="
+    has_current_sink = any(p.startswith(sink_marker) for p in parts)
+    remaining = [p for p in parts if not p.startswith(_LEGACY_STATUS_PATTERN)]
+
+    if legacy_state == "Suppressed":
+        # A whole-job suppression is terminal in the current model.
+        return "Suppressed"
+
+    if has_current_sink:
+        # The per-sink record is authoritative and already present; just
+        # drop the redundant legacy token.
+        return "; ".join(remaining) or None
+
+    normalized = " ".join(remaining)
+    token = f"{sink_marker}{legacy_state}"
+    normalized = "; ".join(p for p in (normalized, token) if p)
+    return normalized
+
+
 class DBLogger:
 
     def __init__(self):
         self.path = DB_FILE
         self._conn = None
+        self.max_user_notification_attempts = RUNTIME.user_bot_max_attempts
+        self.user_notification_claim_lease_seconds = USER_NOTIFICATION_CLAIM_LEASE_SECONDS
+        self._executor_poisoned = False
 
     def initialize(self):
         """Create the database file and schema if missing, then keep a
@@ -373,11 +544,25 @@ class DBLogger:
 
         self._ensure_current_columns()
 
+        # Fold any legacy "Telegram: Sent/Failed/Suppressed" values in
+        # jobs."Notification Status" into the current per-sink form, so
+        # a legacy "Telegram: Sent" row can never be re-sent by the
+        # retry sweep. Runs after the schema/column migrations so the
+        # column definitely exists. Idempotent; see
+        # _migrate_legacy_notification_states.
+        self._migrate_legacy_notification_states()
+
         # Fold any pre-feature per-user category subscriptions (legacy
         # user_categories table, if this database still has one) into
         # users.Categories once, then drop the legacy table. No-op for
         # fresh databases and for databases already migrated.
         self._migrate_user_categories_into_users()
+
+        # Enforce the DB-level "one row per Telegram User ID" guarantee:
+        # dedupe any legacy duplicate users rows (merging their preferences)
+        # and create a unique index so it can never recur. Runs after the
+        # users table and column migrations exist.
+        self._migrate_user_uniqueness()
 
         # Seed the category registry into SQLite. The registry is the
         # source of truth for available category definitions; SQLite
@@ -577,10 +762,104 @@ class DBLogger:
         for table, headers, pk_index in _MIGRATABLE_TABLES:
             self._migrate_table(table, headers, pk_index)
 
+    def _migrate_legacy_notification_states(self):
+        """One-time, transactional, idempotent data migration that folds
+        any legacy "Telegram: Sent/Failed/Suppressed" rows in
+        jobs."Notification Status" into the current per-sink form.
+
+        Runs on every startup but is a strict no-op once every legacy
+        token has been normalized (the rewrite is idempotent: a row
+        containing no legacy token is left untouched). The whole pass is
+        wrapped in a single transaction so a crash mid-write can never
+        leave a half-migrated column -- on the next open only the still-
+        legacy rows would be rewritten, with every already-normalized
+        row preserved.
+
+        The sine qua non is that a legacy "Telegram: Sent" row must
+        never be re-sent: without this, the retry sweep re-picks it
+        (it is not 'Complete'/'Suppressed') and NotificationService's
+        per-sink parser sees no "Sink:telegram=" marker, so the send
+        gate does not fire and the message is delivered a second time.
+        """
+        try:
+            rows = self._conn.execute(
+                'SELECT rowid, "Notification Status" FROM jobs '
+                'WHERE "Notification Status" LIKE ?',
+                (f"%{_LEGACY_STATUS_PATTERN}%",),
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            # A fresh/empty database (or one whose jobs table is not yet
+            # current) has nothing to migrate. Only the missing-table case
+            # is swallowed: "database is locked" (or any other real
+            # operational failure) must propagate, not be silently
+            # papered over as "nothing to do" -- a locked database still
+            # leaves legacy rows un-normalized and would otherwise let a
+            # legacy "Telegram: Sent" row be re-sent on the next sweep.
+            if "no such table" not in str(exc):
+                raise
+            return
+
+        if not rows:
+            return
+
+        updates = []
+        for rowid, raw in rows:
+            if raw is None:
+                continue
+            normalized = _normalize_legacy_notification_state(raw)
+            if normalized is None:
+                continue
+            updates.append((normalized, rowid))
+
+        if not updates:
+            return
+
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.executemany(
+                'UPDATE jobs SET "Notification Status" = ? WHERE rowid = ?',
+                updates,
+            )
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+
     def close(self):
         if self._conn is not None:
             self._conn.close()
             self._conn = None
+
+    def shutdown(self):
+        """Deterministic lifecycle end: shut down the shared worker
+        executor and close the SQLite connection. Idempotent. After this
+        call no further DB operations can run -- call only when the
+        process is shutting down (see app.bot.run).
+
+        Quarantine exception (audit finding P2-A): when the executor's
+        worker thread is presumed stuck (``self._executor_poisoned``, set
+        by run() when an operation timed out), the connection is
+        DELIBERATELY NOT closed. A cancelled Future cannot stop the
+        thread, so it may still be mid-statement on this connection;
+        closing it there would tear the connection out from under a
+        running worker for no benefit. The thread and its connection are
+        unrecoverable either way, so the only guaranteed-safe cleanup is
+        the OS reclaiming the process's file descriptors at process
+        exit -- the connection is leaked, never corrupted."""
+        global _EXECUTOR
+        try:
+            _EXECUTOR.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+        if self._executor_poisoned:
+            print(
+                "[DB] shutdown: the logger worker thread was quarantined "
+                "after a timed-out operation; leaving the SQLite connection "
+                "open for the OS to reclaim rather than closing it under a "
+                "possibly-still-running worker thread."
+            )
+            return
+        self.close()
 
     def save(self):
         """Compatibility no-op: writes are committed immediately in
@@ -605,12 +884,21 @@ class DBLogger:
         blocking database I/O off the event loop.
 
         Wrapped in a timeout for the same reason as app.state.run() --
-        see the comment above _DB_TIMEOUT_SECONDS. On timeout, the
-        presumed-stuck executor is replaced with a fresh one before
-        raising, so this one call fails but future calls are not
-        queued behind a permanently blocked thread.
+        see the comment above _DB_TIMEOUT_SECONDS. On timeout the shared
+        SQLite backend is QUARANTINED: _executor_poisoned is set and
+        this and every later call raises StuckExecutorError (fail-closed)
+        until the process restarts. The stuck worker thread cannot be
+        killed and no fresh executor is installed (a second worker could
+        touch the same connection concurrently), so restart is the only
+        safe recovery.
         """
         global _EXECUTOR
+
+        if self._executor_poisoned:
+            raise StuckExecutorError(
+                "DB worker is quarantined after a timed-out operation; "
+                "restart the process before reusing the SQLite connection."
+            )
 
         loop = asyncio.get_running_loop()
 
@@ -620,22 +908,21 @@ class DBLogger:
                 timeout=_DB_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
-            _EXECUTOR = ThreadPoolExecutor(
-                max_workers=1, thread_name_prefix="db-logger"
-            )
+            # A cancelled Future cannot stop the underlying thread. Never
+            # replace the executor while that worker may still be touching
+            # this connection. Quarantine the shared DB backend instead;
+            # callers fail closed until process restart.
+            self._executor_poisoned = True
             func_name = getattr(func, "__name__", repr(func))
             print(
-                f"[DB] {func_name} did not return within "
-                f"{_DB_TIMEOUT_SECONDS}s -- its worker thread is "
-                f"presumed permanently stuck and has been replaced so "
-                f"the database isn't silently blocked forever. This "
-                f"one call failed; the caller's normal retry/recovery "
-                f"path handles it from here."
+                f"[DB] {func_name} timed out after {_DB_TIMEOUT_SECONDS}s. "
+                "The worker thread cannot be killed safely, so the shared "
+                "SQLite backend is quarantined; no new DB operation will "
+                "run against it until process restart."
             )
             raise StuckExecutorError(
                 f"{func_name} did not complete within "
-                f"{_DB_TIMEOUT_SECONDS}s; its worker thread was "
-                f"replaced."
+                f"{_DB_TIMEOUT_SECONDS}s; SQLite backend quarantined."
             ) from None
 
     # ------------------------------------------------------------------
@@ -671,6 +958,7 @@ class DBLogger:
         job_uuid,
         job_id="",
         source="",
+        identity_source="",
         title="",
         description="",
         raw_message="",
@@ -687,8 +975,12 @@ class DBLogger:
         a dozen individual keyword arguments) keeps this call in sync
         automatically as the filter's evidence trail evolves.
 
-        `save=False` lets a caller defer the commit and batch several
-        updates for the same job -- see app.job_processor.process_job.
+        NOTE: This database runs in autocommit mode (isolation_level=None).
+        Each statement is committed immediately. The `save` parameter is
+        retained for API compatibility but has no effect on transaction
+        boundaries -- all writes are durable immediately. True transaction
+        batching is only available via `create_job_if_absent` which wraps
+        its check-and-insert in an explicit BEGIN IMMEDIATE/COMMIT block.
         """
 
         filter_result = filter_result or {}
@@ -701,6 +993,7 @@ class DBLogger:
             job_uuid,
             job_id,
             source,
+            identity_source,
 
             title,
             description,
@@ -742,6 +1035,7 @@ class DBLogger:
             filter_result.get("category_selection_method", ""),
             filter_result.get("category_candidates", ""),
             filter_time_ms,
+            "",  # Classification Retry Not Before: unset at creation time.
         ]
 
         self._conn.execute(
@@ -814,6 +1108,72 @@ class DBLogger:
 
         return self._row_to_dict(cursor, row)
 
+    def claim_pending_classification(self, job_uuid, lease_until):
+        """Atomically claim one durably-pending job for a classification
+        attempt, so the FreeHub/source re-discovery path and the
+        classification-retry worker can never both run an LLM
+        arbitration call for the same job at the same time.
+
+        This is a single conditional UPDATE executed on the dedicated
+        DBLogger worker thread (see DBLogger.run()), which serializes
+        every database access in this process. That serialization is
+        what makes the read-eligibility-check-then-write atomic: two
+        concurrent callers each attempt this same UPDATE, but SQLite
+        applies them one at a time, so only the first can see the row
+        still eligible (unclaimed) and flip it to "leased". The second
+        call's WHERE clause no longer matches (the not-before it just
+        wrote already moved into the future) and its rowcount is 0.
+
+        Returns True if this call won the claim (the row was pending
+        and its retry-not-before had already elapsed, or was never
+        set), False if the row is not eligible yet or another caller
+        already claimed it first.
+
+        The claim is a lease, not a permanent lock: it reuses the
+        existing "Classification Retry Not Before" backoff column and
+        pushes it out to ``lease_until``. If the classification
+        attempt finishes, the caller overwrites that column with the
+        real backoff (on failure) or moves the row out of the
+        "Pending" state entirely (on success), so the lease value
+        never matters again. If the process crashes mid-attempt
+        instead, the row simply stays claimed until ``lease_until``
+        passes, then becomes eligible again -- bounding, rather than
+        eliminating, the restart recovery window instead of leaving
+        the row claimed forever.
+        """
+        cursor = self._conn.execute(
+            "UPDATE jobs SET \"Classification Retry Not Before\" = ? "
+            "WHERE \"Job UUID\" = ? AND \"Final Decision\" = 'Pending' "
+            "AND (\"Classification Retry Not Before\" IS NULL "
+            "OR \"Classification Retry Not Before\" = '' "
+            "OR CAST(\"Classification Retry Not Before\" AS REAL) <= ?)",
+            (str(lease_until), job_uuid, time.time()),
+        )
+        self.save()
+        return cursor.rowcount == 1
+
+    def get_incomplete_classification_jobs(self):
+        """Return durably pending jobs whose classification needs retry
+        and whose scheduled retry time (if any) has already passed.
+
+        The schedule check mirrors the guard in
+        app.job_processor.process_job (see the "Classification Retry
+        Not Before" column comment in JOB_HEADERS): a job that failed
+        classification very recently is intentionally excluded from
+        this sweep until its backoff window elapses, rather than being
+        retried on every classification_retry_loop tick regardless of
+        how recently it last failed.
+        """
+        cursor = self._conn.execute(
+            "SELECT * FROM jobs WHERE \"Final Decision\" = 'Pending' "
+            "AND \"Decision Reason\" = 'LLM Error' "
+            "AND (\"Classification Retry Not Before\" IS NULL "
+            "OR \"Classification Retry Not Before\" = '' "
+            "OR CAST(\"Classification Retry Not Before\" AS REAL) <= ?)",
+            (time.time(),),
+        )
+        return [self._row_to_dict(cursor, row) for row in cursor.fetchall()]
+
     def get_incomplete_notification_jobs(self):
         """
         Return every Jobs row whose private notification workflow is
@@ -854,6 +1214,18 @@ class DBLogger:
         return self._row_to_dict(cursor, row)
 
     def update_job(self, job_uuid, save=True, **fields):
+        """Update one job row's fields.
+
+        Field names must be valid (snake_case keys in COLUMN_MAP). An
+        unknown field name is a programming error -- silently ignoring it
+        would drop the intended write with no signal, so it raises loudly
+        instead (see the "fail loudly" remediation). This catches typos and
+        stale call sites at runtime rather than quietly corrupting the log.
+
+        NOTE: This database runs in autocommit mode. The `save` parameter
+        is retained for API compatibility but has no effect -- each UPDATE
+        is committed immediately.
+        """
 
         if not self.has_job(job_uuid):
             return False
@@ -864,7 +1236,10 @@ class DBLogger:
         for key, value in fields.items():
 
             if key not in COLUMN_MAP:
-                continue
+                raise ValueError(
+                    f"update_job: unknown field {key!r} for job {job_uuid!r}. "
+                    f"Known fields: {sorted(COLUMN_MAP)}"
+                )
 
             if isinstance(value, list):
                 value = ", ".join(value)
@@ -904,6 +1279,11 @@ class DBLogger:
         provider="",
         save=True,
     ):
+        """
+        NOTE: This database runs in autocommit mode. The `save` parameter
+        is retained for API compatibility but has no effect -- each INSERT
+        is committed immediately.
+        """
 
         columns = ", ".join(f'"{header}"' for header in GEMINI_HEADERS)
         placeholders = ", ".join("?" for _ in GEMINI_HEADERS)
@@ -934,6 +1314,11 @@ class DBLogger:
         status,
         save=True,
     ):
+        """
+        NOTE: This database runs in autocommit mode. The `save` parameter
+        is retained for API compatibility but has no effect -- each INSERT
+        is committed immediately.
+        """
 
         columns = ", ".join(f'"{header}"' for header in NOTIFICATION_HEADERS)
         placeholders = ", ".join("?" for _ in NOTIFICATION_HEADERS)
@@ -958,6 +1343,11 @@ class DBLogger:
         job_uuid="",
         save=True,
     ):
+        """
+        NOTE: This database runs in autocommit mode. The `save` parameter
+        is retained for API compatibility but has no effect -- each INSERT
+        is committed immediately.
+        """
 
         columns = ", ".join(f'"{header}"' for header in ERROR_HEADERS)
         placeholders = ", ".join("?" for _ in ERROR_HEADERS)
@@ -1064,6 +1454,11 @@ class DBLogger:
     # ------------------------------------------------------------------
 
     def ensure_category(self, category_id, name, description="", enabled=True, save=True):
+        """
+        NOTE: This database runs in autocommit mode. The `save` parameter
+        is retained for API compatibility but has no effect -- each INSERT
+        is committed immediately.
+        """
         self._conn.execute(
             'INSERT OR IGNORE INTO categories '
             '("Category ID", "Name", "Description", "Enabled", "Created At") '
@@ -1073,6 +1468,178 @@ class DBLogger:
         )
         if save:
             self.save()
+
+    def _migrate_user_uniqueness(self):
+        """Establish the DB-level guarantee that a Telegram User ID maps to
+        at most one users row, and enforce it with a unique index.
+
+        The app keeps users idempotent via ensure_user/ensure_channel_
+        destination (lookup-before-insert) running on the single serialized
+        logger thread, so new writes already cannot create duplicates. This
+        migration closes the remaining gap for *legacy* data that may contain
+        duplicates (from an older schema or a one-off mis-write) and then
+        makes uniqueness a hard database invariant going forward.
+
+        Dedup policy (runs once, then the index is created):
+          * grouped by "Telegram User ID"
+          * the row with the MAX rowid (the most-recently inserted) is kept
+            as the surviving user; every older duplicate's subscription
+            preferences (Categories/Sources) are merged into the survivor
+            before the duplicate is removed.
+          * The survivor's explicit Is Active state and Destination Type are
+            authoritative and are NOT overridden by older duplicates -- this
+            preserves the subscription lifecycle semantics where /stop on the
+            newest record must not be undone by an older active duplicate.
+          * pending/active user_notifications rows that referenced the
+            duplicate "User ID" are re-pointed at the survivor so no queued
+            notification is orphaned or duplicated by the merge. If the
+            survivor already owns a row for the same job -- the
+            ("Job UUID", "User ID") unique index forbids two -- the
+            collision is resolved by delivery progress (see
+            _USER_NOTIFICATION_STATUS_PRECEDENCE): the row that is further
+            along (e.g. durably "Sent") is kept and the other deleted, so
+            the dedup can never lose a real delivery or fail the migration
+            from the unique-index violation of a naive re-point.
+          * subscription_events rows are historical and left as-is.
+
+        Idempotent and transactional: the dedup and index creation are one
+        commit, so a crash mid-migration rolls back cleanly.
+        """
+        # The users table may not exist yet on a fresh database at the point
+        # this is called from initialize(); CREATE TABLE runs first, so it
+        # always exists here. Guard anyway for safety.
+        if "users" not in self._table_names():
+            return
+
+        dup_rows = self._conn.execute(
+            'SELECT "Telegram User ID", COUNT(*) AS c FROM users '
+            'GROUP BY "Telegram User ID" HAVING c > 1'
+        ).fetchall()
+
+        dup_ids = [row[0] for row in dup_rows]
+
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            for telegram_id in dup_ids:
+                rows = self._conn.execute(
+                    'SELECT rowid, "User ID", "Categories", "Sources", '
+                    '"Is Active", "Destination Type" FROM users '
+                    'WHERE "Telegram User ID" = ? ORDER BY rowid ASC',
+                    (telegram_id,),
+                ).fetchall()
+                if not rows:
+                    continue
+                survivor_rowid, survivor_user_id, survivor_cats, survivor_sources, \
+                    survivor_active, survivor_dst = rows[-1]
+                for rowid, user_id, cats, sources, active, dst in rows[:-1]:
+                    # Merge preferences into the survivor.
+                    merged_cats = self._merge_csv(survivor_cats, cats)
+                    merged_sources = self._merge_csv(survivor_sources, sources)
+                    # The survivor (newest row by rowid) is the authoritative
+                    # record. Its explicit Is Active state must NOT be
+                    # overridden by an older duplicate's active state --
+                    # that would silently reactivate a user whose newer
+                    # state is inactive/stopped (audit finding: subscription
+                    # lifecycle semantics). Only preferences (Categories,
+                    # Sources) are merged; active state and destination
+                    # type remain the survivor's.
+                    active_value = survivor_active
+                    self._conn.execute(
+                        'UPDATE users SET "Categories" = ?, "Sources" = ?, '
+                        '"Is Active" = ? WHERE "User ID" = ?',
+                        (merged_cats, merged_sources, active_value, survivor_user_id),
+                    )
+                    # Re-point queued deliveries that targeted the duplicate
+                    # user id so nothing is orphaned, one row at a time: a
+                    # naive bulk re-point collides with a row the survivor
+                    # already owns for the same job ("Job UUID" + "User ID"
+                    # is unique), raising an IntegrityError that aborts the
+                    # whole migration. Resolve each collision by delivery
+                    # progress (Sent > Sending > Pending > RateLimited >
+                    # Failed > Cancelled): the more-completed row survives,
+                    # the less-completed one is removed, so the dedup can
+                    # never lose a real delivery.
+                    for notif_row in self._conn.execute(
+                        'SELECT "Notification ID", "Job UUID", "Status" '
+                        'FROM user_notifications WHERE "User ID" = ?',
+                        (user_id,),
+                    ).fetchall():
+                        notif_id, job_uuid, dup_status = notif_row
+                        survivor_notif = self._conn.execute(
+                            'SELECT "Status" FROM user_notifications '
+                            'WHERE "User ID" = ? AND "Job UUID" = ?',
+                            (survivor_user_id, job_uuid),
+                        ).fetchone()
+                        if survivor_notif is None:
+                            self._conn.execute(
+                                'UPDATE user_notifications SET "User ID" = ?, '
+                                '"Telegram User ID" = ? '
+                                'WHERE "Notification ID" = ?',
+                                (survivor_user_id, telegram_id, notif_id),
+                            )
+                            continue
+                        dup_rank = _USER_NOTIFICATION_STATUS_PRECEDENCE.get(
+                            str(dup_status or "").strip(), -1
+                        )
+                        survivor_rank = _USER_NOTIFICATION_STATUS_PRECEDENCE.get(
+                            str(survivor_notif[0] or "").strip(), -1
+                        )
+                        if dup_rank > survivor_rank:
+                            # The duplicate's own row is the further-along
+                            # delivery (e.g. durably "Sent" while the
+                            # survivor's is merely "Pending"): keep it in
+                            # place of the survivor's row for this job.
+                            # Delete the survivor's row first so the re-point
+                            # does not violate the unique index.
+                            self._conn.execute(
+                                'DELETE FROM user_notifications '
+                                'WHERE "User ID" = ? AND "Job UUID" = ?',
+                                (survivor_user_id, job_uuid),
+                            )
+                            self._conn.execute(
+                                'UPDATE user_notifications SET "User ID" = ?, '
+                                '"Telegram User ID" = ? '
+                                'WHERE "Notification ID" = ?',
+                                (survivor_user_id, telegram_id, notif_id),
+                            )
+                        else:
+                            # Survivor's row is equal-or-further-along (ties
+                            # keep the survivor); the duplicate's lesser row
+                            # for this job is dropped.
+                            self._conn.execute(
+                                'DELETE FROM user_notifications '
+                                'WHERE "Notification ID" = ?',
+                                (notif_id,),
+                            )
+                    # Remove the duplicate user row.
+                    self._conn.execute(
+                        'DELETE FROM users WHERE rowid = ?', (rowid,)
+                    )
+                    survivor_cats, survivor_sources, survivor_active = (
+                        merged_cats, merged_sources, active_value
+                    )
+
+            # Enforce uniqueness going forward. A unique index cannot be
+            # created if duplicates remain, so it runs inside the same
+            # transaction after dedup.
+            self._conn.execute(
+                'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_user_id '
+                'ON users ("Telegram User ID")'
+            )
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+
+    @staticmethod
+    def _merge_csv(*values):
+        merged = set()
+        for value in values:
+            for item in (value or "").split(","):
+                item = item.strip().lower()
+                if item:
+                    merged.add(item)
+        return ",".join(sorted(merged))
 
     def _migrate_user_categories_into_users(self):
         """One-time migration: fold any legacy per-user category rows
@@ -1087,7 +1654,14 @@ class DBLogger:
             rows = self._conn.execute(
                 'SELECT "User ID", "Category ID" FROM user_categories'
             ).fetchall()
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as exc:
+            # A database that never had the legacy table (or already
+            # migrated it away) has nothing to fold in. Only the
+            # missing-table case is swallowed: a "database is locked" or
+            # other operational failure must propagate rather than being
+            # mistaken for "already migrated".
+            if "no such table" not in str(exc):
+                raise
             return
 
         grouped = {}
@@ -1232,7 +1806,12 @@ class DBLogger:
         return True
 
     def ensure_channel_destination(self, telegram_chat_id, title="", save=True):
-        """Register a Telegram channel as a normal subscription destination."""
+        """Register a Telegram channel as a normal subscription destination.
+
+        NOTE: This database runs in autocommit mode. The `save` parameter
+        is retained for API compatibility but has no effect -- each INSERT/UPDATE
+        is committed immediately.
+        """
         now = datetime.now().isoformat()
         chat_id = str(telegram_chat_id)
         cursor = self._conn.execute(
@@ -1271,6 +1850,11 @@ class DBLogger:
         return self._row_to_dict(cursor, row) if row else None
 
     def set_user_category(self, user_id, category_id, enabled=True, save=True):
+        """
+        NOTE: This database runs in autocommit mode. The `save` parameter
+        is retained for API compatibility but has no effect -- each UPDATE
+        is committed immediately.
+        """
         """Add/remove one category preference stored directly on the user row.
 
         Categories are stored as a comma-separated list on users.Categories,
@@ -1330,6 +1914,10 @@ class DBLogger:
         filtering and therefore receives all sources. Source IDs are stored
         as a comma-separated list because sources are a user preference,
         not independent database entities.
+
+        NOTE: This database runs in autocommit mode. The `save` parameter
+        is retained for API compatibility but has no effect -- each UPDATE
+        is committed immediately.
         """
         source = str(source or "").strip().lower()
         if not source:
@@ -1384,12 +1972,8 @@ class DBLogger:
             'FROM users u WHERE u."Is Active" = "1"'
         )
 
-        aliases = {
-            "mostaql": ("mostaql", "مستقل"),
-            "nafezly": ("nafezly", "نفذلي"),
-            "kafiil": ("kafiil", "كفيل"),
-            "freelancer": ("freelancer",),
-        }
+        import re
+        aliases = {profile.id: tuple(alias.casefold() for alias in profile.aliases) for profile in SOURCES}
 
         def category_matches(stored):
             # Empty categories preserves the previous "no subscription" meaning.
@@ -1410,9 +1994,18 @@ class DBLogger:
                 for item in stored.split(",")
                 if item.strip()
             }
+            if normalized_source in aliases:
+                # Job source is a canonical id. A subscriber must match if
+                # they stored that canonical id OR any of its display aliases
+                # (e.g. "mostaql" or "مستقل"). Symmetric with the alias
+                # fallback loop below, which handles alias-form job sources.
+                return any(
+                    source_id in aliases[normalized_source] for source_id in selected
+                )
             for source_id in selected:
                 if source_id in aliases and any(
-                    alias in normalized_source for alias in aliases[source_id]
+                    re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", normalized_source)
+                    for alias in aliases[source_id]
                 ):
                     return True
             return False
@@ -1424,16 +2017,17 @@ class DBLogger:
                 "destination_type": row[2] or "user",
             }
             for row in cursor.fetchall()
-            if (
-                (row[2] or "user") != "user"
-                or (
-                    category_matches(row[3])
-                    and source_matches(row[4])
-                )
-            )
+            if category_matches(row[3])
+            and source_matches(row[4])
+            and (row[2] or "user") in {"user", "channel"}
         ]
 
     def queue_user_notifications(self, job_uuid, category_id, source="", save=True):
+        """
+        NOTE: This database runs in autocommit mode. The `save` parameter
+        is retained for API compatibility but has no effect -- each INSERT
+        is committed immediately.
+        """
         subscribers = self.get_category_subscribers(category_id, source)
         now = datetime.now().isoformat()
         queued = 0
@@ -1442,9 +2036,9 @@ class DBLogger:
             cursor = self._conn.execute(
                 'INSERT OR IGNORE INTO user_notifications '
                 '("Notification ID", "Job UUID", "User ID", "Telegram User ID", '
-                '"Category ID", "Status", "Attempts", "Last Error", '
+                '"Category ID", "Status", "Claimed At", "Attempts", "Last Error", '
                 '"Created At", "Updated At", "Next Attempt At") '
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 (
                     str(uuid.uuid4()),
                     job_uuid,
@@ -1452,6 +2046,7 @@ class DBLogger:
                     str(subscriber["telegram_user_id"]),
                     category_id,
                     "Pending",
+                    "",
                     "0",
                     "",
                     now,
@@ -1467,9 +2062,19 @@ class DBLogger:
         return queued
 
     def set_user_active(self, telegram_user_id, active, save=True):
+        """
+        NOTE: This database runs in autocommit mode. The `save` parameter
+        is retained for API compatibility but has no effect -- each UPDATE
+        is committed immediately.
+        """
         self.set_destination_active(telegram_user_id, active, save=save)
 
     def set_destination_active(self, telegram_chat_id, active, save=True):
+        """
+        NOTE: This database runs in autocommit mode. The `save` parameter
+        is retained for API compatibility but has no effect -- each UPDATE
+        is committed immediately.
+        """
         self._conn.execute(
             'UPDATE users SET "Is Active" = ?, "Updated At" = ? '
             'WHERE "Telegram User ID" = ?',
@@ -1478,55 +2083,154 @@ class DBLogger:
         if save:
             self.save()
 
+    def cancel_pending_user_notifications(self, telegram_user_id, save=True):
+        """Discard this user's not-yet-delivered queue on /stop.
+
+        /stop is treated as "opt out", not "pause and deliver later":
+        a user who unsubscribes and resubscribes weeks or months later
+        should not be hit with a burst of every job that was queued
+        for them while they were inactive (audit finding: user
+        subscription semantics). claim_pending_user_notifications()
+        already excludes inactive users, so without this, those rows
+        just sit as "Pending"/"Failed"/"RateLimited" indefinitely and
+        would all become claimable again the moment /start flips
+        "Is Active" back to 1 -- this call is what actually discards
+        them instead of merely deferring them.
+
+        Only touches still-outstanding rows; anything already "Sent"
+        is history, not backlog, and is left alone.
+
+        NOTE: This database runs in autocommit mode. The `save` parameter
+        is retained for API compatibility but has no effect -- each UPDATE
+        is committed immediately.
+        """
+        cursor = self._conn.execute(
+            'UPDATE user_notifications SET "Status" = "Cancelled", '
+            '"Claimed At" = "", '
+            '"Updated At" = ? WHERE "Telegram User ID" = ? '
+            'AND ("Status" = "Pending" OR "Status" = "Failed" '
+            '     OR "Status" = "RateLimited")',
+            (datetime.now().isoformat(), str(telegram_user_id)),
+        )
+        if save:
+            self.save()
+        return cursor.rowcount
+
     def reset_sending_user_notifications(self, save=True):
+        """
+        NOTE: This database runs in autocommit mode. The `save` parameter
+        is retained for API compatibility but has no effect -- each UPDATE
+        is committed immediately.
+        """
         self._conn.execute(
             'UPDATE user_notifications SET "Status" = "Pending", '
-            '"Next Attempt At" = ? WHERE "Status" = "Sending"',
+            '"Next Attempt At" = ?, "Claimed At" = "" '
+            'WHERE "Status" = "Sending"',
             (datetime.now().isoformat(),),
         )
         if save:
             self.save()
 
-    def claim_pending_user_notifications(self, limit=20):
-        """Claim a batch for delivery; all DB access is serialized."""
-        now = datetime.now().isoformat()
-        cursor = self._conn.execute(
-            'SELECT un.*, u."Destination Type" AS "Destination Type" '
-            'FROM user_notifications un '
-            'JOIN users u ON u."User ID" = un."User ID" '
-            'WHERE (un."Status" = "Pending" OR un."Status" = "Failed" '
-            '       OR un."Status" = "RateLimited") '
-            'AND u."Is Active" = "1" '
-            # RetryAfter is Telegram backpressure, not a failed delivery.
-            # The RetryAfter handler in user_bot.py records it as its own
-            # "RateLimited" status (never "Failed"), so those rows stay
-            # claimable past the normal failure attempt budget; the
-            # server-requested retry time is still honored via Next
-            # Attempt At below. Genuine failures ("Failed") still stop
-            # being claimed once Attempts reaches the cap.
-            'AND (CAST(un."Attempts" AS INTEGER) < 5 '
-            '     OR un."Status" = "RateLimited") '
-            'AND (un."Next Attempt At" IS NULL OR un."Next Attempt At" = "" '
-            'OR un."Next Attempt At" <= ?) '
-            'ORDER BY un.rowid LIMIT ?',
-            (now, int(limit)),
-        )
-        rows = [self._row_to_dict(cursor, row) for row in cursor.fetchall()]
+    def _recover_stale_sending_user_notifications(self, now=None):
+        """Re-open deliveries left "Sending" by a process that died
+        before finishing them, without charging an attempt.
 
-        for row in rows:
-            attempts = int(row.get("Attempts") or 0) + 1
-            self._conn.execute(
-                'UPDATE user_notifications SET "Status" = "Sending", '
-                '"Attempts" = ?, "Updated At" = ? '
-                'WHERE "Notification ID" = ? AND '
-                '("Status" = "Pending" OR "Status" = "Failed" '
-                ' OR "Status" = "RateLimited")',
-                (str(attempts), now, row["Notification ID"]),
+        A row enters "Sending" only when claim_pending_user_
+        notifications stamps its lease immediately before delivery. If
+        the claiming process is killed mid-delivery the row would
+        otherwise sit in "Sending" forever -- and before the lease was
+        introduced, every restart also charged one attempt for a
+        delivery that never actually happened (see the audit finding:
+        crashes during delivery exhausted a notification's whole
+        attempt budget without a single real send, because
+        reset_sending_user_notifications re-opened rows whose Attempts
+        the claim had already incremented). Now a "Sending" row whose
+        lease is empty, or older than
+        user_notification_claim_lease_seconds, is returned to
+        "Pending" with its Attempts count untouched. Runs at the top
+        of every claim, so a dead claim gets re-opened as soon as the
+        next poll tick arrives.
+        """
+        now = now or datetime.now().isoformat()
+        cutoff = (
+            datetime.now() - timedelta(
+                seconds=float(self.user_notification_claim_lease_seconds)
             )
-            row["Status"] = "Sending"
-            row["Attempts"] = str(attempts)
+        ).isoformat()
+        self._conn.execute(
+            'UPDATE user_notifications SET "Status" = "Pending", '
+            '"Next Attempt At" = ?, "Claimed At" = "", "Updated At" = ? '
+            'WHERE "Status" = "Sending" '
+            'AND ("Claimed At" IS NULL OR "Claimed At" = "" '
+            '     OR "Claimed At" <= ?)',
+            (now, now, cutoff),
+        )
 
-        self.save()
+    def claim_pending_user_notifications(self, limit=20):
+        """Claim a batch for delivery. Eligibility selection and the
+        Pending->Sending ownership transition happen inside ONE explicit
+        transaction (BEGIN IMMEDIATE), so the acquired claim can never
+        be observed separately from the eligibility decision that
+        produced it -- even by a concurrent reader on the serialized
+        worker thread.
+
+        Claiming stamps a delivery lease ("Claimed At") and marks the
+        row "Sending", but does NOT spend an attempt. An attempt is
+        only spent by a real (non-RetryAfter) delivery failure in
+        _send_one, so a crash between claim and delivery can never eat
+        into a notification's failure budget. Leftover "Sending"
+        leases are re-opened without charge by
+        _recover_stale_sending_user_notifications before the batch is
+        selected.
+
+        Single-process scope: the transaction guarantees atomicity
+        within the one bot process. Multi-process claim coordination is
+        out of scope by design (see the module docstring).
+        """
+        now = datetime.now().isoformat()
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._recover_stale_sending_user_notifications(now)
+            cursor = self._conn.execute(
+                'SELECT un.*, u."Destination Type" AS "Destination Type" '
+                'FROM user_notifications un '
+                'JOIN users u ON u."User ID" = un."User ID" '
+                'WHERE (un."Status" = "Pending" OR un."Status" = "Failed" '
+                '       OR un."Status" = "RateLimited") '
+                'AND u."Is Active" = "1" '
+                # RetryAfter is Telegram backpressure, not a failed delivery.
+                # The RetryAfter handler in user_bot.py records it as its own
+                # "RateLimited" status (never "Failed"), so those rows stay
+                # claimable past the normal failure attempt budget; the
+                # server-requested retry time is still honored via Next
+                # Attempt At below. Genuine failures ("Failed") still stop
+                # being claimed once Attempts reaches the cap.
+                'AND (CAST(un."Attempts" AS INTEGER) < ? '
+                '     OR un."Status" = "RateLimited") '
+                'AND (un."Next Attempt At" IS NULL OR un."Next Attempt At" = "" '
+                'OR un."Next Attempt At" <= ?) '
+                'ORDER BY un.rowid LIMIT ?',
+                (int(self.max_user_notification_attempts), now, int(limit)),
+            )
+            rows = [self._row_to_dict(cursor, row) for row in cursor.fetchall()]
+
+            for row in rows:
+                self._conn.execute(
+                    'UPDATE user_notifications SET "Status" = "Sending", '
+                    '"Claimed At" = ?, "Updated At" = ? '
+                    'WHERE "Notification ID" = ? AND '
+                    '("Status" = "Pending" OR "Status" = "Failed" '
+                    ' OR "Status" = "RateLimited")',
+                    (now, now, row["Notification ID"]),
+                )
+                row["Status"] = "Sending"
+                row["Claimed At"] = now
+                row["Updated At"] = now
+
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
         return rows
 
     def update_user_notification(
@@ -1538,8 +2242,8 @@ class DBLogger:
         next_attempt_at=None,
         save=True,
     ):
-        sets = ['"Status" = ?', '"Updated At" = ?']
-        values = [status, datetime.now().isoformat()]
+        sets = ['"Status" = ?', '"Updated At" = ?', '"Claimed At" = ?']
+        values = [status, datetime.now().isoformat(), ""]
         if attempts is not None:
             sets.append('"Attempts" = ?')
             values.append(str(attempts))

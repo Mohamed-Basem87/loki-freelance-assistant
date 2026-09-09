@@ -28,12 +28,12 @@ def _candidates():
 def test_arbitration_uses_one_provider_call(monkeypatch):
     calls = {"gemini": 0, "groq": 0}
 
-    def fake_gemini(text, candidates, system_prompt):
+    def fake_gemini(text, candidates, system_prompt, deadline=None):
         calls["gemini"] += 1
         assert {c["id"] for c in candidates} == {"data_analysis", "web_development"}
         return {"selected_category": "web_development", "confidence": 90, "reason": "The primary deliverable is a web application."}
 
-    def fail_groq(*args):
+    def fail_groq(*args, **kwargs):
         calls["groq"] += 1
         raise AssertionError("Groq should not be called after Gemini succeeds")
 
@@ -49,10 +49,10 @@ def test_arbitration_uses_one_provider_call(monkeypatch):
 def test_groq_fallback_gets_compact_prompt_and_truncated_text(monkeypatch):
     captured = {}
 
-    def failing_gemini(text, candidates, system_prompt):
+    def failing_gemini(text, candidates, system_prompt, deadline=None):
         raise RuntimeError("quota exceeded")
 
-    def fake_groq(text, candidates, system_prompt):
+    def fake_groq(text, candidates, system_prompt, deadline=None):
         captured["text"] = text
         captured["system_prompt"] = system_prompt
         return {"selected_category": "none", "confidence": 60, "reason": "no fit"}

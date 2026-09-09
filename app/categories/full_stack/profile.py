@@ -1,64 +1,36 @@
-from dataclasses import dataclass
+from app.categories.profile import CategoryProfile
 
-from .keywords import (
-    POSITIVE_KEYWORDS,
-    NEGATIVE_KEYWORDS,
-    HARD_REJECT_KEYWORDS,
-)
-
-
-@dataclass(frozen=True)
-class CategoryProfile:
-    id: str
-    name: str
-    description: str
-    arbitration_context: str
-    positive_keywords: dict
-    negative_keywords: dict
-    hard_reject_keywords: set
-    guard_prompt_module: str
-
-    arbitration_only: bool = False
-    enabled: bool = True
-
-    # Conservative thresholds for shadow mode — high SPW required.
-    supporting_positive_min_for_gemini: int = 12
-    supporting_negative_downgrade_threshold: int = 14
-    min_supporting_positive_for_lone_core: int = 5
-    title_positive_supporting_negative_threshold: int = 10
-
+from .keywords import POSITIVE_KEYWORDS, NEGATIVE_KEYWORDS, HARD_REJECT_KEYWORDS
 
 PROFILE = CategoryProfile(
     id="full_stack",
     name="Full Stack Development",
     description="Full Stack WEBSITE / WEB APPLICATION development spanning frontend, backend, database, and deployment.",
     arbitration_context=(
-        "Primary deliverable is a complete new WEBSITE or WEB APPLICATION that "
-        "genuinely spans two or more meaningful application layers (e.g., "
-        "frontend + backend + database + deployment). The client is asking to "
-        "BUILD a new website/web application, not integrate, configure, "
-        "customize, maintain, or fix an existing one. Mobile apps, mobile-first "
-        "products, and desktop applications are NOT acceptable deliverables: "
-        "when the client asks for customer/partner/driver APPS as the primary "
-        "deliverable (Android/iOS), select the mobile category instead, even "
-        "if the project also includes a web admin panel or companion web "
-"version. A multi-stage product that explicitly requires a native "
-        "iOS/Android app with the same end-user features as its website is "
-        "mobile-primary, not Full Stack, even when the website is also a "
-        "first-class deliverable. "
-        "Companion/escort-rental platforms (rental "
-        "boyfriend, boyfriend rental, rent-a-boyfriend) are NOT acceptable "
-        "deliverables - REJECT. "
-        "Hiring/employment posts whose advertised role is a full-stack web "
-        "developer/maintainer are LEADS and select this category; only reject "
-        "hiring posts for roles outside the full-stack web domain. "
-        "Only select it when no specialist category owns the deliverable; a "
-        "viable specialist ALWAYS beats full_stack."
+        "Primary deliverable is a complete new WEBSITE / WEB APPLICATION "
+        "spanning two or more meaningful application layers (frontend + "
+        "backend + database + deployment), OR recurring/ongoing BUILD work "
+        "that develops and extends such an app across layers (new client/"
+        "server features, database work, iterative releases). Pure "
+        "integration, configuration, customization, or maintenance-only "
+        "work (bug fixes, monitoring, dependency upkeep, no new build) is "
+        "NOT full_stack. Mobile apps, mobile-first products, and desktop "
+        "apps are NOT acceptable: when customer/partner/driver APPS are the "
+        "primary deliverable (Android/iOS), select mobile even if a web "
+        "admin panel or companion version exists; a native iOS/Android app "
+        "with the same end-user features as its website is mobile-primary, "
+        "not Full Stack. Companion/escort-rental platforms are NOT "
+        "acceptable - REJECT. Hiring/employment posts for a full-stack web "
+        "developer role are LEADS - select this category; reject hiring "
+        "only for roles outside the full-stack web domain. Only select it "
+        "when no specialist owns the deliverable; a viable specialist "
+        "ALWAYS beats full_stack."
     ),
     positive_keywords=POSITIVE_KEYWORDS,
     negative_keywords=NEGATIVE_KEYWORDS,
     hard_reject_keywords=HARD_REJECT_KEYWORDS,
     guard_prompt_module="app.categories.full_stack.guard_prompt",
     arbitration_only=True,
+    arbitration_role="primary",
     enabled=True,
 )

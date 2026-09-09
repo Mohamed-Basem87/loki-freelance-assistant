@@ -80,7 +80,7 @@ def _telegram_job(url="", title=REJECT_TEXT):
 
 
 def _freehub_job(url="", title=REJECT_TEXT, platform="mostaql"):
-    # Mirrors app.freehub_worker.freehub_worker()'s job dict shape.
+    # Mirrors FreeHubJobSource.normalize()'s job dict shape.
     return {
         "title": title,
         "description": "",
@@ -124,8 +124,8 @@ def test_same_freehub_project_polled_twice_is_deduplicated(
 
     job = _freehub_job(url="https://mostaql.com/project/40001")
 
-    # freehub_worker() always passes identity_source="_poll_source"
-    # (here "mostaql"), independent of job["source"].
+    # FreeHubJobSource.normalize() always passes identity_source=the
+    # poll source (here "mostaql"), independent of job["source"].
     asyncio.run(process_job(job=job, job_id="uid-40001", identity_source="mostaql"))
     asyncio.run(process_job(job=job, job_id="uid-40001", identity_source="mostaql"))
 

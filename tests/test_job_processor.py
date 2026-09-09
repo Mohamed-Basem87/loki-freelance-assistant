@@ -767,3 +767,137 @@ def test_accepted_job_without_notification_status_resumes_notification(
 
     recovered = log.get_job(job_uuid)
     assert recovered["Notification Status"] == "Complete"
+
+
+def test_llm_error_is_durable_and_retryable(isolated_workbook, monkeypatch):
+    import asyncio
+    import time
+    import app.job_processor as jp
+    from app.job_processor import ClassificationPendingError, retry_incomplete_classifications
+    job = {
+        "title": "Build a Flutter Mobile App with Laravel Backend Dashboard",
+        "description": "Need a cross-platform Flutter app with Laravel REST API backend and admin dashboard.",
+        "raw_text": "Build a Flutter Mobile App with Laravel Backend Dashboard\nNeed a cross-platform Flutter app with Laravel REST API backend and admin dashboard.",
+        "source": "test", "url": "https://example.invalid/llm-retry", "budget": "",
+    }
+    monkeypatch.setattr(jp, "arbitrate_category", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("provider outage")))
+    try:
+        asyncio.run(jp.process_job(job, "llm-retry", "test"))
+    except ClassificationPendingError:
+        pass
+    row = isolated_workbook.get_job(jp._make_job_uuid("test", "llm-retry"))
+    assert row["Identity Source"] == "test"
+    assert row["Final Decision"] == "Pending"
+    assert row["Decision Reason"] == "LLM Error"
+    assert row["Classification Retry Not Before"], (
+        "a failed classification must persist a retry-not-before "
+        "schedule (audit finding P1-3)"
+    )
+
+    monkeypatch.setattr(jp, "arbitrate_category", lambda filter_text, candidates, system_prompt=None: {
+        "selected_category": candidates[0]["id"], "reason": "recovered", "confidence": 0.9,
+    })
+
+    # Regression test for audit finding P1-3: a caller re-surfacing this
+    # same job (e.g. FreeHub re-polling the still-pending project) before
+    # its persisted backoff window elapses must not trigger a fresh LLM
+    # call at all -- it should still just raise ClassificationPendingError
+    # without ever reaching the now-recovering arbitrate_category stub.
+    called = {"count": 0}
+    real_arbitrate = jp.arbitrate_category
+
+    def _counting_arbitrate(*args, **kwargs):
+        called["count"] += 1
+        return real_arbitrate(*args, **kwargs)
+
+    monkeypatch.setattr(jp, "arbitrate_category", _counting_arbitrate)
+    with pytest.raises(ClassificationPendingError):
+        asyncio.run(jp.process_job(job, "llm-retry", "test"))
+    assert called["count"] == 0, (
+        "reprocessing a job before its retry-not-before schedule must "
+        "not attempt a real LLM call"
+    )
+    assert asyncio.run(retry_incomplete_classifications()) == 0, (
+        "the dedicated retry sweep must also honor the not-yet-due "
+        "schedule rather than retrying on every tick"
+    )
+
+    # Once the schedule has passed, both paths must succeed again.
+    isolated_workbook.update_job(
+        jp._make_job_uuid("test", "llm-retry"),
+        classification_retry_not_before="0",
+        save=True,
+    )
+    # The arbitrate_category mock must accept the deadline parameter
+    monkeypatch.setattr(jp, "arbitrate_category", lambda filter_text, candidates, system_prompt=None, deadline=None: {
+        "selected_category": candidates[0]["id"], "reason": "recovered", "confidence": 0.9,
+    })
+    assert asyncio.run(retry_incomplete_classifications()) == 1
+    recovered = isolated_workbook.get_job(jp._make_job_uuid("test", "llm-retry"))
+    assert recovered["Final Decision"] == "Accepted"
+
+
+def test_two_concurrent_callers_cannot_both_classify_the_same_pending_job(
+    isolated_workbook, monkeypatch
+):
+    """Regression test (audit finding: classification concurrency).
+
+    FreeHub re-discovery calling process_job() directly and the
+    dedicated classification_retry_loop sweep are two independent
+    callers that can both observe the same durably-pending job past
+    its backoff window at the same time. Before claim_pending_
+    classification() existed, both would fall through the same "is it
+    due yet" read and both call the LLM provider concurrently for the
+    same job. Exactly one of them must ever reach the provider.
+    """
+    import asyncio
+    import app.job_processor as jp
+
+    job = {
+        "title": "Build a Flutter Mobile App with Laravel Backend Dashboard",
+        "description": "Need a cross-platform Flutter app with Laravel REST API backend and admin dashboard.",
+        "raw_text": "Build a Flutter Mobile App with Laravel Backend Dashboard\nNeed a cross-platform Flutter app with Laravel REST API backend and admin dashboard.",
+        "source": "test", "url": "https://example.invalid/llm-race", "budget": "",
+    }
+
+    # Seed a durably-pending job whose backoff window has already
+    # elapsed, exactly as classification_retry_loop's sweep query
+    # would select it.
+    monkeypatch.setattr(jp, "arbitrate_category", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("provider outage")))
+    try:
+        asyncio.run(jp.process_job(job, "llm-race", "test"))
+    except jp.ClassificationPendingError:
+        pass
+    job_uuid = jp._make_job_uuid("test", "llm-race")
+    isolated_workbook.update_job(job_uuid, classification_retry_not_before="0", save=True)
+
+    calls = {"count": 0}
+
+    def _counting_arbitrate(*args, **kwargs):
+        calls["count"] += 1
+        return {"selected_category": args[1][0]["id"], "reason": "recovered", "confidence": 0.9}
+
+    monkeypatch.setattr(jp, "arbitrate_category", _counting_arbitrate)
+
+    async def _race():
+        # Two independent "callers" racing process_job() for the same
+        # already-due pending job, as FreeHub rediscovery and the
+        # retry sweep would in production.
+        results = await asyncio.gather(
+            jp.process_job(job, "llm-race", "test"),
+            jp.process_job(job, "llm-race", "test"),
+            return_exceptions=True,
+        )
+        return results
+
+    results = asyncio.run(_race())
+    pending_errors = [r for r in results if isinstance(r, jp.ClassificationPendingError)]
+    assert calls["count"] == 1, (
+        "exactly one concurrent caller must win the classification claim "
+        "and call the LLM provider"
+    )
+    assert len(pending_errors) == 1, (
+        "the losing caller must back off rather than also classify"
+    )
+    recovered = isolated_workbook.get_job(job_uuid)
+    assert recovered["Final Decision"] == "Accepted"

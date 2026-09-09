@@ -33,10 +33,56 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest
+          pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Run test suite
         run: pytest tests/ -q
+
+      - name: Smoke-test unguarded entrypoint stays config-driven
+        env:
+          NOTIFICATION_GUARD_ENABLED: "false"
+          GEMINI_API_KEYS: "ci-placeholder"
+          GROQ_API_KEY: "ci-placeholder"
+        run: >-
+          python -c
+          "import run; import app.notification_guard.config as gc;
+          import sys; sys.exit(0 if gc.NOTIFICATION_GUARD_ENABLED is False else 1)"
+
+      - name: Smoke-test guarded entrypoint forces the guard on
+        env:
+          NOTIFICATION_GUARD_ENABLED: "false"
+          GEMINI_API_KEYS: "ci-placeholder"
+          GROQ_API_KEY: "ci-placeholder"
+          GROQ_NOTIFICATION_GUARD_API_KEY: "ci-placeholder"
+          GROQ_NOTIFICATION_GUARD_MODELS: "llama-3.3-70b-versatile"
+        run: >-
+          python -c
+          "import run_guarded; import app.notification_guard.config as gc;
+          import sys; sys.exit(0 if gc.NOTIFICATION_GUARD_ENABLED is True else 1)"
+
+      - name: Smoke-test guarded entrypoint fails loudly without guard config
+        env:
+          NOTIFICATION_GUARD_ENABLED: "false"
+          GEMINI_API_KEYS: "ci-placeholder"
+          GROQ_API_KEY: "ci-placeholder"
+        run: |
+          if python -c "import run_guarded" 2>guarded_import.err; then
+            echo "expected 'import run_guarded' to fail without GROQ_NOTIFICATION_GUARD_API_KEY" >&2
+            exit 1
+          fi
+          grep -q "GROQ_NOTIFICATION_GUARD_API_KEY" guarded_import.err
+
+      - name: Smoke-test real runtime composition
+        env:
+          NOTIFICATION_GUARD_ENABLED: "false"
+          GEMINI_API_KEYS: "ci-placeholder"
+          GROQ_API_KEY: "ci-placeholder"
+          BOT_TOKEN: "123456789:ci-placeholder"
+          FREEHUB_USER_ID: "ci-placeholder"
+          API_ID: "10000000"
+          API_HASH: "test-api-hash-not-a-real-secret"
+          PHONE_NUMBER: "+10000000000"
+        run: python scripts/ci_smoke_test.py
 
   build-and-push:
     name: Build and push image to Docker Hub
@@ -113,6 +159,23 @@ jobs:
             # database/, .env) is never touched or overwritten here; it is
             # only bind-mounted into the container by docker-compose.yml.
             docker compose up -d --pull always
+
+            # Fail the deployment if the container starts but does not reach
+            # a healthy DB/state-backed runtime state. This catches crash loops
+            # and broken bind mounts that `docker compose up -d` alone hides.
+            for i in $(seq 1 12); do
+              STATUS="$(docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q loki)" 2>/dev/null || true)"
+              if [ "$STATUS" = "healthy" ]; then
+                break
+              fi
+              if [ "$STATUS" = "unhealthy" ]; then
+                docker compose logs --tail 100 loki || true
+                exit 1
+              fi
+              sleep 5
+            done
+            STATUS="$(docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q loki)" 2>/dev/null || true)"
+            test "$STATUS" = "healthy" || { docker compose logs --tail 100 loki || true; exit 1; }
 
             # Old :latest and :<sha> images pile up on the host after every
             # deploy (nothing purges them), which is why Portainer shows

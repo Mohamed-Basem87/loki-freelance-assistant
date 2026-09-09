@@ -1,4 +1,5 @@
 import re
+import threading
 
 from app.normalize import normalize
 
@@ -15,32 +16,35 @@ from app.normalize import normalize
 # Keyword matching helpers
 # ------------------------------------------------------------------
 
-def _contains_keyword(text: str, keyword: str) -> bool:
-    """
-    All keywords use word-boundary matching to avoid false positives
-    like 'bot' matching 'robotics', or the Arabic word 'شيت' matching
-    inside an unrelated longer word like 'شيتات'.
+def _keyword_forms(keyword: str) -> tuple[str, ...]:
+    """Return the canonical keyword plus conservative Arabic clitic forms."""
+    forms = [keyword]
+    first, sep, rest = keyword.partition(" ")
+    if not sep or not re.search(r"[\u0600-\u06FF]", first):
+        return tuple(forms)
+    prefixes = ("و", "ف", "ب", "ل", "ك", "ال", "وال", "فال", "بال", "لل", "كال")
+    for prefix in prefixes:
+        forms.append(prefix + first + sep + rest)
+    return tuple(dict.fromkeys(forms))
 
-    Python's `re` module is Unicode-aware for `str` patterns, so `\\b`
-    (which is defined in terms of `\\w`) works correctly for Arabic
-    too -- verified directly: `\\bشيت\\b` matches a standalone "شيت"
-    but not the "شيت" inside "شيتات". Note this does mean a keyword
-    won't match when a common Arabic prefix (ل/ب/و/ك/ال) is attached
-    directly with no space (e.g. "لإكسل"); that's a distinct,
-    acceptable tradeoff given the keyword lists already hand-curate
-    common spelling/attachment variants as separate entries.
-    """
-    pattern = r"\b" + re.escape(keyword) + r"\b"
-    return re.search(pattern, text) is not None
+
+def _find_keyword(text: str, keyword: str):
+    for form in _keyword_forms(keyword):
+        match = re.search(r"\b" + re.escape(form) + r"\b", text)
+        if match:
+            return match
+    return None
+
+
+def _contains_keyword(text: str, keyword: str) -> bool:
+    return _find_keyword(text, keyword) is not None
 
 
 def _mask_keyword(text: str, keyword: str) -> str:
-    """
-    Replace matched keyword with spaces so shorter overlapping
-    keywords cannot match afterwards. Keeps string length unchanged.
-    """
-    pattern = r"\b" + re.escape(keyword) + r"\b"
-    return re.sub(pattern, lambda m: " " * len(m.group(0)), text)
+    match = _find_keyword(text, keyword)
+    if not match:
+        return text
+    return text[:match.start()] + (" " * len(match.group(0))) + text[match.end():]
 
 
 def _flatten(keyword_dict: dict, tier: str):
@@ -62,8 +66,49 @@ def _flatten(keyword_dict: dict, tier: str):
     return sorted(items, key=lambda x: len(x["normalized_keyword"]), reverse=True)
 
 
+# Compiled-keyword cache.
+#
+# Compiling a profile's vocabulary (flatten + normalize every keyword) is
+# detached from the text being classified, so it only needs to happen once
+# per CategoryProfile object rather than once per keyword_filter() call.
+# classify_and_select() rebuilds the compiled vocabulary for EVERY enabled
+# profile on EVERY job, so this cache turns per-call duplicate compilation
+# into a one-time cost per process.
+#
+# Safety, deliberately:
+#   * Keyed by id(profile). CategoryProfile is a frozen dataclass whose
+#     keyword fields are dicts/sets (unhashable, so lru_cache-on-the-object
+#     cannot work), and in this codebase profiles are process-lifetime
+#     singletons discovered once by the category registry -- their id() is
+#     stable for the whole process and never recycled, so the id key cannot
+#     be reused for a different profile.
+#   * The compiled value (tuples of dicts) is treated as immutable -- callers
+#     only read it, never mutate. Frozen dataclass fields guarantee the
+#     underlying keyword data cannot change under the cache, so a cached
+#     entry can never go stale.
+#   * A lock makes concurrent keyword_filter() calls safe (the classification
+#     and route-resolution paths can run from different asyncio tasks/
+#     threads), and clear_keyword_profile_cache() provides explicit
+#     invalidation for tests and any future live-reload of category profiles.
+_KEYWORD_PROFILE_CACHE = {}
+_KEYWORD_PROFILE_CACHE_LOCK = threading.Lock()
+
+
+def clear_keyword_profile_cache():
+    """Invalidate the compiled-keyword cache. Safe to call at any time; the
+    next keyword_filter() call recompiles and repopulates lazily."""
+    with _KEYWORD_PROFILE_CACHE_LOCK:
+        _KEYWORD_PROFILE_CACHE.clear()
+
+
 def _compiled_profile(profile):
-    """Compile one category profile's vocabulary for the shared engine."""
+    """Compile one category profile's vocabulary for the shared engine,
+    cached per profile object so it is compiled once, not per call."""
+    pid = id(profile)
+    with _KEYWORD_PROFILE_CACHE_LOCK:
+        cached = _KEYWORD_PROFILE_CACHE.get(pid)
+    if cached is not None:
+        return cached
     positive_core = _flatten(profile.positive_keywords, "core")
     positive_supporting = _flatten(profile.positive_keywords, "supporting")
     negative_core = _flatten(profile.negative_keywords, "core")
@@ -74,13 +119,16 @@ def _compiled_profile(profile):
         key=lambda x: len(x["normalized_keyword"]),
         reverse=True,
     )
-    return (
+    compiled = (
         positive_core,
         positive_supporting,
         negative_core,
         negative_supporting,
         hard_reject,
     )
+    with _KEYWORD_PROFILE_CACHE_LOCK:
+        _KEYWORD_PROFILE_CACHE[pid] = compiled
+    return compiled
 
 
 def _match_tier(text: str, tier_items: list) -> list:

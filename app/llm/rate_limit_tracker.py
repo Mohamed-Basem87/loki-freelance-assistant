@@ -31,6 +31,8 @@ import re
 import threading
 import time
 
+from app.runtime_config import RUNTIME
+
 
 _lock = threading.Lock()
 
@@ -43,7 +45,7 @@ _cooldowns: dict[str, float] = {}
 # markers already used by app.llm.gemini/app.notification_guard.groq)
 # but no provider-reported retry delay could be parsed out of the
 # error message.
-_DEFAULT_COOLDOWN_SECONDS = 60
+_DEFAULT_COOLDOWN_SECONDS = RUNTIME.http_timeout_seconds * 2
 
 # Applied for failures that are not a quota/rate-limit at all and
 # cannot resolve on their own (e.g. a model name the provider doesn't
@@ -272,12 +274,23 @@ def mark_success(candidate_id: str):
     yesterday would start today already escalated, even though
     today's quota window has nothing to do with yesterday's.
 
+    Also clears any active in-process cooldown for the candidate.
+    Without that, a candidate the aggressive-rotation fallback just
+    succeeded on (all candidates were cooling down; the call was
+    attempted anyway and the cooldown estimate turned out to be
+    stale/wrong) would keep being treated as unavailable for the rest
+    of its (now meaningless) cooldown window -- skipping a healthy
+    candidate on the very next call even though it just proved it
+    can succeed. A cooldown is a transient local estimate, never a
+    durable fact about the candidate, so a real success must retire it.
+
     Safe to call unconditionally on every success, including
     candidates that were never marked in the first place (a no-op in
     that case).
     """
     with _lock:
         _daily_quota_failure_counts.pop(candidate_id, None)
+        _cooldowns.pop(candidate_id, None)
 
 
 def mark_permanently_broken(candidate_id: str) -> float:
@@ -300,10 +313,46 @@ def filter_available(candidate_ids: list) -> list:
     available" purely because our own cooldown estimate is
     optimistic/stale (e.g. a default 60s guess when the real quota
     window resets sooner, or a quota that resets earlier than
-    expected).
+    expected). Cooldowns tracked here are a local, best-effort,
+    in-process guess (see the module docstring) -- not authoritative
+    knowledge from the provider -- so a job that still needs an
+    answer is better served by an attempt that might succeed than by
+    being failed outright on a guess that might be wrong. Higher up
+    the stack, app.job_processor's own durable classification-retry
+    schedule (see "Classification Retry Not Before") is what actually
+    paces how often a genuinely-still-failing job gets retried; this
+    tracker only decides which candidate to try first within a single
+    attempt, not whether the attempt happens at all.
     """
     available = [c for c in candidate_ids if is_available(c)]
     return available if available else list(candidate_ids)
+
+
+def earliest_cooldown_expiry_seconds(candidate_ids: list) -> float | None:
+    """Soonest time, in whole seconds from now, at which any of the
+    given candidates leaves cooldown, or None if none of them are
+    currently cooling down.
+
+    Used by app.llm.rotation.run_with_rotation so it can report -- in
+    the informational log line emitted when every candidate is still
+    cooling down -- how long before the earliest candidate is worth
+    trying again (a rough guess about when things are likely to get
+    healthier, not a promise to the caller). Kept separate from
+    filter_available's all-cooled-down fallback (which, per design,
+    still lets the call go through and attempt anyway) -- this
+    function is purely informational and never gates whether an
+    attempt happens.
+    """
+    now = time.monotonic()
+    with _lock:
+        remaining = [
+            until - now
+            for candidate_id in candidate_ids
+            if (until := _cooldowns.get(candidate_id)) is not None
+        ]
+    if not remaining:
+        return None
+    return max(0.0, min(remaining))
 
 
 def clear():

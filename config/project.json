@@ -1,0 +1,123 @@
+{
+  "llm": {
+    "providers": [
+      {
+        "id": "gemini",
+        "models": [
+          "gemini-3.5-flash"
+        ],
+        "max_output_tokens": 600,
+        "retry_attempts": 2,
+        "retry_wait_seconds": 1,
+        "adapter": "app.llm.gemini:GeminiProvider"
+      },
+      {
+        "id": "groq",
+        "models": [
+          "openai/gpt-oss-120b",
+          "qwen/qwen3.6-27b",
+          "openai/gpt-oss-20b",
+          "qwen/qwen3.8-27b"
+        ],
+        "max_output_tokens": 600,
+        "arbitration_max_output_tokens": 500,
+        "retry_attempts": 2,
+        "retry_wait_seconds": 1,
+        "adapter": "app.llm.groq:GroqProvider"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "id": "kafiil",
+      "display_name": "كفيل",
+      "aliases": [
+        "kafiil",
+        "كفيل"
+      ]
+    },
+    {
+      "id": "freelancer",
+      "display_name": "Freelancer",
+      "aliases": [
+        "freelancer"
+      ]
+    },
+    {
+      "id": "mostaql",
+      "display_name": "مستقل",
+      "aliases": [
+        "mostaql",
+        "مستقل"
+      ]
+    },
+    {
+      "id": "nafezly",
+      "display_name": "نفذلي",
+      "aliases": [
+        "nafezly",
+        "نفذلي"
+      ]
+    }
+  ],
+  "runtime": {
+    "freehub_poll_interval": 60,
+    "freehub_page_size": 30,
+    "notification_retry_interval": 300,
+    "state_timeout_seconds": 30,
+    "database_timeout_seconds": 60,
+    "delivery_concurrency": 10,
+    "user_bot_batch_size": 20,
+    "user_bot_max_attempts": 5,
+    "http_timeout_seconds": 30,
+  "external_call_timeout_seconds": 60,
+    "telegram_message_limit": 4096,
+    "message_safety_margin": 96,
+    "max_description_length": 3000,
+    "max_reason_length": 1200,
+    "llm_compact_arbitration_chars": 3500,
+    "notification_backoff_base_seconds": 5,
+    "notification_backoff_cap_seconds": 300,
+    "telegram_max_recovery_messages": 2000,
+    "freehub_max_backfill_pages": 10,
+    "user_bot_poll_interval": 1.0,
+    "database_file_path": "loki_freelance_bot.db",
+    "rejection_reason_category_id": "data_analysis",
+    "enabled_workers": [
+      "telegram",
+      "freehub",
+      "classification_retry",
+      "notification_retry",
+      "user_notifications"
+    ],
+    "telegram_recovery_retry_base_seconds": 5,
+    "telegram_recovery_retry_cap_seconds": 300
+  },
+  "freehub": {
+    "base_url": "http://ec2-51-21-119-160.eu-north-1.compute.amazonaws.com/v1/users",
+    "request_timeout_seconds": 30
+  },
+  "job_sources": [
+    {
+      "id": "freehub",
+      "adapter": "app.adapters.sources.freehub:FreeHubJobSource",
+      "poll_interval": 60,
+      "enabled": true,
+      "display_name": "FreeHub",
+      "aliases": [
+        "freehub"
+      ]
+    },
+    {
+      "id": "telegram_channels",
+      "adapter": "app.adapters.sources.telegram:TelegramChannelJobSource",
+      "poll_interval": 60,
+      "enabled": false,
+      "display_name": "Telegram Channels",
+      "aliases": [
+        "telegram_channels"
+      ],
+      "settings": {}
+    }
+  ]
+}

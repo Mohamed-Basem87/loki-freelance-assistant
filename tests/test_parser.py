@@ -240,3 +240,10 @@ def test_blank_lines_are_collapsed_to_a_single_paragraph_break():
     assert "\n\n\n" not in job["description"]
     assert "Paragraph one." in job["description"]
     assert "Paragraph two." in job["description"]
+
+
+def test_parser_source_alias_does_not_match_as_substring():
+    from app.adapters.parsers.registry import ParserAdapter
+    adapter = ParserAdapter("nafezly", ("nafezly", "نفذلي"), lambda *_: {})
+    assert adapter.matches("Nafezly")
+    assert not adapter.matches("notnafezlytoken")

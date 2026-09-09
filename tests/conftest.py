@@ -78,6 +78,46 @@ for _name, _value in _TEST_ENV_DEFAULTS.items():
     os.environ.setdefault(_name, _value)
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _bind_dependency_slots():
+    """Bind the legacy DependencyProxy slots before any test runs.
+
+    app.dependencies.DependencyProxy is deliberately strict: application
+    code may never lazily construct adapter instances (that was the old
+    "lazy fallback factory" design the composition root removed -- see
+    app.dependencies). Production binds every slot through
+    app.composition.compose() before any worker starts. The test session
+    mirrors that contract by binding the same canonical module facades
+    up front: app.persistence.db (SQLiteRepository over the shared
+    DBLogger singleton), app.state_store.store (JsonStateStore over the
+    shared StateManager singleton), the default notification service,
+    routing, parser registry, and the standard no-op notification
+    resolver. Tests that monkeypatch a proxy attribute (e.g.
+    tests/test_telegram_recovery.py) still work because an instance
+    attribute shadows the bound value, exactly as before.
+    """
+    from app.dependencies import configure
+    from app.notifier import get_notification_service
+    from app.parser import get_parser_registry
+    from app.persistence import db
+    from app.routing import queue_for_category
+    from app.state_store import store
+
+    async def _noop_resolver(job_uuid, row, category_id):
+        return category_id
+
+    configure(
+        persistence=db,
+        state_store=store,
+        dedup_store=store,
+        notification_service=get_notification_service(),
+        routing=queue_for_category,
+        parser_registry=get_parser_registry(),
+        notification_resolver=_noop_resolver,
+    )
+    yield
+
+
 @pytest.fixture(autouse=True)
 def _reset_llm_rate_limit_cooldowns():
     """app.llm.rate_limit_tracker (see tests/test_llm_gemini.py,

@@ -1,143 +1,65 @@
-from pathlib import Path
+"""Compatibility configuration surface backed by runtime_config.
+
+Credential validation is lazy: selecting an adapter is what requires that
+adapter's credentials. This lets source-only/test processes import the app
+without unrelated Telegram/LLM secrets while preserving the existing names
+when the environment is configured.
+"""
 import os
-
+from app.runtime_config import BASE_DIR, RUNTIME, RECOVERY, source_profile, LLM_PROVIDERS, SOURCES
 from dotenv import load_dotenv
+load_dotenv(BASE_DIR / ".env")
 
-load_dotenv()
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-
-def _require_env(name: str) -> str:
+def _require_env(name):
     value = os.getenv(name)
+    if not value or not value.strip():
+        raise RuntimeError(f"Missing required environment variable: {name}\nPlease set it in your .env file.")
+    return value.strip()
+def _require_int_env(name):
+    try: return int(_require_env(name))
+    except ValueError as e: raise RuntimeError(f"Environment variable '{name}' must be an integer.") from e
+def _optional_int_env(name):
+    value=os.getenv(name)
+    if not value or not value.strip(): return None
+    try: return int(value)
+    except ValueError as e: raise RuntimeError(f"Environment variable '{name}' must be an integer.") from e
+def _require_channel_ids(name):
+    try: return {int(x.strip()) for x in _require_env(name).split(",") if x.strip()}
+    except ValueError as e: raise RuntimeError(f"Environment variable '{name}' must contain comma-separated integer IDs.") from e
 
-    if value is None or value.strip() == "":
-        raise RuntimeError(
-            f"Missing required environment variable: {name}\n"
-            f"Please set it in your .env file."
-        )
+def get_api_id(): return _require_int_env("API_ID")
+def get_api_hash(): return _require_env("API_HASH")
+def get_phone_number(): return _require_env("PHONE_NUMBER")
+def get_gemini_api_keys():
+    values=[x.strip() for x in _require_env("GEMINI_API_KEYS").split(",") if x.strip()]
+    if not values: raise RuntimeError("GEMINI_API_KEYS is required")
+    return values
+def get_groq_api_key(): return _require_env("GROQ_API_KEY")
+def get_bot_token(): return _require_env("BOT_TOKEN")
+def get_bot_chat_id(): return _require_int_env("BOT_CHAT_ID")
+def get_bot_channel_id(): return _optional_int_env("BOT_CHANNEL_ID")
+def get_target_channels(): return _require_channel_ids("TARGET_CHANNEL_IDS")
+def get_freehub_user_id(): return _require_env("FREEHUB_USER_ID")
 
-    return value
-
-
-def _require_int_env(name: str) -> int:
-    value = _require_env(name)
-
-    try:
-        return int(value)
-    except ValueError as e:
-        raise RuntimeError(
-            f"Environment variable '{name}' must be an integer "
-            f"(got '{value}')."
-        ) from e
-
-
-def _optional_int_env(name: str) -> int | None:
-    value = os.getenv(name)
-
-    if value is None or value.strip() == "":
-        return None
-
-    try:
-        return int(value)
-    except ValueError as e:
-        raise RuntimeError(
-            f"Environment variable '{name}' must be an integer "
-            f"(got '{value}')."
-        ) from e
-
-
-def _require_channel_ids(name: str) -> set[int]:
-    value = _require_env(name)
-
-    try:
-        return {
-            int(channel.strip())
-            for channel in value.split(",")
-            if channel.strip()
-        }
-    except ValueError as e:
-        raise RuntimeError(
-            f"Environment variable '{name}' must contain a comma-separated "
-            f"list of integer channel IDs."
-        ) from e
-
-
-API_ID = _require_int_env("API_ID")
-API_HASH = _require_env("API_HASH")
-PHONE_NUMBER = _require_env("PHONE_NUMBER")
-
-GEMINI_API_KEYS = [
-    key.strip()
-    for key in os.getenv("GEMINI_API_KEYS", "").split(",")
-    if key.strip()
-]
-
-if not GEMINI_API_KEYS:
-    raise RuntimeError("GEMINI_API_KEYS is required")
-
-GROQ_API_KEY = _require_env("GROQ_API_KEY")
-BOT_TOKEN = _require_env("BOT_TOKEN")
-BOT_CHAT_ID = _require_int_env("BOT_CHAT_ID")
+# Backward-compatible values when configured; absent values stay None until an
+# adapter is selected and asks for them.
+API_ID = int(os.getenv("API_ID")) if os.getenv("API_ID", "").strip().isdigit() else None
+API_HASH = os.getenv("API_HASH")
+PHONE_NUMBER = os.getenv("PHONE_NUMBER")
+GEMINI_API_KEYS = [x.strip() for x in os.getenv("GEMINI_API_KEYS", "").split(",") if x.strip()]
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_CHAT_ID = int(os.getenv("BOT_CHAT_ID")) if os.getenv("BOT_CHAT_ID", "").strip().lstrip("-").isdigit() else None
 BOT_CHANNEL_ID = _optional_int_env("BOT_CHANNEL_ID")
 BOT_CHANNEL_CATEGORY_ID = os.getenv("BOT_CHANNEL_CATEGORY_ID", "data_analysis").strip()
-
-TARGET_CHANNELS = _require_channel_ids("TARGET_CHANNEL_IDS")
-
-# ----------------------------
-# FreeHub
-# ----------------------------
-
-FREEHUB_USER_ID = _require_env("FREEHUB_USER_ID")
-FREEHUB_BASE_URL = os.getenv(
-    "FREEHUB_BASE_URL",
-    "http://ec2-51-21-119-160.eu-north-1.compute.amazonaws.com/v1/users",
-).rstrip("/")
-FREEHUB_POLL_INTERVAL = int(
-    os.getenv("FREEHUB_POLL_INTERVAL", "60")
-)
-FREEHUB_PAGE_SIZE = int(
-    os.getenv("FREEHUB_PAGE_SIZE", "30")
-)
-
+TARGET_CHANNELS = _require_channel_ids("TARGET_CHANNEL_IDS") if os.getenv("TARGET_CHANNEL_IDS") else set()
+FREEHUB_USER_ID = os.getenv("FREEHUB_USER_ID")
+FREEHUB_BASE_URL = RUNTIME.freehub_base_url
+FREEHUB_POLL_INTERVAL = RUNTIME.freehub_poll_interval
+FREEHUB_PAGE_SIZE = RUNTIME.freehub_page_size
 SESSION_NAME = str(BASE_DIR / "sessions" / "telegram")
+NOTIFICATION_RETRY_INTERVAL = RUNTIME.notification_retry_interval
 
-
-# ----------------------------
-# Source display name mapping
-# ----------------------------
-
-# Maps source strings (channel titles, FreeHub poll sources) to short
-# Arabic display names used in public-channel notifications.  The
-# lookup is case-insensitive and matches on substring presence so that
-# Telegram channel titles like "مستقل | برمجة" or "Mostaql Jobs" are
-# both handled by the same rule.
-_SOURCE_DISPLAY_NAMES: list[tuple[str, str]] = [
-    ("mostaql", "مستقل"),
-    ("nafezly", "نفذلي"),
-    ("kafiil", "كفيل"),
-    ("مستقل", "مستقل"),
-    ("نفذلي", "نفذلي"),
-    ("كفيل", "كفيل"),
-]
-
-
-def source_display_name(source: str) -> str:
-    """Return the short Arabic display name for a source string.
-
-    If the source does not match any known platform, it is returned
-    unchanged.  Matching is case-insensitive.
-    """
-    lower = (source or "").lower()
-    for pattern, name in _SOURCE_DISPLAY_NAMES:
-        if pattern in lower:
-            return name
-    return source
-
-# ----------------------------
-# Notification retry sweep (see app.job_processor.notification_retry_loop)
-# ----------------------------
-
-NOTIFICATION_RETRY_INTERVAL = int(
-    os.getenv("NOTIFICATION_RETRY_INTERVAL", "300")
-)
+def source_display_name(source):
+    profile=source_profile(source)
+    return profile.display_name if profile else source

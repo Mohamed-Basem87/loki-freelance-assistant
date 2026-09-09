@@ -130,7 +130,14 @@ def test_full_lifecycle_pending_failed_retry_sent_complete(
     )
 
     row = log.get_job(job_uuid)
-    assert row["Notification Status"] == "Telegram: Failed"
+    assert row["Notification Status"] == "Pending", (
+        "job_processor must not write its own interim status on a "
+        "failed attempt -- the authoritative notification service "
+        "owns 'Notification Status' while a job is unresolved (audit "
+        "finding: notification state consistency). The row stays "
+        "selectable for retry either way; get_incomplete_notification_jobs() "
+        "only excludes 'Complete'/'Suppressed'."
+    )
     assert private_attempts["n"] == 1
 
     retried = asyncio.run(retry_incomplete_notifications())
@@ -230,3 +237,31 @@ def test_full_lifecycle_pending_suppressed(
 
     retried_again = asyncio.run(retry_incomplete_notifications())
     assert retried_again == 0
+
+
+def test_notification_service_skips_durable_successful_sink_on_retry(tmp_path):
+    from app.notifier import NotificationService
+    class Sink:
+        def __init__(self, sink_id, outcomes): self.id, self.outcomes, self.calls = sink_id, list(outcomes), 0
+        async def send(self, **kwargs):
+            self.calls += 1
+            outcome = self.outcomes.pop(0)
+            if isinstance(outcome, Exception): raise outcome
+            return outcome
+    # The durable repository is exercised through the existing DB logger in the
+    # service's normal production shape.
+    from app.logger import logger
+    original = logger.path
+    logger.path = tmp_path / "notify-sinks.db"
+    logger.initialize()
+    try:
+        logger.create_job(job_uuid="sink-job", job_id="sink-job", source="x", title="t", description="d", raw_message="d", filter_text="d", company="", url="", filter_result={}, filter_time_ms=0, save=True)
+        first = Sink("a", [True]); second = Sink("b", [RuntimeError("down"), True])
+        service = NotificationService(sinks=(first, second), repository=logger)
+        import asyncio
+        assert asyncio.run(service.send(job_uuid="sink-job")) is False
+        assert first.calls == 1 and second.calls == 1
+        assert asyncio.run(service.send(job_uuid="sink-job")) is True
+        assert first.calls == 1 and second.calls == 2
+    finally:
+        logger.close(); logger.path = original

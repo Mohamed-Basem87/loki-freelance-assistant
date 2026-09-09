@@ -1,4 +1,3 @@
-from app.logger import logger as db_logger
 from app.notification_guard.guard import NotificationGuard
 
 
@@ -51,11 +50,19 @@ class NotificationGuardIntegration:
     about which category a reclassified job belongs to.
     """
 
-    def __init__(self, guard: NotificationGuard):
-
+    def __init__(self, guard: NotificationGuard, repository=None):
         self.guard = guard
+        if repository is None:
+            from app.dependencies import logger
+            repository = logger
+        self.repository = repository
 
     async def _allow(self, kwargs: dict) -> bool:
+
+        # Disabled guard is a transparent no-op. It must never turn an
+        # otherwise deliverable notification into a suppression.
+        if not getattr(self.guard, "enabled", True):
+            return True
 
         # Existing LLM-reviewed jobs bypass this guard.
         if kwargs.get("ai_used", False):
@@ -63,10 +70,7 @@ class NotificationGuardIntegration:
 
         job_uuid = kwargs.get("job_uuid", "")
 
-        persisted = await db_logger.run(
-            db_logger.get_latest_guard_decision,
-            job_uuid,
-        )
+        persisted = await self.repository.get_latest_guard_decision(job_uuid)
 
         if persisted == "notify":
             return True
@@ -102,6 +106,9 @@ class NotificationGuardIntegration:
         consult the persisted result afterward.
         """
 
+        if not getattr(self.guard, "enabled", True):
+            return category_id
+
         ai_used = str(row.get("Needs Gemini") or "").strip().lower() in (
             "1",
             "true",
@@ -114,10 +121,7 @@ class NotificationGuardIntegration:
             # reclassification either.
             return category_id
 
-        decision, persisted_category = await db_logger.run(
-            db_logger.get_latest_guard_decision_with_category,
-            job_uuid,
-        )
+        decision, persisted_category = await self.repository.get_latest_guard_decision_with_category(job_uuid)
 
         if decision == "notify":
             resolved = persisted_category or category_id
@@ -151,14 +155,7 @@ class NotificationGuardIntegration:
             # this reapplies from, so a partial previous attempt heals
             # itself rather than compounding or getting stuck.
             full_stack_name = _category_display_name(resolved)
-            await db_logger.run(
-                db_logger.update_job,
-                job_uuid,
-                category_id=resolved,
-                category_selection_method="llm",
-                categories=[full_stack_name] if full_stack_name else [],
-                save=True,
-            )
+            await self.repository.update_job(job_uuid, category_id=resolved, category_selection_method="llm", categories=[full_stack_name] if full_stack_name else [], save=True)
 
         return resolved
 
@@ -179,7 +176,7 @@ class NotificationGuardIntegration:
             if not category_id:
                 return 0
 
-            row = await db_logger.run(db_logger.get_job, job_uuid)
+            row = await self.repository.get_job(job_uuid)
             if row is None:
                 return 0
 
@@ -201,11 +198,37 @@ class NotificationGuardIntegration:
         return wrapped
 
 
+
+class GuardedNotificationService:
+    """Constructor-injected notification guard around a sink service."""
+    def __init__(self, service, integration):
+        self.service = service
+        self.integration = integration
+
+    async def send(self, **payload):
+        if not await self.integration._allow(payload):
+            return False
+        return await self.service.send(**payload)
+
+
 def _category_display_name(category_id: str) -> str:
     from app.categories.registry import get_category
 
     profile = get_category(category_id)
     return profile.name if profile is not None else ""
+
+
+def wire(integration):
+    """Return a dependency bundle for constructor injection.
+
+    Production composition uses this hook instead of relying on monkeypatching.
+    The legacy ``install`` function remains available for external/test callers.
+    """
+    return {
+        "resolve_category": integration.resolve_category,
+        "private": integration.wrap_private,
+        "routing": integration.wrap_routing,
+    }
 
 
 def install():

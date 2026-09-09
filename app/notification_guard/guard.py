@@ -3,12 +3,14 @@ import importlib
 import time
 
 from app.notification_guard import config as guard_config
-from app.notification_guard.groq import GroqNotificationGuard
+from app.runtime_config import RUNTIME
+GroqNotificationGuard = None  # legacy monkeypatch seam; resolved lazily
+from app.notification_guard import registry as provider_registry
 from app.notification_guard.logger import log_guard_decision
-from app.categories.registry import get_category
+from app.categories.registry import get_category, arbitration_only_categories
+from app.timeouts import call_with_timeout
 
 
-FULL_STACK_CATEGORY_ID = "full_stack"
 
 
 # ---------------------------------------------------------------------------
@@ -30,12 +32,45 @@ FULL_STACK_CATEGORY_ID = "full_stack"
 # lambdas (not tucked inside a class or list comprehension) so tests
 # can keep monkeypatching it directly by name -- same convention
 # app.llm.manager uses for gemini_evaluate/groq_evaluate.
-_GUARD_PROVIDERS = [
-    ("groq", lambda: GroqNotificationGuard()),
-]
+def _guard_providers():
+    configured = getattr(guard_config, "NOTIFICATION_GUARD_PROVIDERS", ("groq",))
+    result = []
+    for pid in configured:
+        key = pid.strip().lower()
+        # Preserve the historical bare class as a test/extension seam while
+        # all other providers are resolved by the registry at call time.
+        if key == "groq":
+            def groq_factory():
+                global GroqNotificationGuard
+                if GroqNotificationGuard is None:
+                    from app.notification_guard.groq import GroqNotificationGuard as _GroqNotificationGuard
+                    GroqNotificationGuard = _GroqNotificationGuard
+                return GroqNotificationGuard()
+            result.append((pid, groq_factory))
+        else:
+            result.append((pid, provider_registry.factory(key)))
+    return result
 
 
-def _evaluate_guard(title: str, description: str, system_prompt: str):
+_GUARD_PROVIDERS = None
+
+
+def get_guard_providers():
+    """The configured guard provider chain, resolved lazily once.
+
+    Mirrors the None-sentinel pattern in app.llm.manager: the chain is
+    built on first call and cached, so no provider is imported or
+    instantiated at module import time.  Tests may replace the cache
+    directly (``guard_module._GUARD_PROVIDERS = [...]``) and the next
+    call picks up the replacement.
+    """
+    global _GUARD_PROVIDERS
+    if _GUARD_PROVIDERS is None:
+        _GUARD_PROVIDERS = _guard_providers()
+    return _GUARD_PROVIDERS
+
+
+def _evaluate_guard(title: str, description: str, system_prompt: str, deadline=None):
     """Try every registered guard provider, first success wins.
 
     Mirrors app.llm.manager._EVALUATE_PROVIDERS orchestration. The
@@ -50,20 +85,24 @@ def _evaluate_guard(title: str, description: str, system_prompt: str):
     Raises RuntimeError, with every provider's failure message joined,
     if every registered provider fails (or none are registered).
     """
+    providers = get_guard_providers()
     failures = []
     last_exception = None
 
-    for index, (provider_id, factory) in enumerate(_GUARD_PROVIDERS):
-        provider = factory()
+    for index, (provider_id, factory) in enumerate(providers):
         try:
-            allowed = provider.evaluate(title, description, system_prompt)
+            # Construction is part of the attempt: a factory that raises
+            # (e.g. missing provider deps/credentials) must fall through to
+            # the next provider, not abort the whole chain.
+            provider = factory()
+            allowed = provider.evaluate(title, description, system_prompt, deadline=deadline)
             return allowed, provider.id, provider.model
         except Exception as e:
             print(f"{provider_id.capitalize()} guard failed: {e}")
             failures.append(f"{provider_id}: {e}")
             last_exception = e
-            if index + 1 < len(_GUARD_PROVIDERS):
-                next_id = _GUARD_PROVIDERS[index + 1][0]
+            if index + 1 < len(providers):
+                next_id = providers[index + 1][0]
                 print(f"Falling back to {next_id.capitalize()} guard...")
             continue
 
@@ -77,6 +116,7 @@ def _evaluate_guard_with_category(
     description: str,
     system_prompt: str,
     original_category_id: str,
+    deadline=None,
 ):
     """Try every registered guard provider, first success wins.
 
@@ -86,14 +126,18 @@ def _evaluate_guard_with_category(
     evaluate_with_category). Same fallback/fail behavior as
     _evaluate_guard.
     """
+    providers = get_guard_providers()
     failures = []
     last_exception = None
 
-    for index, (provider_id, factory) in enumerate(_GUARD_PROVIDERS):
-        provider = factory()
+    for index, (provider_id, factory) in enumerate(providers):
         try:
+            # Construction is part of the attempt: a factory that raises
+            # (e.g. missing provider deps/credentials) must fall through to
+            # the next provider, not abort the whole chain.
+            provider = factory()
             allowed, resolved_category_id = provider.evaluate_with_category(
-                title, description, system_prompt, original_category_id
+                title, description, system_prompt, original_category_id, deadline=deadline
             )
             return (
                 allowed,
@@ -105,8 +149,8 @@ def _evaluate_guard_with_category(
             print(f"{provider_id.capitalize()} guard failed: {e}")
             failures.append(f"{provider_id}: {e}")
             last_exception = e
-            if index + 1 < len(_GUARD_PROVIDERS):
-                next_id = _GUARD_PROVIDERS[index + 1][0]
+            if index + 1 < len(providers):
+                next_id = providers[index + 1][0]
                 print(f"Falling back to {next_id.capitalize()} guard...")
             continue
 
@@ -119,7 +163,13 @@ def _build_combined_system_prompt(
     original_prompt: str,
     full_stack_prompt: str,
     original_category_id: str,
+    arbitration_category_id: str | None = None,
 ) -> str:
+    if arbitration_category_id is None:
+        profiles = arbitration_only_categories()
+        if not profiles:
+            raise ValueError("No arbitration-only category is registered")
+        arbitration_category_id = profiles[0].id
     """
     Combine the original category's guard prompt with full_stack's
     into one prompt that asks for a category choice instead of a
@@ -147,7 +197,7 @@ for THIS decision is given at the end of this prompt instead.
 === OPTION A: "{original_category_id}" ===
 {original_prompt}
 
-=== OPTION B: "full_stack" ===
+=== OPTION B: "{arbitration_category_id}" ===
 {full_stack_prompt}
 
 === YOUR TASK ===
@@ -159,11 +209,10 @@ Decide:
    sections above is the better fit for the work actually described.
 2. If notifying: is it genuinely just "{original_category_id}" work,
    or does the work actually span multiple layers such that
-   "full_stack" (per OPTION B's own criteria for when full_stack
-   should win over a specialist match) is the more accurate category?
+   "{arbitration_category_id}" (per OPTION B's own criteria) is the more accurate category?
 
 Return exactly one JSON object and nothing else:
-{{"decision": "notify" | "do_not_notify", "category": "{original_category_id}" | "full_stack"}}
+{{"decision": "notify" | "do_not_notify", "category": "{original_category_id}" | "{arbitration_category_id}"}}
 
 If "do_not_notify", "category" is not read and can be any value.
 Do not return markdown, explanations, or additional fields.
@@ -172,9 +221,27 @@ Do not return markdown, explanations, or additional fields.
 
 class NotificationGuard:
 
-    def __init__(self):
-
+    def __init__(self, repository=None):
+        if repository is None:
+            from app.dependencies import logger
+            repository = logger
+        self.repository = repository
         self.enabled = guard_config.NOTIFICATION_GUARD_ENABLED
+
+    async def _log_guard_decision(self, **kwargs):
+        await log_guard_decision(
+            repository=self.repository,
+            job_uuid=kwargs.get("job_uuid", ""),
+            source=kwargs.get("source", ""),
+            title=kwargs.get("title", ""),
+            original_decision=kwargs.get("original_decision", ""),
+            guard_decision=kwargs.get("guard_decision", ""),
+            provider=kwargs.get("provider", ""),
+            model=kwargs.get("model", ""),
+            response_time_ms=kwargs.get("response_time_ms"),
+            error=kwargs.get("error", ""),
+            guard_category=kwargs.get("guard_category", ""),
+        )
 
     async def allow(
         self,
@@ -213,11 +280,20 @@ class NotificationGuard:
             prompt_module = importlib.import_module(profile.guard_prompt_module)
             system_prompt = prompt_module.SYSTEM_PROMPT
 
-            allowed, provider_id, model = await asyncio.to_thread(
-                _evaluate_guard,
-                job.get("title", ""),
-                job.get("description", ""),
-                system_prompt,
+            # Deadline for the entire guard rotation (provider + model + key
+            # attempts). Bounds the total wall-clock time the rotation layer
+            # may spend starting new attempts.
+            guard_deadline = time.monotonic() + RUNTIME.external_call_timeout_seconds
+
+            allowed, provider_id, model = await call_with_timeout(
+                asyncio.to_thread(
+                    _evaluate_guard,
+                    job.get("title", ""),
+                    job.get("description", ""),
+                    system_prompt,
+                    guard_deadline,
+                ),
+                label="Notification guard evaluation call",
             )
 
             response_time_ms = round(
@@ -225,7 +301,7 @@ class NotificationGuard:
                 2,
             )
 
-            await log_guard_decision(
+            await self._log_guard_decision(
                 job_uuid=job.get("job_uuid", ""),
                 source=job.get("source", ""),
                 title=job.get("title", ""),
@@ -250,7 +326,7 @@ class NotificationGuard:
                 2,
             )
 
-            await log_guard_decision(
+            await self._log_guard_decision(
                 job_uuid=job.get("job_uuid", ""),
                 source=job.get("source", ""),
                 title=job.get("title", ""),
@@ -300,9 +376,17 @@ class NotificationGuard:
             if profile is None:
                 raise ValueError(f"Unknown category for notification guard: {category_id}")
 
-            full_stack_profile = get_category(FULL_STACK_CATEGORY_ID)
-            if full_stack_profile is None:
-                raise ValueError("full_stack category is not registered")
+            arbitration_profiles = arbitration_only_categories()
+            if not arbitration_profiles:
+                raise ValueError("No arbitration-only category is registered")
+            # Find the primary arbitration-only category (role="primary")
+            # instead of assuming it's the first one. This makes the
+            # architecture honest instead of relying on "first arbitration-only
+            # category" assumptions.
+            primary_arbitration_profiles = [p for p in arbitration_profiles if p.arbitration_role == "primary"]
+            if not primary_arbitration_profiles:
+                raise ValueError("No primary arbitration-only category is registered (arbitration_role='primary')")
+            full_stack_profile = primary_arbitration_profiles[0]
 
             original_module = importlib.import_module(profile.guard_prompt_module)
             full_stack_module = importlib.import_module(
@@ -313,15 +397,25 @@ class NotificationGuard:
                 original_module.SYSTEM_PROMPT,
                 full_stack_module.SYSTEM_PROMPT,
                 category_id,
+                full_stack_profile.id,
             )
 
+            # Deadline for the entire guard rotation (provider + model + key
+            # attempts). Bounds the total wall-clock time the rotation layer
+            # may spend starting new attempts.
+            guard_deadline = time.monotonic() + RUNTIME.external_call_timeout_seconds
+
             allowed, resolved_category_id, provider_id, model = (
-                await asyncio.to_thread(
-                    _evaluate_guard_with_category,
-                    job.get("title", ""),
-                    job.get("description", ""),
-                    combined_prompt,
-                    category_id,
+                await call_with_timeout(
+                    asyncio.to_thread(
+                        _evaluate_guard_with_category,
+                        job.get("title", ""),
+                        job.get("description", ""),
+                        combined_prompt,
+                        category_id,
+                        guard_deadline,
+                    ),
+                    label="Notification guard evaluation-with-category call",
                 )
             )
 
@@ -330,7 +424,7 @@ class NotificationGuard:
                 2,
             )
 
-            await log_guard_decision(
+            await self._log_guard_decision(
                 job_uuid=job.get("job_uuid", ""),
                 source=job.get("source", ""),
                 title=job.get("title", ""),
@@ -358,7 +452,7 @@ class NotificationGuard:
                 2,
             )
 
-            await log_guard_decision(
+            await self._log_guard_decision(
                 job_uuid=job.get("job_uuid", ""),
                 source=job.get("source", ""),
                 title=job.get("title", ""),
@@ -371,6 +465,3 @@ class NotificationGuard:
             )
 
             return {"allowed": False, "category_id": category_id}
-
-
-notification_guard = NotificationGuard()

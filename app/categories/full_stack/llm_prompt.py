@@ -81,7 +81,8 @@ REJECT the following as NOT full stack website/web application development:
 - API integrations (consuming or exposing an API)
 - Configuration (setting up WordPress, Shopify, Firebase, Supabase)
 - Customization (theming, plugin configuration, no-code/low-code)
-- Maintenance (bug fixes, updates, monitoring, uptime)
+- Maintenance-only work (pure bug fixes, updates, monitoring, uptime,
+  dependency upkeep, or refactoring with no new multi-layer build work)
 - Migration (moving between hosts, platforms, databases)
 - Support (helpdesk, operations, on-call)
 - Data entry (manual entry, transcription, OCR)
@@ -133,7 +134,16 @@ Examples:
 → NOT full_stack (integration, not product development)
 
 "Fix bugs in an existing full-stack application"
-→ NOT full_stack (maintenance, not new product development)
+→ NOT full_stack (maintenance only, no new multi-layer build work)
+
+"Recurring/part-time engagement to develop and extend a web application
+--- adding new frontend + backend + database features and shipping
+releases each month"
+→ full_stack (ongoing multi-layer BUILD work is full-stack development)
+
+"Ongoing web app maintainer wanted: fix bugs, monitor uptime, keep
+dependencies updated"
+→ NOT full_stack (maintenance only, no new build work)
 
 When evidence is insufficient:
 → none

@@ -25,7 +25,7 @@ import pytest
 from app.filters import keyword_filter
 from app.categories.data_analysis.profile import PROFILE
 from app.llm import gemini
-from app.categories.data_analysis.llm_prompt import SYSTEM_PROMPT
+from app.llm.utils import GENERIC_SYSTEM_PROMPT
 
 
 TEXT = """
@@ -92,11 +92,11 @@ def test_gemini_uses_system_instruction_not_string_concatenation(monkeypatch):
     assert call["model"] == "gemini-3.5-flash"
 
     assert call["config"] is not None
-    assert call["config"].system_instruction == SYSTEM_PROMPT
+    assert call["config"].system_instruction == GENERIC_SYSTEM_PROMPT
     assert call["config"].response_mime_type == "application/json"
 
     # The system prompt must NOT be concatenated into contents.
-    assert SYSTEM_PROMPT not in call["contents"]
+    assert GENERIC_SYSTEM_PROMPT not in call["contents"]
     # contents must still carry the actual job text somewhere inside
     # the built prompt (build_prompt() wraps it in <JobDescription>).
     assert "Power BI dashboard" in call["contents"]
@@ -135,3 +135,106 @@ def test_gemini_raises_when_no_keys_configured(monkeypatch):
 def test_gemini_live_call_returns_a_valid_decision():
     result = gemini.evaluate_job(TEXT, FILTER_RESULT)
     assert result["decision"] in {"accept", "reject"}
+
+
+_VALID_ARBITRATION_RESPONSE_JSON = json.dumps(
+    {
+        "selected_category": "data_analysis",
+        "confidence": 88,
+        "reason": "Primary deliverable is a BI dashboard.",
+    }
+)
+
+_ARBITRATION_CANDIDATES = [
+    {
+        "id": "data_analysis",
+        "name": "Data Analysis",
+        "description": "Analytics and BI.",
+        "arbitration_context": "Primary deliverable is analysis or BI.",
+        "result": {"reason": "mixed signals", "categories": ["power_bi"], "negative_categories": []},
+    },
+]
+
+
+def test_gemini_module_level_arbitration_initializes_provider_lazily(monkeypatch):
+    """Direct regression test for the P0 defect: the module-level
+    evaluate_category_arbitration() compatibility function called
+    `_provider.evaluate_category_arbitration(...)` directly while
+    `_provider` was still `None` at module load time (only
+    evaluate_job() went through the lazy `_get_provider()` accessor).
+    Since app.llm.manager.arbitrate_category() calls this exact
+    module-level function -- and nothing calls evaluate_job() first to
+    incidentally initialize `_provider` -- every real arbitration
+    request raised AttributeError: 'NoneType' object has no attribute
+    'evaluate_category_arbitration' before ever reaching the SDK. This
+    test resets `_provider` to None (its true module-load state) and
+    asserts the fake SDK client actually receives the arbitration
+    request instead of the call blowing up on a None dereference.
+    """
+    monkeypatch.setattr(gemini, "_provider", None)
+    fake_client = _FakeClient(response_text=_VALID_ARBITRATION_RESPONSE_JSON)
+    monkeypatch.setattr(gemini, "CLIENTS", [fake_client])
+
+    result = gemini.evaluate_category_arbitration(
+        TEXT, _ARBITRATION_CANDIDATES, "system prompt"
+    )
+
+    assert result["selected_category"] == "data_analysis"
+    assert len(fake_client.models.calls) == 1
+    assert gemini._provider is not None
+
+
+def test_gemini_arbitration_applies_configured_output_token_cap(monkeypatch):
+    """Regression test for P2-7: config/project.json's
+    arbitration_max_output_tokens for Gemini must actually reach
+    GenerateContentConfig.max_output_tokens, not just exist as unused
+    configuration.
+    """
+    monkeypatch.setattr(gemini, "_provider", None)
+    fake_client = _FakeClient(response_text=_VALID_ARBITRATION_RESPONSE_JSON)
+    monkeypatch.setattr(gemini, "CLIENTS", [fake_client])
+
+    gemini.evaluate_category_arbitration(TEXT, _ARBITRATION_CANDIDATES, "system prompt")
+
+    call = fake_client.models.calls[0]
+    expected = next(
+        p.arbitration_max_output_tokens for p in gemini.LLM_PROVIDERS if p.provider_id == "gemini"
+    )
+    assert call["config"].max_output_tokens == expected
+
+
+def test_gemini_evaluate_job_applies_configured_output_token_cap(monkeypatch):
+    fake_client = _FakeClient(response_text=_VALID_RESPONSE_JSON)
+    monkeypatch.setattr(gemini, "CLIENTS", [fake_client])
+
+    gemini.evaluate_job(TEXT, FILTER_RESULT)
+
+    call = fake_client.models.calls[0]
+    expected = next(
+        p.max_output_tokens for p in gemini.LLM_PROVIDERS if p.provider_id == "gemini"
+    )
+    assert call["config"].max_output_tokens == expected
+
+
+def test_gemini_rotates_across_configured_models(monkeypatch):
+    fake_client = _FakeClient(response_text=_VALID_RESPONSE_JSON)
+    monkeypatch.setattr(gemini, "CLIENTS", [fake_client])
+    monkeypatch.setattr(
+        gemini,
+        "LLM_PROVIDERS",
+        [
+            type("Cfg", (), {
+                "provider_id": "gemini",
+                "models": ("model-a", "model-b"),
+                "retry": type("Retry", (), {"max_attempts": 1, "wait_seconds": 0})(),
+                "max_output_tokens": 600,
+                "arbitration_max_output_tokens": 600,
+            })()
+        ],
+    )
+    provider = gemini.GeminiProvider()
+    candidates = provider._candidates(lambda client, model: (lambda: model))
+    assert [label for _, label, _ in candidates] == [
+        "key #1, model: model-a",
+        "key #1, model: model-b",
+    ]

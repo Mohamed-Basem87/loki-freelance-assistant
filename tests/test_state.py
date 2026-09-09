@@ -182,3 +182,98 @@ def test_cross_source_claim_is_idempotent_for_same_job(isolated_state_file):
     assert manager.claim_cross_source_project("123456", "job-a") is True
     assert manager.claim_cross_source_project("123456", "job-a") is True
     assert manager.claim_cross_source_project("123456", "job-b") is False
+
+
+def test_cross_source_claims_expire_after_the_dedup_ttl(isolated_state_file):
+    """
+    Cross-source dedup records are bounded by _CROSS_SOURCE_TTL_SECONDS
+    (30 days): once a claim is older than the window it is pruned, so the
+    same project id can be claimed again. A recent claim must still be
+    honored -- that is the whole point of the window.
+    """
+    import time
+
+    manager = StateManager()
+    manager.load()
+
+    ttl = state_module._CROSS_SOURCE_TTL_SECONDS
+    now = time.time()
+
+    # Recent claim: survives and stays owned by its original job.
+    manager.data.setdefault(state_module._CROSS_SOURCE_SEEN_KEY, {})["recent"] = {
+        "job_uuid": "job-recent",
+        "claimed_at": now,
+    }
+    assert manager.claim_cross_source_project("recent", "job-other") is False, (
+        "a claim inside the TTL window must still dedupe"
+    )
+
+    # Expired claim (older than the TTL): pruned, so it is reclaimable.
+    manager.data.setdefault(state_module._CROSS_SOURCE_SEEN_KEY, {})["expired"] = {
+        "job_uuid": "job-expired",
+        "claimed_at": now - ttl - 100,
+    }
+    assert manager.claim_cross_source_project("expired", "job-new") is True, (
+        "a claim older than the TTL must be pruned and reclaimable"
+    )
+
+    # The expired record was pruned and immediately re-owned by the new
+    # claimant, proving the old ownership expired rather than persisting.
+    assert (
+        manager.data[state_module._CROSS_SOURCE_SEEN_KEY]["expired"]["job_uuid"]
+        == "job-new"
+    )
+
+
+def test_state_timeout_quarantines_shared_executor_instead_of_replacing_it(monkeypatch):
+    """
+    Regression test matching the DB-logger version in
+    test_full_remediation_regressions.py: a state.run() call that never
+    completes must poison the shared state backend (so every subsequent
+    call fails closed) and must NOT install a fresh executor -- a second
+    worker would mutate the same JSON state concurrently with the
+    still-stuck worker thread (see the quarantine comment in run()).
+    """
+    original_executor = state_module._EXECUTOR
+    original_timeout = state_module._STATE_TIMEOUT_SECONDS
+    original_poisoned = state_module._EXECUTOR_POISONED
+    try:
+        class FakeLoop:
+            def run_in_executor(self, executor, fn):
+                async def never():
+                    await asyncio.Event().wait()
+                return never()
+
+        monkeypatch.setattr(state_module, "_STATE_TIMEOUT_SECONDS", 0.001)
+
+        async def scenario():
+            class Executor:
+                pass
+            state_module._EXECUTOR = Executor()
+            state_module._EXECUTOR_POISONED = False
+
+            monkeypatch.setattr(
+                asyncio,
+                "get_running_loop",
+                lambda: FakeLoop(),
+            )
+            manager = StateManager()
+
+            # The first call times out and quarantines the shared
+            # backend; the executor object is deliberately left in
+            # place (no second writer installed).
+            with pytest.raises(state_module.StuckExecutorError, match="quarantined"):
+                await manager.run(manager.set_last_message_id, -100111, 5)
+            assert state_module._EXECUTOR_POISONED is True
+            assert isinstance(state_module._EXECUTOR, Executor)
+
+            # Every later call fails closed immediately instead of
+            # queuing behind the still-stuck worker -- restart restores.
+            with pytest.raises(state_module.StuckExecutorError, match="quarantined"):
+                await manager.run(manager.set_last_message_id, -100222, 7)
+
+        asyncio.run(scenario())
+    finally:
+        state_module._EXECUTOR = original_executor
+        state_module._STATE_TIMEOUT_SECONDS = original_timeout
+        state_module._EXECUTOR_POISONED = original_poisoned

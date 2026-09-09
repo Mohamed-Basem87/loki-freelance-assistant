@@ -7,10 +7,33 @@ import weakref
 from app.categories.registry import get_category, arbitration_only_categories
 from app.classification import classify_and_select
 from app.llm.manager import arbitrate_category
-from app.logger import logger
-from app.routing import queue_for_category
-from app.notifier import send_notification
-from app.state import state
+from app.dependencies import logger, state, dedup, notifier, router, resolver
+from app.heartbeat import STATE_RUNNING, sleep_with_beats
+from app.runtime_config import RUNTIME
+from app.timeouts import call_with_timeout
+
+
+class ClassificationPendingError(RuntimeError):
+    """Raised after durable LLM-pending state is recorded."""
+
+
+# How long a single classification attempt is allowed to hold its claim
+# on a durably-pending job before another caller is allowed to retry it.
+# This is deliberately independent of RUNTIME.notification_retry_interval
+# (the *backoff* applied after a real failure): the lease only needs to
+# outlast one LLM arbitration call, not a full retry cycle. It exists so
+# that a crash mid-attempt self-heals instead of leaving the row claimed
+# forever, while still being long enough that the FreeHub re-discovery
+# path and classification_retry_loop cannot both win the same claim.
+CLASSIFICATION_CLAIM_LEASE_SECONDS = 120
+
+
+async def send_notification(**payload):
+    return await notifier.send(**payload)
+
+
+async def queue_for_category(job_uuid, category_id, source=""):
+    return await router(job_uuid, category_id, source)
 
 
 # Deterministic namespace for deriving job_uuid from (source, job_id).
@@ -64,15 +87,15 @@ async def _resolve_notification_category(job_uuid: str, row: dict, category_id: 
     unlocked below, which always calls this first).
 
     In the standard (non-guarded) runtime this is a no-op that returns
-    the category unchanged -- run_guarded.py's install() replaces this
-    module-level reference with the real guard-aware resolver
+    the category unchanged. The composition root (app.composition.compose)
+    binds this slot to the real guard-aware resolver
     (app.notification_guard.integration.NotificationGuardIntegration.
-    resolve_category), exactly like send_notification/
-    queue_for_category are replaced today. The deterministic tiering
-    system and arbitration path never call this and are unaffected
-    either way.
+    resolve_category) exactly like the notifier and router slots -- see
+    send_notification()/queue_for_category() below. The deterministic
+    tiering system and arbitration path never call this and are
+    unaffected either way.
     """
-    return category_id
+    return await resolver(job_uuid, row, category_id)
 
 
 def _notification_payload_from_row(job_uuid: str, row: dict) -> dict:
@@ -101,36 +124,6 @@ def _notification_payload_from_row(job_uuid: str, row: dict) -> dict:
     }
 
 
-def _merge_notification_status(current: str, platform: str, status: str) -> str:
-    """Replace one private notification platform status in-place."""
-    entries = {}
-    for part in (current or "").split(";"):
-        part = part.strip()
-        if ": " in part:
-            key, value = part.split(": ", 1)
-            entries[key] = value
-
-    entries[platform] = status
-    return "; ".join(
-        f"{key}: {entries[key]}"
-        for key in ("Telegram",)
-        if key in entries
-    )
-
-
-async def _record_notification_result(
-    job_uuid: str,
-    current_status: str,
-    platform: str,
-    sent: bool,
-    suppressed: bool = False,
-) -> str:
-    leg_status = "Sent" if sent else ("Suppressed" if suppressed else "Failed")
-    status = _merge_notification_status(current_status, platform, leg_status)
-    await logger.run(logger.update_job, job_uuid, notification_status=status, save=True)
-    return status
-
-
 async def _was_suppressed_by_guard(job_uuid: str) -> bool:
     """
     True only when the most recent Notification Guard evaluation for
@@ -143,7 +136,7 @@ async def _was_suppressed_by_guard(job_uuid: str) -> bool:
     rejected, while still letting a transient provider outage keep
     being retried like any other failed send.
     """
-    decision = await logger.run(logger.get_latest_guard_decision, job_uuid)
+    decision = await logger.get_latest_guard_decision(job_uuid)
     return decision == "do_not_notify"
 
 
@@ -188,40 +181,47 @@ async def _resume_pending_notifications_unlocked(job_uuid: str, row: dict):
             row.get("Source") or "",
         )
 
-    private_resolved = (
-        "Telegram: Sent" in status or "Telegram: Suppressed" in status
+    # send_notification() (NotificationService.send(), or the guard-
+    # wrapped equivalent) is the single authoritative writer of
+    # "Notification Status" while the private notification is
+    # unresolved: each configured sink's own success/failure is
+    # persisted in a per-sink encoded state (e.g.
+    # "Sink:telegram=Sent"), and any sink already durably marked Sent
+    # is skipped rather than resent. It is always safe to call again
+    # here -- on the very first attempt, on a resumed pass after a
+    # crash, and on every retry-sweep pass -- because of that
+    # per-sink idempotency.
+    #
+    # job_processor previously kept a second, differently-formatted
+    # "Telegram: Sent/Failed" status on this same column and rewrote
+    # it after every call from a snapshot of the row taken *before*
+    # send_notification() ran. That stale-snapshot rewrite clobbered
+    # whatever per-sink state send_notification() had just persisted
+    # (the two formats don't even parse as each other's entries), so a
+    # later retry pass could see neither format's success marker and
+    # resend to a sink that had already succeeded (audit finding:
+    # notification state consistency -- a successful sink must never
+    # be resent just because another sink is still failing).
+    # job_processor no longer writes any interim state to this column;
+    # it only ever writes the terminal "Complete"/"Suppressed" rollup,
+    # once, after every sink has resolved.
+    sent_direct = await send_notification(**payload)
+    suppressed = False if sent_direct else await _was_suppressed_by_guard(job_uuid)
+
+    await logger.log_notification(
+        job_uuid,
+        "Telegram",
+        "Sent" if sent_direct else ("Suppressed" if suppressed else "Failed"),
+        save=False,
     )
-    private_suppressed = "Telegram: Suppressed" in status
 
-    if not private_resolved:
-        sent_direct = await send_notification(**payload)
-        suppressed = False if sent_direct else await _was_suppressed_by_guard(job_uuid)
-
-        await logger.run(
-            logger.log_notification,
-            job_uuid,
-            "Telegram",
-            "Sent" if sent_direct else ("Suppressed" if suppressed else "Failed"),
-            save=False,
-        )
-        status = await _record_notification_result(
-            job_uuid,
-            status,
-            "Telegram",
-            sent_direct,
-            suppressed=suppressed,
-        )
-        private_resolved = sent_direct or suppressed
-        private_suppressed = suppressed and not sent_direct
-
-    if private_resolved:
-        final_status = "Suppressed" if private_suppressed else "Complete"
-        await logger.run(
-            logger.update_job,
-            job_uuid,
-            notification_status=final_status,
-            save=True,
-        )
+    if sent_direct or suppressed:
+        final_status = "Suppressed" if suppressed else "Complete"
+        await logger.update_job(job_uuid, notification_status=final_status, save=True)
+    # Otherwise leave "Notification Status" exactly as
+    # send_notification() itself just persisted -- the per-sink state
+    # for whichever sink(s) are still unresolved -- so the next retry
+    # only re-attempts those, not sinks that already succeeded.
 
 
 async def _resume_pending_notifications(job_uuid: str, row: dict):
@@ -234,7 +234,7 @@ async def _resume_pending_notifications(job_uuid: str, row: dict):
     """
     lock = _get_notification_lock(job_uuid)
     async with lock:
-        latest = await logger.run(logger.get_job, job_uuid)
+        latest = await logger.get_job(job_uuid)
         if latest is None:
             return
 
@@ -243,6 +243,52 @@ async def _resume_pending_notifications(job_uuid: str, row: dict):
             return
 
         await _resume_pending_notifications_unlocked(job_uuid, latest)
+
+
+async def retry_incomplete_classifications():
+    """Retry jobs durably left in the LLM-pending state."""
+    rows = await logger.get_incomplete_classification_jobs()
+    for row in rows:
+        job_uuid = row.get("Job UUID")
+        if not job_uuid:
+            continue
+        try:
+            job = {
+                "title": row.get("Title") or "",
+                "description": row.get("Description") or "",
+                "raw_text": row.get("Raw Message") or f"{row.get('Title') or ''}\n\n{row.get('Description') or ''}",
+                "source": row.get("Source") or "",
+                "url": row.get("URL") or "",
+                "budget": "",
+                "company": row.get("Company") or "",
+            }
+            await process_job(
+                job=job,
+                job_id=str(row.get("Job ID") or ""),
+                identity_source=str(row.get("Identity Source") or row.get("Source") or ""),
+            )
+        except ClassificationPendingError:
+            continue
+        except Exception as exc:
+            await logger.log_error("Classification Retry Sweep", exc, job_uuid, save=False)
+    return len(rows)
+
+
+async def classification_retry_loop(interval_seconds: int):
+    """Continuously retry durable LLM-pending classifications.
+
+    Reports per-worker liveness while idling (see heartbeat.sleep_with_beats)
+    so the healthcheck can observe this worker as alive even when the
+    retry interval exceeds the staleness window.
+    """
+    while True:
+        try:
+            retried = await retry_incomplete_classifications()
+            if retried:
+                print(f"[CLASSIFICATION RETRY] resumed {retried} pending job(s)")
+        except Exception as exc:
+            await logger.log_error("Classification Retry Loop", exc, save=False)
+        await sleep_with_beats(interval_seconds, "classification_retry", STATE_RUNNING)
 
 
 async def retry_incomplete_notifications():
@@ -260,7 +306,7 @@ async def retry_incomplete_notifications():
     system had already decided to notify about (audit P1-1 / P1-2).
     Call this periodically (see app.bot.run) instead.
     """
-    rows = await logger.run(logger.get_incomplete_notification_jobs)
+    rows = await logger.get_incomplete_notification_jobs()
 
     for row in rows:
         job_uuid = row.get("Job UUID")
@@ -270,13 +316,7 @@ async def retry_incomplete_notifications():
         try:
             await _resume_pending_notifications(job_uuid, row)
         except Exception as e:
-            await logger.run(
-                logger.log_error,
-                "Notification Retry Sweep",
-                e,
-                job_uuid,
-                save=False,
-            )
+            await logger.log_error("Notification Retry Sweep", e, job_uuid, save=False)
 
     return len(rows)
 
@@ -284,21 +324,18 @@ async def retry_incomplete_notifications():
 async def notification_retry_loop(interval_seconds: int):
     """Background task: retry incomplete notifications on a fixed
     interval for the lifetime of the process. See
-    retry_incomplete_notifications()."""
+    retry_incomplete_notifications(). Reports per-worker liveness while
+    idling so the healthcheck can observe this worker as alive even when
+    the retry interval exceeds the staleness window."""
     while True:
         try:
             retried = await retry_incomplete_notifications()
             if retried:
                 print(f"[NOTIFY RETRY] resumed {retried} incomplete job(s)")
         except Exception as e:
-            await logger.run(
-                logger.log_error,
-                "Notification Retry Loop",
-                e,
-                save=False,
-            )
+            await logger.log_error("Notification Retry Loop", e, save=False)
 
-        await asyncio.sleep(interval_seconds)
+        await sleep_with_beats(interval_seconds, "notification_retry", STATE_RUNNING)
 
 
 async def process_job(job: dict, job_id: str, identity_source: str = None):
@@ -348,7 +385,7 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
     # incomplete classification and continue through the pipeline
     # instead of returning and letting the ingestion watermark/seen
     # cache permanently discard it.
-    existing = await logger.run(logger.get_job, job_uuid)
+    existing = await logger.get_job(job_uuid)
     existing_incomplete = False
 
     if existing is not None:
@@ -359,22 +396,69 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
             await _resume_pending_notifications(job_uuid, existing)
             return
 
-        if final_decision == "Accepted":
+        if final_decision == "Pending":
+            # The previous arbitration attempt failed after the job row was
+            # created. Keep it recoverable and rerun classification --
+            # but only once its persisted backoff window has elapsed.
+            #
+            # Regression fix (audit finding P1-3): FreeHub keeps a
+            # project in its own durable pending queue until it is
+            # explicitly marked seen, which only happens after
+            # process_job() returns successfully (see
+            # app.source_worker.SourceWorker.run()). A project stuck
+            # here as Pending/LLM Error therefore gets re-submitted to
+            # process_job() on *every* FreeHub poll (every
+            # freehub_poll_interval, e.g. 60s) -- entirely independent
+            # of, and much more frequently than, the dedicated
+            # classification_retry_loop sweep (every
+            # notification_retry_interval, e.g. 300s). Before this
+            # check, every one of those FreeHub-triggered
+            # reprocessing attempts fell straight through to a fresh,
+            # real LLM call, so a provider outage or quota exhaustion
+            # multiplied into repeated real requests, repeated
+            # failures, and repeated DB writes for the same job far
+            # faster than the intended retry cadence. Skipping the
+            # reattempt here (without touching anything else about the
+            # row) means only the row's own persisted schedule -- set
+            # once, at the point of failure below -- decides when the
+            # next real attempt happens, regardless of which caller
+            # (FreeHub rediscovery or the retry loop) re-invoked
+            # process_job() for it.
+            #
+            # This same backoff check used to be a plain read of the
+            # persisted "not before" timestamp, with no atomic claim
+            # over the gap between that read and the real LLM call
+            # further below. FreeHub rediscovery (every
+            # freehub_poll_interval) and classification_retry_loop
+            # (every notification_retry_interval) are two independent
+            # callers of process_job() for the *same* job_uuid, so
+            # once the backoff window elapsed both could observe it
+            # eligible and both proceed to call the LLM provider for
+            # the same pending job concurrently. claim_pending_
+            # classification() closes that gap with a single
+            # conditional UPDATE on the serialized DB writer: only the
+            # caller whose UPDATE actually matches a still-eligible row
+            # wins the claim, and every other concurrent caller's
+            # rowcount is 0.
+            lease_until = time.time() + CLASSIFICATION_CLAIM_LEASE_SECONDS
+            claimed = await logger.claim_pending_classification(job_uuid, lease_until)
+            if not claimed:
+                raise ClassificationPendingError(
+                    f"Classification for {job_uuid} is pending or already "
+                    "claimed by another worker."
+                )
+            existing_incomplete = True
+        elif final_decision == "Accepted":
             # A crash can also occur in the tiny window after the final
             # decision is saved but before notification is marked
             # Pending. Accepted jobs must not be mistaken for completed
             # work in that state.
-            await logger.run(
-                logger.update_job,
-                job_uuid,
-                notification_status="Pending",
-                save=True,
-            )
+            await logger.update_job(job_uuid, notification_status="Pending", save=True)
             existing["Notification Status"] = "Pending"
             await _resume_pending_notifications(job_uuid, existing)
             return
 
-        if final_decision:
+        if final_decision and final_decision != "Pending":
             return
 
         existing_incomplete = True
@@ -386,9 +470,7 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
     if (
         existing is None
         and legacy_job_uuid is not None
-        and await logger.run(
-            logger.has_job, legacy_job_uuid
-        )
+        and await logger.has_job(legacy_job_uuid)
     ):
         print(
             f"[DEDUP] Recognized job {job_id!r} via legacy identity "
@@ -436,29 +518,14 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
     )
 
     if not existing_incomplete:
-        created = await logger.run(
-            logger.create_job_if_absent,
-            legacy_job_uuid=legacy_job_uuid,
-            job_uuid=job_uuid,
-            job_id=job_id,
-            source=job["source"],
-            title=job["title"],
-            description=job["description"],
-            raw_message=job["raw_text"],
-            filter_text=filter_text,
-            company=job.get("company", ""),
-            url=job["url"],
-            filter_result=result,
-            filter_time_ms=filter_time,
-            save=False,
-        )
+        created = await logger.create_job_if_absent(legacy_job_uuid=legacy_job_uuid, job_uuid=job_uuid, job_id=job_id, source=job["source"], identity_source=identity_source, title=job["title"], description=job["description"], raw_message=job["raw_text"], filter_text=filter_text, company=job.get("company", ""), url=job["url"], filter_result=result, filter_time_ms=filter_time, save=False)
 
         if not created:
             # Another concurrent invocation won the atomic create race.
             # Re-read the durable row so a pending notification workflow
             # can be resumed if necessary, or leave a still-incomplete
             # classification for that invocation to finish.
-            existing = await logger.run(logger.get_job, job_uuid)
+            existing = await logger.get_job(job_uuid)
             if existing is not None:
                 if existing.get("Notification Status"):
                     await _resume_pending_notifications(job_uuid, existing)
@@ -477,19 +544,13 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
     # - if another source claimed the project while this job was down,
     #   this job loses the claim and is rejected as a duplicate.
     if project_id:
-        claimed = await state.async_claim_cross_source_project(
+        claimed = await dedup.claim_cross_source_project(
             project_id,
             job_uuid,
         )
 
         if not claimed:
-            await logger.run(
-                logger.update_job,
-                job_uuid,
-                final_decision="Rejected",
-                decision_reason="Duplicate project from another source",
-                save=True,
-            )
+            await logger.update_job(job_uuid, final_decision="Rejected", decision_reason="Duplicate project from another source", save=True)
             print(
                 f"[DEDUP] Project {project_id} was already claimed by "
                 "another source -- skipping duplicate."
@@ -509,7 +570,13 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
         # single-category reasons (Hard Reject / No Matching Keywords /
         # the classifier's own reason such as insufficient_signal) while
         # still remaining meaningful with multiple categories.
-        rejection_result = next(iter(category_results.values()))["result"]
+        # The historical single-category profile was data_analysis; its
+        # result (not the alphabetically-first category's) is the
+        # representative source for preserved rejection reasons.
+        rejection_result = (
+            category_results.get(RUNTIME.rejection_reason_category_id)
+            or next(iter(category_results.values()))
+        )["result"]
         if rejection_result.get("hard_reject"):
             decision_reason = "Hard Reject"
         elif not rejection_result.get("matched"):
@@ -554,22 +621,36 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
         # manager builds the system policy from each candidate's live
         # category-specific llm_prompt.py, so those profiles directly govern
         # production arbitration without making one provider call per category.
+        # Deadline for the entire arbitration rotation (provider + model + key
+        # attempts). This bounds the total wall-clock time the rotation layer
+        # may spend starting new attempts, preventing abandoned threads from
+        # continuing through large rotations after the outer timeout fires.
+        # In-flight provider calls are still bounded by their own HTTP timeouts.
+        arbitration_deadline = time.monotonic() + RUNTIME.external_call_timeout_seconds
         try:
-            arbitration = await asyncio.to_thread(
-                arbitrate_category,
-                filter_text,
-                candidates,
+            arbitration = await call_with_timeout(
+                asyncio.to_thread(
+                    arbitrate_category,
+                    filter_text,
+                    candidates,
+                    deadline=arbitration_deadline,
+                ),
+                label="LLM arbitration call",
             )
         except Exception as e:
-            await logger.run(
-                logger.log_error,
-                "LLM Arbitration",
-                e,
-                job_uuid,
-                save=False,
-            )
-            final_decision = "Rejected"
+            await logger.log_error("LLM Arbitration", e, job_uuid, save=False)
+            final_decision = "Pending"
             decision_reason = "LLM Error"
+            # See the "Classification Retry Not Before" check above:
+            # this is what actually paces retries to
+            # notification_retry_interval regardless of how often a
+            # source's own rediscovery (e.g. FreeHub polling) re-
+            # surfaces this same still-pending job in the meantime.
+            retry_not_before = time.time() + RUNTIME.notification_retry_interval
+            await logger.update_job(job_uuid, final_decision=final_decision, decision_reason=decision_reason, category_id="", category_selection_method="", category_candidates=", ".join(candidate_ids), classification_retry_not_before=str(retry_not_before), save=True)
+            raise ClassificationPendingError(
+                f"Classification for {job_uuid} is pending after LLM provider failure"
+            ) from e
         else:
             arbitration_time = round(
                 (time.perf_counter() - arbitration_start) * 1000,
@@ -632,41 +713,15 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
                 final_decision = "Accepted"
                 should_notify = True
 
-            await logger.run(
-                logger.update_job,
-                job_uuid,
-                gemini_decision=selected,
-                save=False,
-            )
-            await logger.run(
-                logger.log_gemini,
-                job_uuid=job_uuid,
-                decision_before=result.get("decision", ""),
-                reason_before=result.get("reason", ""),
-                prompt_tokens="",
-                completion_tokens="",
-                response_time_ms=arbitration_time,
-                decision=selected,
-                confidence=arbitration["confidence"],
-                provider=arbitration.get("provider", ""),
-                save=False,
-            )
+            await logger.update_job(job_uuid, gemini_decision=selected, save=False)
+            await logger.log_gemini(job_uuid=job_uuid, decision_before=result.get("decision", ""), reason_before=result.get("reason", ""), prompt_tokens="", completion_tokens="", response_time_ms=arbitration_time, decision=selected, confidence=arbitration["confidence"], provider=arbitration.get("provider", ""), save=False)
 
     elif selected_category_id:
         final_decision = "Accepted"
         decision_reason = result.get("reason") or "Direct Category Match"
         should_notify = True
 
-    await logger.run(
-        logger.update_job,
-        job_uuid,
-        final_decision=final_decision,
-        decision_reason=decision_reason,
-        category_id=result.get("category_id", ""),
-        category_selection_method=result.get("category_selection_method", ""),
-        category_candidates=result.get("category_candidates", ""),
-        save=False,
-    )
+    await logger.update_job(job_uuid, final_decision=final_decision, decision_reason=decision_reason, category_id=result.get("category_id", ""), category_selection_method=result.get("category_selection_method", ""), category_candidates=result.get("category_candidates", ""), save=False)
 
     if should_notify:
         final_category_id = result.get("category_id", "")
@@ -674,12 +729,7 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
         # Persist the fact that this job requires notification BEFORE
         # creating either the subscriber queue or the private external
         # side effect. Recovery can therefore re-establish both paths.
-        await logger.run(
-            logger.update_job,
-            job_uuid,
-            notification_status="Pending",
-            save=True,
-        )
+        await logger.update_job(job_uuid, notification_status="Pending", save=True)
 
         await _resume_pending_notifications(
             job_uuid,
@@ -705,4 +755,4 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
 
     # Non-notifying jobs have no external side effect that needs a
     # durable recovery state, so one final save is sufficient.
-    await logger.run(logger.save)
+    await logger.save()

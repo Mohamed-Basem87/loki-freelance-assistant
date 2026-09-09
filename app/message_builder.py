@@ -2,6 +2,7 @@ from html import escape
 from urllib.parse import urlparse
 
 from app.config import source_display_name
+from app.runtime_config import RUNTIME
 
 import re
 
@@ -17,11 +18,11 @@ _TLD_RE = re.compile(r"^[A-Za-z]{2,}$")
 # the real 4096 so we always have headroom after escaping and after
 # appending the reason/tags block, instead of finding out via a
 # failed send.
-TELEGRAM_MESSAGE_LIMIT = 4096
-_SAFETY_MARGIN = 96
+TELEGRAM_MESSAGE_LIMIT = RUNTIME.telegram_message_limit
+_SAFETY_MARGIN = RUNTIME.message_safety_margin
 MAX_MESSAGE_LENGTH = TELEGRAM_MESSAGE_LIMIT - _SAFETY_MARGIN
 
-MAX_DESCRIPTION_LENGTH = 3000
+MAX_DESCRIPTION_LENGTH = RUNTIME.max_description_length
 
 # The LLM-generated `reason` is the other field (besides description)
 # that's genuinely unbounded in practice. Pre-truncating it here, on
@@ -31,7 +32,7 @@ MAX_DESCRIPTION_LENGTH = 3000
 # only a last-resort fallback for pathological combinations (many
 # categories, long title/budget/source, etc.), not the normal path
 # for a long reason.
-MAX_REASON_LENGTH = 1200
+MAX_REASON_LENGTH = RUNTIME.max_reason_length
 
 
 def _truncate(text: str, limit: int) -> str:

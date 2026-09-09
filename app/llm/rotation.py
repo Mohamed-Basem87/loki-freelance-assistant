@@ -8,15 +8,23 @@ hand-rolled their own copy of this exact loop -- same four-way failure
 classification (truncated response / quota exhaustion / transient
 overload / everything else), same cooldown-skip logic, same success
 handling, duplicated three times with only cosmetic differences. This
-is that loop, written once. Every current and future LLMProvider (see
-app.llm.provider) is expected to build its own list of candidates and
-call run_with_rotation instead of writing its own version of this.
+is that loop, written once. The providers and the notification guard
+build their own candidate lists and call run_with_rotation instead of
+writing their own version of this.
+
+Deadline-aware rotation (P1/P2 fix): the caller can pass a deadline
+(monotonic timestamp) to bound the total rotation work. Before starting
+each candidate, the deadline is checked; if expired, no new attempts
+are made. This prevents abandoned attempts from continuing through large
+rotations after the outer timeout has fired, while still letting
+in-flight provider calls complete (bounded by their own HTTP timeouts).
 """
 
 from app.llm import rate_limit_tracker
+import time
 
 
-def run_with_rotation(provider_label, candidates, mark_unknown_as_permanent=True):
+def run_with_rotation(provider_label, candidates, mark_unknown_as_permanent=True, deadline=None):
     """Try each candidate in order until one succeeds.
 
     provider_label: a short display name for log lines, e.g. "Gemini",
@@ -49,30 +57,84 @@ def run_with_rotation(provider_label, candidates, mark_unknown_as_permanent=True
         established difference across this refactor rather than
         silently unifying two intentionally different judgment calls.
 
-    Returns (result, display_label_of_the_winning_candidate) on
-    success. On success, mark_success is called for that specific
+    deadline: optional monotonic timestamp (time.monotonic()) by which
+        the rotation must not start any NEW candidate attempts. If
+        the deadline is reached before a candidate is tried, the
+        rotation stops and raises RuntimeError. In-flight provider
+        calls are NOT interrupted -- they are bounded by their own
+        HTTP timeouts. This prevents abandoned attempts from
+        unnecessarily continuing through large rotations after the
+        outer timeout has fired, while preserving per-provider HTTP
+        timeout bounds and not removing provider/key/model rotation.
+
+    Returns (result, candidate_id, display_label_of_the_winning_
+    candidate) on success. candidate_id is the third field so callers
+    can correlate the win back to the exact cooldown-tracker key /
+    concrete model / concrete key that actually produced it (e.g. the
+    notification guard needs the winning model name for its decision
+    log). On success, mark_success is called for that specific
     candidate_id (see rate_limit_tracker.mark_success for why: it
     resets that candidate's daily-quota escalation, so a candidate
     that failed several times isn't still penalized once it's
     actually working again).
 
     Raises RuntimeError, with every candidate's failure message
-    joined together, if every available candidate fails (or none were
-    configured at all).
+    joined together, if every candidate fails (or none were
+    configured at all), or if the deadline is reached before any
+    candidate succeeds.
     """
     all_ids = [candidate_id for candidate_id, _, _ in candidates]
+    any_available = any(
+        rate_limit_tracker.is_available(candidate_id) for candidate_id in all_ids
+    )
+
     available_ids = set(rate_limit_tracker.filter_available(all_ids))
+
     skipped = len(all_ids) - len(available_ids)
     if skipped:
         print(
             f"Skipping {skipped} {provider_label} candidate(s) still in "
             f"cooldown from a recent failure."
         )
+    elif all_ids and not any_available:
+        # filter_available only returns the full list -- and this branch
+        # is only reached -- when every candidate is currently in
+        # cooldown but the aggressive-rotation design (see
+        # rate_limit_tracker.filter_available) still lets this call go
+        # through and attempt anyway. Informational only: the cooldown
+        # here is a local estimate, not authoritative provider state, so
+        # we say so and try instead of failing a job on a guess.
+        wait = rate_limit_tracker.earliest_cooldown_expiry_seconds(all_ids)
+        wait_msg = f"~{wait:.0f}s" if wait is not None else "an unknown duration"
+        print(
+            f"All {len(all_ids)} {provider_label} candidate(s) are still in "
+            f"cooldown from a recent failure; attempting anyway rather than "
+            f"failing this call on a local cooldown estimate. Earliest "
+            f"candidate is currently expected back in {wait_msg}."
+        )
 
     failures = []
     last_exception = None
 
     for candidate_id, display_label, thunk in candidates:
+
+        # Deadline check: before starting a NEW candidate attempt, verify
+        # we haven't exceeded the operation's total time budget. This
+        # prevents stale/abandoned attempts from continuing through
+        # provider/model rotations after the caller's deadline. In-flight
+        # provider calls (once started) are bounded by their own HTTP
+        # timeouts, not by this deadline.
+        if deadline is not None and time.monotonic() >= deadline:
+            print(
+                f"Deadline reached before trying {provider_label} "
+                f"{display_label}; stopping rotation to avoid "
+                f"unnecessary provider attempts after outer timeout."
+            )
+            raise RuntimeError(
+                f"Deadline reached before trying {provider_label} "
+                f"{display_label}; stopping rotation to avoid "
+                f"unnecessary provider attempts after outer timeout."
+            )
 
         if candidate_id not in available_ids:
             continue
@@ -82,7 +144,7 @@ def run_with_rotation(provider_label, candidates, mark_unknown_as_permanent=True
         try:
             result = thunk()
             rate_limit_tracker.mark_success(candidate_id)
-            return result, display_label
+            return result, candidate_id, display_label
 
         except Exception as e:
 
@@ -137,6 +199,19 @@ def run_with_rotation(provider_label, candidates, mark_unknown_as_permanent=True
 
             else:
                 print(f"{provider_label} {display_label} failed: {e}")
+
+            # After a failure, check deadline again before continuing
+            # to the next candidate. This prevents starting a new attempt
+            # when the deadline has already expired during the failed attempt.
+            if deadline is not None and time.monotonic() >= deadline:
+                print(
+                    f"Deadline reached after {provider_label} "
+                    f"{display_label} failed; stopping rotation."
+                )
+                raise RuntimeError(
+                    f"Deadline reached after {provider_label} "
+                    f"{display_label} failed; stopping rotation."
+                )
 
             continue
 

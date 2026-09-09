@@ -1,6 +1,8 @@
-from app.job_processor import process_job
-from app.logger import logger
-from app.parser import parse_job
+from app.job_processor import process_job, ClassificationPendingError
+from app.dependencies import logger
+from app.dependencies import parser
+
+def parse_job(source, text): return parser.parse(source, text)
 
 
 async def process_message(event):
@@ -67,11 +69,17 @@ async def process_message(event):
 
         failed = True
 
-        await logger.run(
-            logger.log_error,
-            "Message Processor",
-            e,
-        )
+        if not isinstance(e, ClassificationPendingError):
+            # A ClassificationPendingError is expected control-flow: the
+            # job is durably parked as Pending/claimed on another path
+            # (attempt another process_job() caller owns), and any
+            # underlying LLM/provider failure was already audited exactly
+            # where it happened (see app.job_processor.process_job).
+            # Recording it here as a generic "Message Processor" system
+            # error would drown the audit trail in duplicate rows for a
+            # non-crash. It still counts as "not processed" below, so
+            # callers never advance the watermark/barrier on it.
+            await logger.log_error("Message Processor", e)
 
     finally:
 
@@ -87,12 +95,8 @@ async def process_message(event):
         # so this save can never overlap with another job's log write.
         if failed:
             try:
-                await logger.run(logger.save)
+                await logger.save()
             except Exception as e:
-                await logger.run(
-                    logger.log_error,
-                    "Logger",
-                    e,
-                )
+                await logger.log_error("Logger", e)
 
     return False

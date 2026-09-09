@@ -371,7 +371,12 @@ def test_guard_error_is_not_treated_as_a_durable_decision(
     assert calls == {"private": 0}
 
     row = log.get_job(job_uuid)
-    assert "Telegram: Failed" in row["Notification Status"]
+    assert row["Notification Status"] == "Pending", (
+        "a fail-closed guard denial on error leaves the row unresolved "
+        "(not the removed job-level 'Telegram: Failed' overlay -- see "
+        "notification state consistency fix) so the retry sweep still "
+        "picks it up below"
+    )
 
     # Retry sweep: private is retried. The error is not a durable
     # decision, so the guard is re-evaluated and allows.
@@ -406,7 +411,7 @@ def test_llm_reviewed_job_bypasses_guard_on_retry(isolated_database, monkeypatch
     # IndexError, which is exactly the failure signal we want.
     guard = _wire_guard(monkeypatch, fake_private, outcomes=[])
 
-    def fake_arbitrate_category(filter_text, candidates, system_prompt=None):
+    def fake_arbitrate_category(filter_text, candidates, system_prompt=None, deadline=None):
         return {
             "selected_category": candidates[0]["id"],
             "reason": "LLM accepted",
@@ -612,3 +617,29 @@ def test_guard_reclassifies_direct_match_to_full_stack(isolated_database):
 
     assert sent is True
     assert private_calls == ["full_stack"]
+
+
+def test_guard_disabled_is_transparent_through_integration(isolated_database):
+    class DisabledGuard:
+        enabled = False
+        async def decide(self, *args, **kwargs):
+            raise AssertionError("disabled guard must not evaluate")
+
+    calls = {"private": 0, "routing": 0}
+    async def private(**kwargs): calls["private"] += 1; return True
+    async def routing(*args, **kwargs): calls["routing"] += 1; return 1
+
+    integration = NotificationGuardIntegration(DisabledGuard())
+    row = {"Source": "kafiil", "Title": "Power BI", "Description": "Dashboard", "Final Decision": "Accepted", "Needs Gemini": False}
+    import asyncio
+    assert asyncio.run(integration.resolve_category("disabled-job", row, "data_analysis")) == "data_analysis"
+    assert asyncio.run(integration.wrap_private(private)(job_uuid="disabled-job", category_id="data_analysis", ai_used=False)) is True
+
+    isolated_database.create_job(
+        job_uuid="disabled-route", job_id="disabled-route", source="kafiil", title="Power BI",
+        description="Dashboard", raw_message="Power BI", filter_text="Power BI", company="", url="",
+        filter_result={}, filter_time_ms=0, save=True,
+    )
+    isolated_database.update_job("disabled-route", final_decision="Accepted", category_id="data_analysis", save=True)
+    assert asyncio.run(integration.wrap_routing(routing)("disabled-route", "data_analysis", "kafiil")) == 1
+    assert calls == {"private": 1, "routing": 1}

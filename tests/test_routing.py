@@ -107,6 +107,41 @@ def test_user_source_preference_filters_subscriber_delivery():
     assert rows[0]["Job UUID"] == "job-source-1"
 
 
+def test_user_stored_alias_source_matches_canonical_job_source():
+    db = pathlib.Path(tempfile.mkdtemp()) / "routing-alias-canon.db"
+    original = logger.path
+    logger.close()
+    try:
+        logger.path = db
+        logger.initialize()
+
+        async def scenario():
+            user_id = await logger.run(
+                logger.ensure_user, 123461, "tester6", "Tester 6"
+            )
+            await logger.run(logger.set_user_category, user_id, "data_analysis")
+            # User subscribed using the displayed Arabic alias of mostaql.
+            await logger.run(logger.set_user_source, user_id, "مستقل")
+
+            canonical = await queue_for_category(
+                "job-alias-canon-1", "data_analysis", "mostaql"
+            )
+            rows = await logger.run(logger.claim_pending_user_notifications)
+            return canonical, rows
+
+        canonical, rows = asyncio.run(scenario())
+    finally:
+        logger.close()
+        logger.path = original
+
+    # Explicit canonical job source must match a subscriber who stored the
+    # equivalent alias. Mirrors tests above where an alias job source matches
+    # a subscriber who stored the canonical id.
+    assert canonical == 1
+    assert len(rows) == 1
+    assert rows[0]["Job UUID"] == "job-alias-canon-1"
+
+
 def test_existing_user_with_no_source_preference_receives_all_sources():
     db = pathlib.Path(tempfile.mkdtemp()) / "routing-all.db"
     original = logger.path
@@ -179,4 +214,32 @@ def test_category_preferences_are_stored_on_user_and_source_filters_still_apply(
     assert categories == ["data_analysis"]
     assert sources == ["nafezly"]
     assert first == 1
+    assert second == 0
+
+
+def test_queue_for_category_uses_injected_repository_or_short_circuits():
+    """queue_for_category routes through an injected repository and never
+    touches the service locator when one is supplied; an empty category
+    short-circuits to 0 without calling the repository at all."""
+    awaited = {}
+
+    class _FakeRepository:
+        async def queue_user_notifications(self, *args, **kwargs):
+            awaited["args"] = args
+            awaited["save"] = kwargs.get("save")
+            return 7
+
+    async def scenario():
+        first = await queue_for_category(
+            "job-x", "data_analysis", "nafezly", repository=_FakeRepository()
+        )
+        second = await queue_for_category(
+            "job-y", "", "nafezly", repository=_FakeRepository()
+        )
+        return first, second
+
+    first, second = asyncio.run(scenario())
+    assert first == 7
+    assert awaited["args"] == ("job-x", "data_analysis", "nafezly")
+    assert awaited["save"] is True
     assert second == 0

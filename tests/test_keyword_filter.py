@@ -1122,3 +1122,51 @@ def test_classifier_regression_cases(case):
         f"{case['name']}: expected {case['expected']}, "
         f"got {result['decision']} ({result['reason']})"
     )
+
+
+def test_arabic_attached_clitic_matches_canonical_keyword():
+    from app.categories.data_analysis.profile import PROFILE
+    from app.filters import keyword_filter
+    result = keyword_filter("والبيانات وتحليل البيانات", profile=PROFILE)
+    assert result["matched"] is True
+
+
+def test_compiled_profile_is_cached_and_not_recompiled_per_call(monkeypatch):
+    """The compiled vocabulary must be built once per profile object, not
+    once per keyword_filter() call -- classify_and_select() re-runs the
+    filter for every enabled profile on every job, so recompiling per call
+    is wasted work on the hot path."""
+    import app.filters as filters
+
+    from app.categories.data_analysis.profile import PROFILE as P
+
+    filters.clear_keyword_profile_cache()
+    real_flatten = filters._flatten
+    calls = {"n": 0}
+
+    def counting_flatten(keyword_dict, tier):
+        calls["n"] += 1
+        return real_flatten(keyword_dict, tier)
+
+    monkeypatch.setattr(filters, "_flatten", counting_flatten)
+
+    keyword_filter("Excel dashboard", title="Power BI", profile=P)
+    first = calls["n"]
+    # The shared engine flattens 4 lists (2 positive tiers, 2 negative
+    # tiers; hard-reject uses its own generator) exactly once for this
+    # profile.
+    assert first == 4, f"first compile should flatten 4 lists, got {first}"
+
+    keyword_filter("another excel job", title="SQL", profile=P)
+    keyword_filter("Power BI analysis", title="DAX", profile=P)
+    # No additional compilations: the cache served the same compiled profile.
+    assert calls["n"] == first, (
+        "cached profile must not be recompiled on subsequent calls"
+    )
+
+    # Explicit invalidation forces a fresh compile on the next call.
+    filters.clear_keyword_profile_cache()
+    keyword_filter("excel cleanup", profile=P)
+    assert calls["n"] == first + 4
+
+    filters.clear_keyword_profile_cache()

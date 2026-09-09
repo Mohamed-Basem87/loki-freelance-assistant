@@ -29,3 +29,23 @@ services:
     # (no Notification Guard), replace this with:
     #   command: python run.py
     command: python run_guarded.py
+    # SINGLE-PROCESS INVARIANT: the SQLite audit log
+    # (loki_freelance_bot.db) and state.json are written by exactly ONE
+    # application process -- DBLogger serializes every SQLite write onto a
+    # single dedicated worker thread (see app/logger.py), and the claim/
+    # classification/notification state machines rely on that in-process
+    # serialization for atomicity. Do NOT scale this service to multiple
+    # replicas/containers sharing the same database volume: concurrent
+    # writers from separate processes would break the cross-source dedup
+    # and notification-claim guarantees (see ENGINEERING_REMEDIATION_REPORT.md).
+    # Run exactly one replica per database volume.
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Covers both the original DB-file-creation grace window and the
+      # new worker heartbeat (app.heartbeat writes its first beat
+      # immediately on startup, well inside this window; see
+      # app/healthcheck.py's worker/runtime health check).
+      start_period: 30s

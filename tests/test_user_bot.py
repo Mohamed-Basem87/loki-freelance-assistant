@@ -15,7 +15,7 @@ from telegram import (
 )
 
 from app.logger import logger
-from app.user_bot import my_chat_member_update, stop_command
+from app.user_bot import _send_one, MAX_ATTEMPTS, my_chat_member_update, stop_command
 
 
 def _isolated_db():
@@ -134,6 +134,98 @@ def test_left_status_also_deactivates_the_user():
             await my_chat_member_update(update, context=None)
 
             assert _is_active(555333) == "0"
+
+        asyncio.run(run())
+    finally:
+        _restore_db(original)
+
+
+def _queue_pending_notification(telegram_user_id, user_id, status="Pending"):
+    import uuid
+    from datetime import datetime as _dt
+
+    now = _dt.now().isoformat()
+    logger._conn.execute(
+        'INSERT INTO user_notifications '
+        '("Notification ID", "Job UUID", "User ID", "Telegram User ID", '
+        '"Category ID", "Status", "Attempts", "Last Error", '
+        '"Created At", "Updated At", "Next Attempt At") '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        (
+            str(uuid.uuid4()), f"job-uuid-{uuid.uuid4()}", str(user_id), str(telegram_user_id),
+            "cat-1", status, "0", "", now, now, now,
+        ),
+    )
+    logger.save()
+
+
+def _notification_statuses(telegram_user_id):
+    cursor = logger._conn.execute(
+        'SELECT "Status" FROM user_notifications WHERE "Telegram User ID" = ?',
+        (str(telegram_user_id),),
+    )
+    return [row[0] for row in cursor.fetchall()]
+
+
+def test_stop_cancels_stale_queued_notifications_instead_of_stockpiling_them():
+    """Regression test for audit finding: user subscription semantics.
+
+    /stop must not merely pause delivery -- notifications already
+    queued but not yet sent must be cancelled, so a user who
+    resubscribes later is not hit with a burst of everything that
+    piled up while they were unsubscribed.
+    """
+    original = _isolated_db()
+    try:
+        async def run():
+            internal_id = await logger.run(logger.ensure_user, 555222, "tester", "Tester")
+            _queue_pending_notification(555222, internal_id, status="Pending")
+            _queue_pending_notification(555222, internal_id, status="Failed")
+            _queue_pending_notification(555222, internal_id, status="RateLimited")
+            _queue_pending_notification(555222, internal_id, status="Sent")
+
+            update = _stop_command_update(555222)
+            await stop_command(update, context=None)
+
+            assert _is_active(555222) == "0"
+            statuses = _notification_statuses(555222)
+            assert statuses.count("Cancelled") == 3, (
+                "every still-outstanding (Pending/Failed/RateLimited) "
+                "notification must be cancelled on /stop"
+            )
+            assert statuses.count("Sent") == 1, (
+                "already-delivered history must be left alone -- it is "
+                "not backlog"
+            )
+
+        asyncio.run(run())
+    finally:
+        _restore_db(original)
+
+
+def test_notifications_queued_after_a_later_start_are_not_cancelled():
+    """A fresh subscription after /stop -> /start must behave normally:
+    only the stale pre-stop backlog is discarded, not everything ever
+    queued for the user."""
+    original = _isolated_db()
+    try:
+        async def run():
+            internal_id = await logger.run(logger.ensure_user, 555223, "tester", "Tester")
+            _queue_pending_notification(555223, internal_id, status="Pending")
+
+            await stop_command(_stop_command_update(555223), context=None)
+            assert _notification_statuses(555223) == ["Cancelled"]
+
+            await logger.run(
+                logger.record_subscription_event,
+                555223, "Tester", "tester", True, "start",
+            )
+            await logger.run(logger.set_user_active, 555223, True)
+
+            _queue_pending_notification(555223, internal_id, status="Pending")
+            statuses = _notification_statuses(555223)
+            assert statuses.count("Pending") == 1
+            assert statuses.count("Cancelled") == 1
 
         asyncio.run(run())
     finally:
@@ -313,6 +405,121 @@ def test_ensure_user_preserves_unsubscribed_state():
             await logger.run(logger.ensure_user, 555666, "new", "New")
             assert _is_active(555666) == "0"
             assert _subscription_events(555666)[0][3] == "unsubscribed"
+
+        asyncio.run(run())
+    finally:
+        _restore_db(original)
+
+
+def test_missing_job_record_gets_real_exponential_backoff():
+    """Regression test for F-1: a claimed notification whose Job UUID no
+    longer exists in the jobs table must still get a real, future
+    "Next Attempt At" while Attempts < MAX_ATTEMPTS. Previously
+    _send_one() passed next_attempt_at=None for this path, which left
+    the row's existing (already-expired, since it had just been
+    claimable) timestamp untouched -- so the notification would be
+    immediately reclaimable on the very next poll tick with zero
+    backoff, instead of waiting out an exponential delay like every
+    other failure path.
+    """
+    original = _isolated_db()
+    try:
+        async def run():
+            await logger.run(logger.ensure_user, 555777, "ghost", "Ghost")
+
+            now = datetime.now().isoformat()
+            notification_id = "notif-missing-job"
+            logger._conn.execute(
+                'INSERT INTO user_notifications '
+                '("Notification ID", "Job UUID", "User ID", "Telegram User ID", '
+                '"Category ID", "Status", "Claimed At", "Attempts", "Last Error", '
+                '"Created At", "Updated At", "Next Attempt At") '
+                'VALUES (?, ?, (SELECT "User ID" FROM users WHERE "Telegram User ID" = ?), '
+                '?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (
+                    notification_id, "job-uuid-that-does-not-exist", "555777",
+                    "555777", "cat1", "Pending", "", "0", "", now, now, now,
+                ),
+            )
+            logger.save()
+
+            claimed = logger.claim_pending_user_notifications()
+            assert len(claimed) == 1
+            notification = claimed[0]
+
+            before = datetime.now()
+            await _send_one(notification)
+
+            cursor = logger._conn.execute(
+                'SELECT "Status", "Attempts", "Next Attempt At" '
+                'FROM user_notifications WHERE "Notification ID" = ?',
+                (notification_id,),
+            )
+            status, attempts, next_attempt_at = cursor.fetchone()
+
+            assert status == "Failed"
+            assert int(attempts) == 1
+            assert int(attempts) < MAX_ATTEMPTS
+            assert next_attempt_at not in (None, "")
+            # Must be scheduled strictly in the future -- a real backoff
+            # window, not the stale already-past timestamp left over from
+            # when the row first became claimable.
+            assert datetime.fromisoformat(next_attempt_at) > before
+
+        asyncio.run(run())
+    finally:
+        _restore_db(original)
+
+
+def test_missing_job_record_stops_retrying_at_max_attempts():
+    """Once Attempts reaches MAX_ATTEMPTS for a missing-job failure, no
+    further "Next Attempt At" needs to be scheduled (the max-attempt
+    gate in claim_pending_user_notifications already stops it being
+    reclaimed), and _send_one() must not raise while getting there.
+    """
+    original = _isolated_db()
+    try:
+        async def run():
+            await logger.run(logger.ensure_user, 555778, "ghost2", "Ghost2")
+
+            # Use the logger singleton's own live attempt budget (what
+            # claim_pending_user_notifications() actually checks)
+            # rather than the module-level MAX_ATTEMPTS constant, so
+            # this test is correct even if another test in the suite
+            # temporarily overrides logger.max_user_notification_attempts.
+            max_attempts = logger.max_user_notification_attempts
+
+            now = datetime.now().isoformat()
+            notification_id = "notif-missing-job-max"
+            logger._conn.execute(
+                'INSERT INTO user_notifications '
+                '("Notification ID", "Job UUID", "User ID", "Telegram User ID", '
+                '"Category ID", "Status", "Claimed At", "Attempts", "Last Error", '
+                '"Created At", "Updated At", "Next Attempt At") '
+                'VALUES (?, ?, (SELECT "User ID" FROM users WHERE "Telegram User ID" = ?), '
+                '?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (
+                    notification_id, "job-uuid-that-does-not-exist", "555778",
+                    "555778", "cat1", "Pending", "", str(max_attempts - 1), "",
+                    now, now, now,
+                ),
+            )
+            logger.save()
+
+            claimed = logger.claim_pending_user_notifications()
+            assert len(claimed) == 1
+            notification = claimed[0]
+
+            await _send_one(notification)
+
+            cursor = logger._conn.execute(
+                'SELECT "Status", "Attempts" '
+                'FROM user_notifications WHERE "Notification ID" = ?',
+                (notification_id,),
+            )
+            status, attempts = cursor.fetchone()
+            assert status == "Failed"
+            assert int(attempts) == max_attempts
 
         asyncio.run(run())
     finally:

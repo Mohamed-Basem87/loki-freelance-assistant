@@ -26,7 +26,73 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest
+          pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Run test suite
         run: pytest tests/ -q
+
+      - name: Smoke-test unguarded entrypoint stays config-driven
+        # The previous step was `python -c "import run, run_guarded"` in ONE
+        # interpreter: `import run` cached the guard-disabled configuration,
+        # so the later `import run_guarded` set NOTIFICATION_GUARD_ENABLED
+        # too late and the step proved nothing about the guarded entrypoint.
+        # Each entrypoint is now probed in its OWN fresh process, where the
+        # module-level env ordering (run_guarded sets the flag BEFORE
+        # importing app.bot) actually holds.
+        env:
+          NOTIFICATION_GUARD_ENABLED: "false"
+          GEMINI_API_KEYS: "ci-placeholder"
+          GROQ_API_KEY: "ci-placeholder"
+        run: >-
+          python -c
+          "import run; import app.notification_guard.config as gc;
+          import sys; sys.exit(0 if gc.NOTIFICATION_GUARD_ENABLED is False else 1)"
+
+      - name: Smoke-test guarded entrypoint forces the guard on
+        env:
+          NOTIFICATION_GUARD_ENABLED: "false"
+          GEMINI_API_KEYS: "ci-placeholder"
+          GROQ_API_KEY: "ci-placeholder"
+          GROQ_NOTIFICATION_GUARD_API_KEY: "ci-placeholder"
+          GROQ_NOTIFICATION_GUARD_MODELS: "llama-3.3-70b-versatile"
+        run: >-
+          python -c
+          "import run_guarded; import app.notification_guard.config as gc;
+          import sys; sys.exit(0 if gc.NOTIFICATION_GUARD_ENABLED is True else 1)"
+
+      - name: Smoke-test guarded entrypoint fails loudly without guard config
+        # run_guarded forces NOTIFICATION_GUARD_ENABLED=true before importing
+        # app.bot, so a missing GROQ_NOTIFICATION_GUARD_API_KEY must abort the
+        # import (the guard's own validate()) -- never silently degrade to
+        # unguarded delivery.
+        env:
+          NOTIFICATION_GUARD_ENABLED: "false"
+          GEMINI_API_KEYS: "ci-placeholder"
+          GROQ_API_KEY: "ci-placeholder"
+        run: |
+          if python -c "import run_guarded" 2>guarded_import.err; then
+            echo "expected 'import run_guarded' to fail without GROQ_NOTIFICATION_GUARD_API_KEY" >&2
+            exit 1
+          fi
+          grep -q "GROQ_NOTIFICATION_GUARD_API_KEY" guarded_import.err
+
+      - name: Smoke-test real runtime composition
+        # Audit finding P2-9: the fresh-process entrypoint probes above
+        # only prove the entrypoints import correctly -- they never prove
+        # the actual application can start, because they don't build the
+        # dependency graph, initialize the database, or verify a category
+        # is enabled and its arbitration prompt is well-formed. See
+        # scripts/ci_smoke_test.py for exactly what this exercises (no
+        # network calls are made). API_ID/API_HASH/PHONE_NUMBER are the
+        # same placeholders tests/conftest.py uses; compose() builds the
+        # live Telegram source by default, so they are required here.
+        env:
+          NOTIFICATION_GUARD_ENABLED: "false"
+          GEMINI_API_KEYS: "ci-placeholder"
+          GROQ_API_KEY: "ci-placeholder"
+          BOT_TOKEN: "123456789:ci-placeholder"
+          FREEHUB_USER_ID: "ci-placeholder"
+          API_ID: "10000000"
+          API_HASH: "test-api-hash-not-a-real-secret"
+          PHONE_NUMBER: "+10000000000"
+        run: python scripts/ci_smoke_test.py

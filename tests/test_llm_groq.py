@@ -13,7 +13,7 @@ import pytest
 from app.filters import keyword_filter
 from app.categories.data_analysis.profile import PROFILE
 from app.llm import groq
-from app.categories.data_analysis.llm_prompt import SYSTEM_PROMPT
+from app.llm.utils import GENERIC_SYSTEM_PROMPT
 
 
 TEXT = """
@@ -100,7 +100,7 @@ def test_groq_request_has_system_and_user_roles(monkeypatch):
 
     roles = [m["role"] for m in call["messages"]]
     assert roles == ["system", "user"]
-    assert call["messages"][0]["content"] == SYSTEM_PROMPT
+    assert call["messages"][0]["content"] == GENERIC_SYSTEM_PROMPT
     assert "Power BI dashboard" in call["messages"][1]["content"]
 
 
@@ -125,7 +125,7 @@ def test_groq_rotates_across_models_on_failure(monkeypatch):
     # operator config choice, not something this test should pin).
     assert (
         [c["model"] for c in fake_client.completions.calls]
-        == groq.GROQ_MODELS[:3]
+        == list(groq.GROQ_MODELS[:3])
     )
 
 
@@ -139,6 +139,51 @@ def test_groq_raises_after_all_models_fail(monkeypatch):
         groq.evaluate_job(TEXT, FILTER_RESULT)
 
     assert len(fake_client.completions.calls) == len(groq.GROQ_MODELS)
+
+
+_VALID_ARBITRATION_RESPONSE_JSON = json.dumps(
+    {
+        "selected_category": "data_analysis",
+        "confidence": 88,
+        "reason": "Primary deliverable is a BI dashboard.",
+    }
+)
+
+_ARBITRATION_CANDIDATES = [
+    {
+        "id": "data_analysis",
+        "name": "Data Analysis",
+        "description": "Analytics and BI.",
+        "arbitration_context": "Primary deliverable is analysis or BI.",
+        "result": {"reason": "mixed signals", "categories": ["power_bi"], "negative_categories": []},
+    },
+]
+
+
+def test_groq_module_level_arbitration_initializes_provider_lazily(monkeypatch):
+    """Direct regression test for the P0 defect: the module-level
+    evaluate_category_arbitration() compatibility function called
+    `_provider.evaluate_category_arbitration(...)` directly while
+    `_provider` was still `None` (only evaluate_job() went through the
+    lazy `_get_provider()` accessor). Since app.llm.manager's Groq
+    arbitration fallback calls this exact module-level function, and
+    nothing calls evaluate_job() first to incidentally initialize
+    `_provider`, every real arbitration request raised AttributeError
+    before ever reaching the SDK. This test resets `_provider` to None
+    (its true module-load state) and asserts the fake client actually
+    receives the arbitration request.
+    """
+    monkeypatch.setattr(groq, "_provider", None)
+    fake_client = _FakeClient([_VALID_ARBITRATION_RESPONSE_JSON])
+    monkeypatch.setattr(groq, "CLIENT", fake_client)
+
+    result = groq.evaluate_category_arbitration(
+        TEXT, _ARBITRATION_CANDIDATES, "system prompt"
+    )
+
+    assert result["selected_category"] == "data_analysis"
+    assert len(fake_client.completions.calls) == 1
+    assert groq._provider is not None
 
 
 @pytest.mark.skipif(

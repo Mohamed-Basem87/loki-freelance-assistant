@@ -139,7 +139,7 @@ def test_channel_style_uses_abbreviated_arabic_source_names():
         ("NAFEZLY Channel", "نفذلي"),
         ("Nafezly - نفذلي", "نفذلي"),
         ("kafiil", "كفيل"),
-        ("freelancer", "freelancer"),
+        ("freelancer", "Freelancer"),
     ]
 
     for source, expected_display in test_cases:

@@ -6,7 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import app.handlers.telegram as telegram
+import app.adapters.sources.telegram as telegram
+import app.handlers.telegram as telegram_compat
 
 
 class _FakeClient:
@@ -27,7 +28,10 @@ def test_recovery_does_not_advance_past_failed_message(monkeypatch):
     processed = []
     watermarks = []
 
-    monkeypatch.setattr(telegram.state, "get_last_message_id", lambda _: 100)
+    async def fake_get_last_message_id(_channel):
+        return 100
+
+    monkeypatch.setattr(telegram.state, "get_last_message_id", fake_get_last_message_id)
 
     async def fake_set_watermark(chat_id, message_id):
         watermarks.append((chat_id, message_id))
@@ -55,7 +59,10 @@ def test_recovery_advances_through_successful_messages(monkeypatch):
     ]
     watermarks = []
 
-    monkeypatch.setattr(telegram.state, "get_last_message_id", lambda _: 200)
+    async def fake_get_last_message_id(_channel):
+        return 200
+
+    monkeypatch.setattr(telegram.state, "get_last_message_id", fake_get_last_message_id)
 
     async def fake_set_watermark(chat_id, message_id):
         watermarks.append((chat_id, message_id))
@@ -180,7 +187,7 @@ def test_live_handler_does_not_serialize_across_different_channels(monkeypatch):
 
 
 # ------------------------------------------------------------------
-# Startup recovery / live-ingestion race (see app.handlers.telegram
+# Startup recovery / live-ingestion race (see app.adapters.sources.telegram
 # .start() and ._recover_all_channels()).
 #
 # Old behavior: the live NewMessage handler was registered only after
@@ -219,8 +226,11 @@ def test_live_message_during_recovery_is_captured_and_processed_after(monkeypatc
     message is captured immediately and processed right after
     recovery finishes.
     """
-    monkeypatch.setattr(telegram, "TARGET_CHANNELS", [-1010])
-    monkeypatch.setattr(telegram.state, "get_last_message_id", lambda _: 100)
+
+    async def fake_get_last_message_id(_channel):
+        return 100
+
+    monkeypatch.setattr(telegram.state, "get_last_message_id", fake_get_last_message_id)
 
     watermarks = []
 
@@ -281,6 +291,7 @@ def test_live_message_during_recovery_is_captured_and_processed_after(monkeypatc
                 fake_client,
                 channel_locks,
                 recovery_blocked,
+                channels=[-1010],
             )
         )
 
@@ -331,11 +342,13 @@ def test_live_message_after_recovery_failure_does_not_advance_past_failed_messag
     This regression protects the shared `recovery_blocked` barrier
     introduced by the startup race fix.
     """
-    monkeypatch.setattr(telegram, "TARGET_CHANNELS", [-1011])
+    async def fake_get_last_message_id(_channel):
+        return 100
+
     monkeypatch.setattr(
         telegram.state,
         "get_last_message_id",
-        lambda _: 100,
+        fake_get_last_message_id,
     )
 
     watermarks = []
@@ -385,6 +398,7 @@ def test_live_message_after_recovery_failure_does_not_advance_past_failed_messag
                 fake_client,
                 channel_locks,
                 recovery_blocked,
+                channels=[-1011],
             )
         )
 
@@ -498,7 +512,8 @@ def test_recovery_and_live_seeing_the_same_message_is_processed_once(
 
 def test_start_registers_live_handler_before_recovery(monkeypatch):
     """
-    Regression test for the actual startup ordering in start().
+    Regression test for the actual startup ordering in start()
+    (app.handlers.telegram.start, the config-reading compatibility seam).
 
     The old implementation performed every channel's recovery before
     registering the NewMessage handler. That left a real gap in which
@@ -516,7 +531,7 @@ def test_start_registers_live_handler_before_recovery(monkeypatch):
     running, so a live event captured by Telethon cannot overtake that
     channel's recovery.
     """
-    monkeypatch.setattr(telegram, "TARGET_CHANNELS", [-1101, -1102])
+    monkeypatch.setattr(telegram_compat, "TARGET_CHANNELS", [-1101, -1102])
 
     events = []
 
@@ -544,7 +559,7 @@ def test_start_registers_live_handler_before_recovery(monkeypatch):
         lambda *args, **kwargs: FakeClient(),
     )
 
-    async def fake_warm_entity_cache(client):
+    async def fake_warm_entity_cache(client, channels=None):
         events.append(("warm_entity_cache",))
 
     monkeypatch.setattr(
@@ -575,6 +590,8 @@ def test_start_registers_live_handler_before_recovery(monkeypatch):
         client,
         channel_locks,
         recovery_blocked,
+        channels=None,
+        max_messages=None,
     ):
         events.append(
             (
@@ -582,11 +599,11 @@ def test_start_registers_live_handler_before_recovery(monkeypatch):
                 handler_registered["value"],
                 all(
                     channel_locks[channel].locked()
-                    for channel in telegram.TARGET_CHANNELS
+                    for channel in channels
                 ),
                 all(
                     recovery_blocked[channel]
-                    for channel in telegram.TARGET_CHANNELS
+                    for channel in channels
                 ),
             )
         )
@@ -594,14 +611,14 @@ def test_start_registers_live_handler_before_recovery(monkeypatch):
         assert handler_registered["value"] is True
         assert all(
             channel_locks[channel].locked()
-            for channel in telegram.TARGET_CHANNELS
+            for channel in channels
         )
         assert all(
             recovery_blocked[channel]
-            for channel in telegram.TARGET_CHANNELS
+            for channel in channels
         )
 
-        for channel in telegram.TARGET_CHANNELS:
+        for channel in channels:
             recovery_blocked[channel] = False
             channel_locks[channel].release()
 
@@ -613,7 +630,7 @@ def test_start_registers_live_handler_before_recovery(monkeypatch):
         fake_recover_all_channels,
     )
 
-    asyncio.run(telegram.start())
+    asyncio.run(telegram_compat.start())
 
     assert registered_handler["handler"] is not None
 
@@ -627,3 +644,653 @@ def test_start_registers_live_handler_before_recovery(monkeypatch):
         True,
     )
     assert event_names[-1] == "run_until_disconnected"
+
+
+# ------------------------------------------------------------------
+# Live-failure barrier (symmetry with startup recovery failures).
+#
+# Previously _handle_live_message logged a live processing failure and
+# moved on: the next successful live message advanced the watermark
+# past the failed one, and recovery walks messages strictly newer than
+# the watermark (min_id=last_id) -- so the failed message was
+# permanently unrecoverable on the next restart. The fix raises the
+# same recovery_blocked barrier a failed startup recovery does, wakes
+# the channel's retry watcher, and refuses to advance the watermark
+# until the retry re-processes the failed message successfully.
+# ------------------------------------------------------------------
+
+
+def test_live_failure_raises_barrier_and_blocks_watermark_advance(monkeypatch):
+    """
+    A live message that returns False from process_message must raise
+    the channel's recovery barrier. A later successful live message
+    must then NOT advance the watermark -- under the old behavior it
+    did, permanently orphaning the failed message below the watermark.
+    """
+    from app.adapters.sources.telegram import _handle_live_message
+
+    watermarks = []
+
+    async def fake_set_watermark(chat_id, message_id):
+        watermarks.append((chat_id, message_id))
+
+    monkeypatch.setattr(
+        telegram.state, "async_set_last_message_id", fake_set_watermark
+    )
+
+    called = []
+
+    async def fake_process_message(event):
+        called.append(event.id)
+        return event.id != 1001
+
+    monkeypatch.setattr(telegram, "process_message", fake_process_message)
+
+    async def run():
+        channel_locks = defaultdict(asyncio.Lock)
+        recovery_blocked = {-1012: False}
+
+        failed_event = SimpleNamespace(id=1001, chat_id=-1012)
+        await _handle_live_message(failed_event, channel_locks, recovery_blocked)
+
+        assert recovery_blocked[-1012] is True, (
+            "a live failure must raise the channel's recovery barrier"
+        )
+
+        later_event = SimpleNamespace(id=1002, chat_id=-1012)
+        await _handle_live_message(later_event, channel_locks, recovery_blocked)
+
+        assert watermarks == [], (
+            "a successful live message must NOT advance the watermark "
+            "while the channel is blocked behind a failed message"
+        )
+
+    asyncio.run(run())
+
+    assert called == [1001, 1002]
+
+
+def test_live_failure_by_exception_also_raises_barrier(monkeypatch):
+    """
+    A live message whose processing RAISES must be treated like a
+    return-False failure: raise the barrier so nothing advances past
+    it, and keep the failed message recoverable.
+    """
+    from app.adapters.sources.telegram import _handle_live_message
+
+    watermarks = []
+
+    async def fake_set_watermark(chat_id, message_id):
+        watermarks.append((chat_id, message_id))
+
+    monkeypatch.setattr(
+        telegram.state, "async_set_last_message_id", fake_set_watermark
+    )
+
+    async def fake_log_error(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(telegram.logger, "log_error", fake_log_error)
+
+    async def fake_process_message(event):
+        if event.id == 1101:
+            raise RuntimeError("transient classifier failure")
+        return True
+
+    monkeypatch.setattr(telegram, "process_message", fake_process_message)
+
+    async def run():
+        channel_locks = defaultdict(asyncio.Lock)
+        recovery_blocked = {-1015: False}
+
+        bad_event = SimpleNamespace(id=1101, chat_id=-1015)
+        await _handle_live_message(bad_event, channel_locks, recovery_blocked)
+
+        assert recovery_blocked[-1015] is True
+
+        good_event = SimpleNamespace(id=1102, chat_id=-1015)
+        await _handle_live_message(good_event, channel_locks, recovery_blocked)
+
+        assert watermarks == []
+
+    asyncio.run(run())
+
+
+def test_live_failure_is_recovered_by_retry_and_barrier_released(monkeypatch):
+    """
+    A failed live message must not stay lost behind the barrier
+    forever: the retry watcher re-runs recovery from the held
+    watermark and, once the failure clears, advances the watermark
+    over the previously-failed message -- the exact guarantee startup
+    recovery already provides.
+    """
+    from app.adapters.sources.telegram import _handle_live_message, _recover_channel
+
+    process_results = {2001: False}
+    watermarks = []
+
+    async def fake_get_last_message_id(_channel):
+        return 2000
+
+    monkeypatch.setattr(
+        telegram.state, "get_last_message_id", fake_get_last_message_id
+    )
+
+    async def fake_set_watermark(chat_id, message_id):
+        watermarks.append((chat_id, message_id))
+
+    monkeypatch.setattr(
+        telegram.state, "async_set_last_message_id", fake_set_watermark
+    )
+
+    async def fake_process_message(message):
+        return process_results.get(message.id, True)
+
+    monkeypatch.setattr(telegram, "process_message", fake_process_message)
+
+    class _FakeClient:
+        def __init__(self, messages):
+            self.messages = messages
+
+        async def iter_messages(self, channel, min_id, reverse, limit):
+            for message in self.messages:
+                yield message
+
+    messages = [SimpleNamespace(id=2001, chat_id=-1013)]
+
+    async def run():
+        channel_locks = defaultdict(asyncio.Lock)
+        recovery_blocked = {-1013: False}
+
+        failed_event = SimpleNamespace(id=2001, chat_id=-1013)
+        await _handle_live_message(failed_event, channel_locks, recovery_blocked)
+
+        assert recovery_blocked[-1013] is True
+        assert watermarks == []
+
+        process_results[2001] = True
+
+        recovered = await _recover_channel(_FakeClient(messages), -1013)
+
+        assert recovered is telegram.RECOVERED_COMPLETE
+        assert watermarks == [(-1013, 2001)], (
+            "the retry must walk the held watermark and advance it over "
+            "the previously-failed message"
+        )
+
+        recovery_blocked[-1013] = False
+
+    asyncio.run(run())
+
+
+def test_live_failure_wakes_retry_watcher_which_releases_barrier(monkeypatch):
+    """
+    The full loop end to end: a live failure raises the barrier AND
+    wakes that channel's retry watcher (via its per-channel event); the
+    watcher re-runs recovery from the held watermark and -- once the
+    transient failure clears -- releases the barrier on its own, after
+    which a subsequent live message can advance the watermark again.
+    """
+    from app.adapters.sources.telegram import _handle_live_message
+
+    process_results = {3001: False}
+    watermarks = []
+
+    async def fake_get_last_message_id(_channel):
+        return 3000
+
+    monkeypatch.setattr(
+        telegram.state, "get_last_message_id", fake_get_last_message_id
+    )
+
+    async def fake_set_watermark(chat_id, message_id):
+        watermarks.append((chat_id, message_id))
+
+    monkeypatch.setattr(
+        telegram.state, "async_set_last_message_id", fake_set_watermark
+    )
+
+    async def fake_process_message(message):
+        return process_results.get(message.id, True)
+
+    monkeypatch.setattr(telegram, "process_message", fake_process_message)
+
+    class _FakeClient:
+        def __init__(self, messages):
+            self.messages = messages
+
+        async def iter_messages(self, channel, min_id, reverse, limit):
+            for message in self.messages:
+                yield message
+
+    messages = [SimpleNamespace(id=3001, chat_id=-1014)]
+    fake_client = _FakeClient(messages)
+
+    async def run():
+        channel_locks = defaultdict(asyncio.Lock)
+        recovery_blocked = {-1014: False}
+        wake = asyncio.Event()
+        generation = defaultdict(int)
+
+        def on_failure(chat_id):
+            recovery_blocked[chat_id] = True
+            generation[chat_id] += 1
+            wake.set()
+
+        watcher = asyncio.create_task(
+            telegram._retry_recovery_channel(
+                fake_client,
+                -1014,
+                channel_locks[-1014],
+                recovery_blocked,
+                wake,
+                generation,
+                retry_base_seconds=0.01,
+                retry_cap_seconds=0.02,
+            )
+        )
+
+        await asyncio.sleep(0)
+
+        failed_event = SimpleNamespace(id=3001, chat_id=-1014)
+        await _handle_live_message(
+            failed_event, channel_locks, recovery_blocked, on_failure
+        )
+        assert recovery_blocked[-1014] is True
+
+        process_results[3001] = True
+
+        for _ in range(100):
+            if not recovery_blocked[-1014]:
+                break
+            await asyncio.sleep(0.02)
+
+        assert recovery_blocked[-1014] is False, (
+            "the watcher must re-run recovery and release the barrier "
+            "once the failure clears"
+        )
+        assert watermarks == [(-1014, 3001)]
+
+        wake.set()
+        watcher.cancel()
+        await asyncio.gather(watcher, return_exceptions=True)
+
+    asyncio.run(run())
+
+
+def test_wake_interrupts_long_retry_backoff(monkeypatch):
+    """
+    Prove the retry watcher's backoff is genuinely interruptible by the
+    per-channel wake event.
+
+    Regression for the bug where a live failure that set the channel's wake
+    event could NOT interrupt a retry watcher that was mid-`asyncio.sleep(delay)`:
+    a failed message would wait out the remainder of a (potentially long)
+    backoff before being re-attempted, contradicting the documented
+    "wakes that channel's retry watcher immediately" behavior.
+
+    The watcher is placed into a *long* (1000s) backoff, the wake event is
+    fired, and the test asserts recovery runs within a tight wall-clock
+    bound -- a material fraction of a second, far short of the 1000s delay.
+    It further asserts the wake is consumed on servicing (no spurious run of
+    immediate retries), that the single watcher task runs exactly one
+    recovery attempt (no duplicate retry task), and that the barrier is
+    released on a clean recovery.
+    """
+    import time
+
+    from app.adapters.sources.telegram import _retry_recovery_channel
+
+    recover_calls = []
+
+    async def fake_recover(client, channel, *, max_messages=None):
+        recover_calls.append(time.monotonic())
+        return telegram.RECOVERED_COMPLETE
+
+    monkeypatch.setattr(telegram, "_recover_channel", fake_recover)
+
+    async def run():
+        channel = -2001
+        channel_locks = defaultdict(asyncio.Lock)
+        recovery_blocked = {channel: True}
+        wake = asyncio.Event()
+        # A failure has already occurred: the barrier is up and generation
+        # is 1. The watcher must capture this generation value BEFORE we
+        # fire the wake so the post-recovery check sees no NEW failure and
+        # releases the barrier on the clean recovery.
+        generation = defaultdict(int, {channel: 1})
+
+        watcher = asyncio.create_task(
+            _retry_recovery_channel(
+                object(),
+                channel,
+                channel_locks[channel],
+                recovery_blocked,
+                wake,
+                generation,
+                retry_base_seconds=1000.0,
+                retry_cap_seconds=2000.0,
+            )
+        )
+
+        # Give the watcher a moment to reach the blocked-branch backoff wait
+        # (capturing generation and starting the 1000s sleep).
+        await asyncio.sleep(0.05)
+        assert recover_calls == [], "watcher must still be in backoff, not recovered"
+        assert recovery_blocked[channel] is True
+
+        # The wake event is clear and the watcher is sleeping out a 1000s
+        # backoff. Fire the wake and time the recovery.
+        assert not wake.is_set()
+        start = time.monotonic()
+        wake.set()
+
+        # The watcher must proceed to recovery well before the 1000s backoff
+        # elapses -- this is the whole point of the interrupt.
+        for _ in range(500):
+            if recover_calls:
+                break
+            await asyncio.sleep(0.005)
+        elapsed = time.monotonic() - start
+
+        assert recover_calls, "wake must interrupt the backoff and trigger recovery"
+        assert elapsed < 1.0, (
+            f"recovery after wake took {elapsed:.3f}s; expected to interrupt "
+            f"the long backoff materially before the 1000s delay expired"
+        )
+
+        # Clean recovery: generation unchanged during the retry, so the
+        # barrier is released and the watermark can advance again.
+        assert recovery_blocked[channel] is False, (
+            "a clean recovery triggered by the wake must release the barrier"
+        )
+
+        # The wake event was consumed on servicing the retry, so it cannot
+        # re-fire an immediate retry.
+        assert not wake.is_set(), (
+            "the wake event must be consumed after servicing the retry so it "
+            "cannot cause an unbounded run of immediate retries"
+        )
+
+        # No duplicate retry task / no spurious extra recovery: exactly one
+        # recovery attempt ran, and with the barrier cleared the watcher
+        # pauses rather than re-running recovery in a tight loop.
+        await asyncio.sleep(0.05)
+        assert len(recover_calls) == 1, (
+            f"expected exactly one recovery attempt, got {len(recover_calls)}"
+        )
+
+        # Clean shutdown: cancel the watcher so no task is left behind.
+        watcher.cancel()
+        await asyncio.gather(watcher, return_exceptions=True)
+
+    asyncio.run(run())
+
+
+# ------------------------------------------------------------------
+# P1: Telegram recovery-barrier bypass fix -- get_chat() failure must
+# not prevent message processing.
+#
+# The live handler's metadata lookup (event.get_chat()) is now
+# best-effort: if it fails or times out, the handler must still call
+# _handle_live_message so the message enters the durable processing
+# state machine, the recovery barrier is raised on failure, and the
+# watermark semantics remain safe.
+# ------------------------------------------------------------------
+
+
+def test_live_handler_get_chat_success(monkeypatch):
+    """get_chat() succeeds normally -- message is processed and logged with metadata."""
+    from app.adapters.sources.telegram import _handle_live_message
+
+    watermarks = []
+    recovery_blocked = {}
+
+    async def fake_set_watermark(chat_id, message_id):
+        watermarks.append((chat_id, message_id))
+
+    monkeypatch.setattr(
+        telegram.state, "async_set_last_message_id", fake_set_watermark
+    )
+
+    async def fake_process_message(event):
+        return True
+
+    monkeypatch.setattr(telegram, "process_message", fake_process_message)
+
+    class FakeChat:
+        title = "Test Channel"
+
+    class FakeEvent:
+        def __init__(self, event_id, chat_id):
+            self.id = event_id
+            self.chat_id = chat_id
+            self.chat = FakeChat()
+
+    async def run():
+        channel_locks = defaultdict(asyncio.Lock)
+        recovery_blocked[-1020] = False
+        event = FakeEvent(5001, -1020)
+        await _handle_live_message(event, channel_locks, recovery_blocked)
+
+    asyncio.run(run())
+
+    assert watermarks == [(-1020, 5001)]
+    assert recovery_blocked.get(-1020) is False
+
+
+def test_live_handler_get_chat_timeout_still_processes_message(monkeypatch):
+    """get_chat() times out -- message is still processed, barrier raised on failure."""
+    from app.adapters.sources.telegram import _handle_live_message
+
+    watermarks = []
+
+    async def fake_set_watermark(chat_id, message_id):
+        watermarks.append((chat_id, message_id))
+
+    monkeypatch.setattr(
+        telegram.state, "async_set_last_message_id", fake_set_watermark
+    )
+
+    # First call fails (timeout), second call succeeds
+    call_count = {"n": 0}
+
+    async def fake_process_message(event):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return False  # First message fails
+        return True  # Second message succeeds
+
+    monkeypatch.setattr(telegram, "process_message", fake_process_message)
+
+    class FakeEvent:
+        def __init__(self, event_id, chat_id):
+            self.id = event_id
+            self.chat_id = chat_id
+
+    async def run():
+        channel_locks = defaultdict(asyncio.Lock)
+        recovery_blocked = {-1021: False}
+
+        # First message: get_chat() fails, process_message returns False
+        failed_event = FakeEvent(6001, -1021)
+        await _handle_live_message(failed_event, channel_locks, recovery_blocked)
+
+        assert recovery_blocked[-1021] is True
+        assert watermarks == []
+
+        # Second message: get_chat() fails, process_message returns True
+        # Watermark must NOT advance because barrier is raised
+        later_event = FakeEvent(6002, -1021)
+        await _handle_live_message(later_event, channel_locks, recovery_blocked)
+
+        assert recovery_blocked[-1021] is True
+        assert watermarks == []
+
+        # Now clear barrier and process a message that succeeds
+        recovery_blocked[-1021] = False
+        good_event = FakeEvent(6003, -1021)
+        await _handle_live_message(good_event, channel_locks, recovery_blocked)
+
+        assert watermarks == [(-1021, 6003)]
+
+    asyncio.run(run())
+
+
+def test_live_handler_get_chat_exception_still_processes_message(monkeypatch):
+    """get_chat() raises an exception -- message is still processed."""
+    from app.adapters.sources.telegram import _handle_live_message
+
+    watermarks = []
+    recovery_blocked = {}
+
+    async def fake_set_watermark(chat_id, message_id):
+        watermarks.append((chat_id, message_id))
+
+    monkeypatch.setattr(
+        telegram.state, "async_set_last_message_id", fake_set_watermark
+    )
+
+    async def fake_process_message(event):
+        return True
+
+    monkeypatch.setattr(telegram, "process_message", fake_process_message)
+
+    class FakeEvent:
+        def __init__(self, event_id, chat_id):
+            self.id = event_id
+            self.chat_id = chat_id
+
+    async def run():
+        channel_locks = defaultdict(asyncio.Lock)
+        recovery_blocked[-1022] = False
+        event = FakeEvent(7001, -1022)
+        await _handle_live_message(event, channel_locks, recovery_blocked)
+
+    asyncio.run(run())
+
+    assert watermarks == [(-1022, 7001)]
+    assert recovery_blocked.get(-1022) is False
+
+
+def test_live_handler_get_chat_failure_watermark_barrier_safety(monkeypatch):
+    """When get_chat() fails and process_message returns False, the barrier
+    is raised and a later successful message cannot advance the watermark
+    past the failed one."""
+    from app.adapters.sources.telegram import _handle_live_message
+
+    watermarks = []
+
+    async def fake_set_watermark(chat_id, message_id):
+        watermarks.append((chat_id, message_id))
+
+    monkeypatch.setattr(
+        telegram.state, "async_set_last_message_id", fake_set_watermark
+    )
+
+    async def fake_process_message(event):
+        # First message fails, second succeeds
+        return event.id != 8001
+
+    monkeypatch.setattr(telegram, "process_message", fake_process_message)
+
+    class FakeEvent:
+        def __init__(self, event_id, chat_id):
+            self.id = event_id
+            self.chat_id = chat_id
+
+    async def run():
+        channel_locks = defaultdict(asyncio.Lock)
+        recovery_blocked = {-1023: False}
+
+        # Message 8001 fails (get_chat fails, process_message returns False)
+        failed_event = FakeEvent(8001, -1023)
+        await _handle_live_message(failed_event, channel_locks, recovery_blocked)
+
+        assert recovery_blocked[-1023] is True
+        assert watermarks == []
+
+        # Message 8002 succeeds (get_chat fails, process_message returns True)
+        # Watermark must NOT advance past the failed message
+        later_event = FakeEvent(8002, -1023)
+        await _handle_live_message(later_event, channel_locks, recovery_blocked)
+
+        assert recovery_blocked[-1023] is True
+        assert watermarks == []
+
+    asyncio.run(run())
+
+
+def test_live_handler_get_chat_failure_later_message_cannot_skip_failed(monkeypatch):
+    """A later successful message cannot permanently skip an earlier failed
+    message when get_chat() failed for the failed message."""
+    from app.adapters.sources.telegram import _handle_live_message, _recover_channel
+
+    process_results = {9001: False}
+    watermarks = []
+
+    async def fake_get_last_message_id(_channel):
+        return 9000
+
+    monkeypatch.setattr(
+        telegram.state, "get_last_message_id", fake_get_last_message_id
+    )
+
+    async def fake_set_watermark(chat_id, message_id):
+        watermarks.append((chat_id, message_id))
+
+    monkeypatch.setattr(
+        telegram.state, "async_set_last_message_id", fake_set_watermark
+    )
+
+    async def fake_process_message(message):
+        return process_results.get(message.id, True)
+
+    monkeypatch.setattr(telegram, "process_message", fake_process_message)
+
+    class _FakeClient:
+        def __init__(self, messages):
+            self.messages = messages
+
+        async def iter_messages(self, channel, min_id, reverse, limit):
+            for message in self.messages:
+                yield message
+
+    class FakeEvent:
+        def __init__(self, event_id, chat_id):
+            self.id = event_id
+            self.chat_id = chat_id
+
+    messages = [FakeEvent(9001, -1024)]
+
+    async def run():
+        channel_locks = defaultdict(asyncio.Lock)
+        recovery_blocked = {-1024: False}
+
+        # Live message 9001 fails (get_chat fails, process_message returns False)
+        failed_event = FakeEvent(9001, -1024)
+        await _handle_live_message(failed_event, channel_locks, recovery_blocked)
+
+        assert recovery_blocked[-1024] is True
+        assert watermarks == []
+
+        # Live message 9002 succeeds (get_chat fails, process_message returns True)
+        # Barrier is raised, so watermark must not advance
+        later_event = FakeEvent(9002, -1024)
+        await _handle_live_message(later_event, channel_locks, recovery_blocked)
+
+        assert recovery_blocked[-1024] is True
+        assert watermarks == []
+
+        # Now the failure clears - retry recovery from held watermark
+        process_results[9001] = True
+
+        recovered = await _recover_channel(_FakeClient(messages), -1024)
+
+        assert recovered is telegram.RECOVERED_COMPLETE
+        assert watermarks == [(-1024, 9001)], (
+            "retry must walk the held watermark and advance it over "
+            "the previously-failed message"
+        )
+
+    asyncio.run(run())

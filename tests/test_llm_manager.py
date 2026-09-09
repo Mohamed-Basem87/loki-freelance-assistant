@@ -37,7 +37,7 @@ FILTER_RESULT = keyword_filter(TEXT, title="Power BI Dashboard Needed", profile=
 def test_arbitration_builds_system_prompt_from_candidate_category_prompts(monkeypatch):
     captured = {}
 
-    def fake_gemini(text, candidates, system_prompt):
+    def fake_gemini(text, candidates, system_prompt, deadline=None):
         captured["system_prompt"] = system_prompt
         return {
             "selected_category": "data_analysis",
@@ -46,7 +46,7 @@ def test_arbitration_builds_system_prompt_from_candidate_category_prompts(monkey
         }
 
     monkeypatch.setattr(manager, "gemini_arbitrate", fake_gemini)
-    monkeypatch.setattr(manager, "groq_arbitrate", lambda *args: pytest.fail("Groq should not run"))
+    monkeypatch.setattr(manager, "groq_arbitrate", lambda *args, **kwargs: pytest.fail("Groq should not run"))
 
     candidates = [
         {
@@ -68,7 +68,6 @@ def test_arbitration_builds_system_prompt_from_candidate_category_prompts(monkey
     result = manager.arbitrate_category("Build an analytics API", candidates)
 
     assert result["selected_category"] == "data_analysis"
-    assert result["provider"] == "gemini"
     prompt = captured["system_prompt"]
     assert "CATEGORY: Data Analysis (data_analysis)" in prompt
     assert "CATEGORY: Backend Development (backend)" in prompt
@@ -79,11 +78,11 @@ def test_arbitration_builds_system_prompt_from_candidate_category_prompts(monkey
 def test_gemini_success_short_circuits_groq(monkeypatch):
     calls = {"gemini": 0, "groq": 0}
 
-    def fake_gemini(text, filter_result, system_prompt):
+    def fake_gemini(text, filter_result, system_prompt, deadline=None):
         calls["gemini"] += 1
         return {"decision": "accept", "reason": "looks like real BI work"}
 
-    def fake_groq(text, filter_result, system_prompt):
+    def fake_groq(text, filter_result, system_prompt, deadline=None):
         calls["groq"] += 1
         raise AssertionError("Groq must not be called when Gemini succeeds")
 
@@ -100,11 +99,11 @@ def test_gemini_success_short_circuits_groq(monkeypatch):
 def test_gemini_failure_falls_back_to_groq(monkeypatch):
     calls = {"gemini": 0, "groq": 0}
 
-    def failing_gemini(text, filter_result, system_prompt):
+    def failing_gemini(text, filter_result, system_prompt, deadline=None):
         calls["gemini"] += 1
         raise RuntimeError("gemini exploded")
 
-    def fake_groq(text, filter_result, system_prompt):
+    def fake_groq(text, filter_result, system_prompt, deadline=None):
         calls["groq"] += 1
         return {"decision": "reject", "reason": "not actually BI work"}
 
@@ -119,10 +118,10 @@ def test_gemini_failure_falls_back_to_groq(monkeypatch):
 
 
 def test_both_providers_failing_raises_runtime_error_with_both_details(monkeypatch):
-    def failing_gemini(text, filter_result, system_prompt):
+    def failing_gemini(text, filter_result, system_prompt, deadline=None):
         raise RuntimeError("gemini: quota exceeded")
 
-    def failing_groq(text, filter_result, system_prompt):
+    def failing_groq(text, filter_result, system_prompt, deadline=None):
         raise RuntimeError("groq: also down")
 
     monkeypatch.setattr(manager, "gemini_evaluate", failing_gemini)

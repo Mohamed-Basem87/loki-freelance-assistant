@@ -35,13 +35,10 @@ NOTIFICATION_GUARD_API_KEYS = [
 ]
 
 
-# Same rotation strategy as the main Groq LLM subsystem.
-NOTIFICATION_GUARD_MODELS = [
-    "openai/gpt-oss-120b",
-    "qwen/qwen3.6-27b",
-    "openai/gpt-oss-20b",
-    "qwen/qwen3.8-27b",
-]
+# Guard model order is deployment configuration, not orchestration code.
+NOTIFICATION_GUARD_MODELS = tuple(
+    x.strip() for x in os.getenv("GROQ_NOTIFICATION_GUARD_MODELS", os.getenv("GROQ_MODELS", "")).split(",") if x.strip()
+)
 
 NOTIFICATION_GUARD_MAX_RETRIES = int(
     os.getenv(
@@ -49,3 +46,22 @@ NOTIFICATION_GUARD_MAX_RETRIES = int(
         "2",
     )
 )
+
+NOTIFICATION_GUARD_PROVIDERS = tuple(x.strip() for x in os.getenv("NOTIFICATION_GUARD_PROVIDERS", "groq").split(",") if x.strip())
+
+
+def validate():
+    if NOTIFICATION_GUARD_MAX_RETRIES < 1:
+        raise ValueError("GROQ_NOTIFICATION_GUARD_MAX_RETRIES must be >= 1")
+    if NOTIFICATION_GUARD_ENABLED and not NOTIFICATION_GUARD_API_KEYS:
+        raise ValueError("NOTIFICATION_GUARD_ENABLED=true requires GROQ_NOTIFICATION_GUARD_API_KEY")
+    if NOTIFICATION_GUARD_ENABLED and not NOTIFICATION_GUARD_MODELS:
+        raise ValueError("NOTIFICATION_GUARD_ENABLED=true requires GROQ_NOTIFICATION_GUARD_MODELS or GROQ_MODELS")
+    if not NOTIFICATION_GUARD_PROVIDERS:
+        raise ValueError("NOTIFICATION_GUARD_PROVIDERS must contain at least one provider")
+    unknown = sorted(set(x.lower() for x in NOTIFICATION_GUARD_PROVIDERS) - {"groq"})
+    if unknown:
+        raise ValueError(f"NOTIFICATION_GUARD_PROVIDERS contains unknown provider(s): {', '.join(unknown)}")
+
+
+validate()

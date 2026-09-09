@@ -6,6 +6,21 @@ __pycache__/
 **/__pycache__/
 *.py[cod]
 .pytest_cache/
+.github/
+
+# Test / development-only artifacts -- never needed by the runtime image.
+# (scripts/ is CI/dev tooling -- ci_smoke_test.py, test.sh -- and no
+# runtime code imports tests/ or scripts/.)
+tests/
+scripts/
+opencode.json
+
+# Development documentation and licensing text. Not required at runtime
+# (run_guarded.py, app/, config/ and requirements.txt are what the image
+# actually needs).
+*.md
+LICENSE
+requirements-dev.txt
 
 # Secrets — never baked into the image. Mount .env at runtime instead.
 .env

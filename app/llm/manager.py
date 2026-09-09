@@ -1,14 +1,29 @@
 import importlib
 
-from app.llm.gemini import (
-    evaluate_category_arbitration as gemini_arbitrate,
-    evaluate_job as gemini_evaluate,
-)
-from app.llm.groq import (
-    evaluate_category_arbitration as groq_arbitrate,
-    evaluate_job as groq_evaluate,
-)
-from app.llm.utils import truncate_job_text
+# Legacy module-level provider functions remain as compatibility seams for
+# existing tests/extensions. New providers are resolved through registry.py.
+from app.llm import registry as provider_registry
+
+# Compatibility seams are wrappers rather than eager SDK imports. Tests and
+# extensions may still monkeypatch these names, while importing the core does
+# not require every optional provider package.
+def gemini_evaluate(text, filter_result, system_prompt=None, deadline=None):
+    from app.llm.gemini import evaluate_job
+    return evaluate_job(text, filter_result, system_prompt, deadline=deadline)
+
+def gemini_arbitrate(text, candidates, system_prompt=None, deadline=None):
+    from app.llm.gemini import evaluate_category_arbitration
+    return evaluate_category_arbitration(text, candidates, system_prompt, deadline=deadline)
+
+def groq_evaluate(text, filter_result, system_prompt=None, deadline=None):
+    from app.llm.groq import evaluate_job
+    return evaluate_job(text, filter_result, system_prompt, deadline=deadline)
+
+def groq_arbitrate(text, candidates, system_prompt=None, deadline=None):
+    from app.llm.groq import evaluate_category_arbitration
+    return evaluate_category_arbitration(text, candidates, system_prompt, deadline=deadline)
+from app.llm.utils import GENERIC_SYSTEM_PROMPT, truncate_job_text
+from app.runtime_config import LLM_PROVIDERS
 
 
 # Single shared preamble for both arbitration providers (Gemini full-depth
@@ -109,8 +124,12 @@ def build_category_arbitration_system_prompt(candidates: list[dict]) -> str:
         "employment role (\"developer wanted\", \"part-time developer\", "
         "\"ongoing maintenance\"). Select the category that matches the "
         "application domain being developed and maintained (mobile app -> "
-        "mobile_app, website/webapp -> frontend or full_stack, backend/API/"
-        "ERP -> backend).\n\n"
+        "mobile_app, website/webapp -> frontend unless it includes genuinely "
+        "new multi-layer development, which is full_stack, backend/API/ERP -> "
+        "backend). Maintenance-only engagements -- pure bug fixes, monitoring, "
+        "dependency upkeep, or refactoring with no new build work -- are NOT "
+        "build work: never route a web-app maintenance-only engagement to "
+        "full_stack merely because the application is web-based.\n\n"
         "HIRING / EMPLOYMENT POSTS ARE LEADS (user-directed): a posting "
         "that hires, staffs, or employs a practitioner for a role inside an "
         "enabled candidate category -- data analyst, web/app/backend/game/"
@@ -185,51 +204,112 @@ def build_compact_arbitration_system_prompt(candidates: list[dict]) -> str:
 # so a monkeypatch is picked up at call time, not frozen at import time.
 # ---------------------------------------------------------------------------
 
-_EVALUATE_PROVIDERS = [
-    ("gemini", lambda text, filter_result, system_prompt: gemini_evaluate(text, filter_result, system_prompt)),
-    ("groq", lambda text, filter_result, system_prompt: groq_evaluate(text, filter_result, system_prompt)),
-]
-
-# (provider_id, arbitrate_fn, build_prompt_fn, prepare_text_fn). Only Groq
-# currently needs a non-default prompt/text strategy (see
-# build_compact_arbitration_system_prompt's own docstring for why); a
-# provider without special constraints can reuse the full-depth builder
-# and pass its text through unchanged, the same way Gemini does.
-_ARBITRATE_PROVIDERS = [
-    (
-        "gemini",
-        lambda text, candidates, system_prompt: gemini_arbitrate(text, candidates, system_prompt),
-        build_category_arbitration_system_prompt,
-        lambda text: text,
-    ),
-    (
-        "groq",
-        lambda text, candidates, system_prompt: groq_arbitrate(text, candidates, system_prompt),
-        build_compact_arbitration_system_prompt,
-        truncate_job_text,
-    ),
-]
+def _configured_provider_ids() -> tuple[str, ...]:
+    return provider_registry.configured_ids()
 
 
-def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
+def _evaluate_providers():
+    """Build the configured provider chain lazily.
+
+    Gemini/Groq retain their historical bare names so monkeypatching those
+    names in existing tests/extensions is still observed at call time. Any
+    additional provider is resolved by the configuration-driven registry.
+    """
+    def call(provider_id, text, result, prompt, deadline=None):
+        if provider_id == "gemini":
+            return gemini_evaluate(text, result, prompt, deadline=deadline)
+        if provider_id == "groq":
+            return groq_evaluate(text, result, prompt, deadline=deadline)
+        return provider_registry.build(provider_id).evaluate_job(text, result, prompt, deadline=deadline)
+    return [(pid, lambda text, result, prompt, deadline=None, pid=pid: call(pid, text, result, prompt, deadline=deadline))
+            for pid in _configured_provider_ids()]
+
+
+def _arbitration_providers():
+    def call(provider_id, text, candidates, prompt, deadline=None):
+        if provider_id == "gemini":
+            return gemini_arbitrate(text, candidates, prompt, deadline=deadline)
+        if provider_id == "groq":
+            return groq_arbitrate(text, candidates, prompt, deadline=deadline)
+        return provider_registry.build(provider_id).evaluate_category_arbitration(text, candidates, prompt, deadline=deadline)
+
+    builders = {
+        "gemini": (build_category_arbitration_system_prompt, lambda text: text),
+        "groq": (build_compact_arbitration_system_prompt, truncate_job_text),
+    }
+    result = []
+    for pid in _configured_provider_ids():
+        if pid in builders:
+            builder, truncator = builders[pid]
+        else:
+            builder, truncator = build_category_arbitration_system_prompt, lambda text: text
+        result.append((pid, lambda text, candidates, prompt, deadline=None, pid=pid: call(pid, text, candidates, prompt, deadline=deadline), builder, truncator))
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Provider-chain resolution.
+#
+# The chain (which providers to try, in what order) is deliberately NOT
+# frozen into module state at import time. It is resolved lazily on first
+# use and cached, so it never depends on the import ordering of
+# app.runtime_config relative to this module (the risk that motivated
+# "resolve provider config explicitly" -- config read before it had been
+# fully loaded would have silently produced an empty or stale chain).
+# Because app.runtime_config is itself resolved from environment/config
+# once at startup, a process restart is sufficient to apply a changed
+# provider/enabled set: each process resolves its chain fresh on first
+# call.
+#
+# The bare-name references inside _evaluate_providers/_arbitration_providers
+# (gemini_evaluate, groq_evaluate, ...) mean a test/extension that
+# monkeypatches one of those names is picked up at call time, not frozen
+# at import time.
+#
+# These module-level names double as the documented compatibility
+# extension point: a plugin/test may replace the cache with its own list
+# (or a new provider may be registered via app.llm.registry) and the
+# loops below observe it on the next call.
+# ---------------------------------------------------------------------------
+_EVALUATE_PROVIDERS = None
+_ARBITRATE_PROVIDERS = None
+
+
+def get_evaluate_providers():
+    """The configured evaluate provider chain, resolved lazily once."""
+    global _EVALUATE_PROVIDERS
+    if _EVALUATE_PROVIDERS is None:
+        _EVALUATE_PROVIDERS = _evaluate_providers()
+    return _EVALUATE_PROVIDERS
+
+
+def get_arbitrate_providers():
+    """The configured arbitration provider chain, resolved lazily once."""
+    global _ARBITRATE_PROVIDERS
+    if _ARBITRATE_PROVIDERS is None:
+        _ARBITRATE_PROVIDERS = _arbitration_providers()
+    return _ARBITRATE_PROVIDERS
+
+
+def evaluate_job(text: str, filter_result: dict, system_prompt: str = None, deadline=None):
     if system_prompt is None:
-        from app.categories.data_analysis.llm_prompt import SYSTEM_PROMPT
-        system_prompt = SYSTEM_PROMPT
+        system_prompt = GENERIC_SYSTEM_PROMPT
 
+    providers = get_evaluate_providers()
     failures = []
     last_exception = None
 
-    for index, (provider_id, evaluate_fn) in enumerate(_EVALUATE_PROVIDERS):
+    for index, (provider_id, evaluate_fn) in enumerate(providers):
         try:
-            result = evaluate_fn(text, filter_result, system_prompt)
+            result = evaluate_fn(text, filter_result, system_prompt, deadline=deadline)
             result["provider"] = provider_id
             return result
         except Exception as e:
             print(f"{provider_id.capitalize()} failed: {e}")
             failures.append(f"{provider_id}: {e}")
             last_exception = e
-            if index + 1 < len(_EVALUATE_PROVIDERS):
-                next_id = _EVALUATE_PROVIDERS[index + 1][0]
+            if index + 1 < len(providers):
+                next_id = providers[index + 1][0]
                 print(f"Falling back to {next_id.capitalize()}...")
             continue
 
@@ -238,36 +318,37 @@ def evaluate_job(text: str, filter_result: dict, system_prompt: str = None):
     ) from last_exception
 
 
-def arbitrate_category(text: str, candidates: list[dict], system_prompt: str = None):
+def arbitrate_category(text: str, candidates: list[dict], system_prompt: str = None, deadline=None):
     """Make exactly one provider arbitration request for all candidates.
 
-    When no system prompt is supplied, each provider in
-    _ARBITRATE_PROVIDERS builds its own prompt/text via its configured
-    builder (Gemini: full-depth policy from the live category-specific
-    ``llm_prompt.py`` modules, untruncated text; Groq: compact policy
-    from each candidate's registry scope summary, truncated text --
-    Groq rejects oversized requests before inference, so an unmodified
-    fallback can never succeed there). An explicitly supplied system
-    prompt is used verbatim, with unmodified text, on every provider.
+    When no system prompt is supplied, each provider in the arbitration
+    chain builds its own prompt/text via its configured builder (Gemini:
+    full-depth policy from the live category-specific ``llm_prompt.py``
+    modules, untruncated text; Groq: compact policy from each candidate's
+    registry scope summary, truncated text -- Groq rejects oversized
+    requests before inference, so an unmodified fallback can never succeed
+    there). An explicitly supplied system prompt is used verbatim, with
+    unmodified text, on every provider.
     """
+    providers = get_arbitrate_providers()
     failures = []
     last_exception = None
 
-    for index, (provider_id, arbitrate_fn, build_prompt, prepare_text) in enumerate(_ARBITRATE_PROVIDERS):
+    for index, (provider_id, arbitrate_fn, build_prompt, prepare_text) in enumerate(providers):
 
         provider_prompt = system_prompt if system_prompt is not None else build_prompt(candidates)
         provider_text = text if system_prompt is not None else prepare_text(text)
 
         try:
-            result = arbitrate_fn(provider_text, candidates, provider_prompt)
+            result = arbitrate_fn(provider_text, candidates, provider_prompt, deadline=deadline)
             result["provider"] = provider_id
             return result
         except Exception as e:
             print(f"{provider_id.capitalize()} arbitration failed: {e}")
             failures.append(f"{provider_id}: {e}")
             last_exception = e
-            if index + 1 < len(_ARBITRATE_PROVIDERS):
-                next_id = _ARBITRATE_PROVIDERS[index + 1][0]
+            if index + 1 < len(providers):
+                next_id = providers[index + 1][0]
                 print(f"Falling back to {next_id.capitalize()} arbitration...")
             continue
 
