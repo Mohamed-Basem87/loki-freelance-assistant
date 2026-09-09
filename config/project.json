@@ -140,7 +140,7 @@
     {
       "id": "linkedin",
       "adapter": "app.adapters.sources.scraper_file:LinkedInFileJobSource",
-      "poll_interval": 420,
+      "poll_interval": 300,
       "enabled": true,
       "display_name": "LinkedIn",
       "aliases": [
@@ -153,7 +153,7 @@
     {
       "id": "wuzzuf",
       "adapter": "app.adapters.sources.scraper_file:WuzzufFileJobSource",
-      "poll_interval": 420,
+      "poll_interval": 300,
       "enabled": true,
       "display_name": "وظف",
       "aliases": [
