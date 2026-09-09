@@ -3,6 +3,10 @@ import importlib
 import time
 
 from app.notification_guard import config as guard_config
+from app.notification_guard.config import (
+    MAX_GUARD_TEXT_CHARS,
+    MAX_GUARD_TITLE_CHARS,
+)
 from app.runtime_config import RUNTIME
 GroqNotificationGuard = None  # legacy monkeypatch seam; resolved lazily
 from app.notification_guard import registry as provider_registry
@@ -70,6 +74,23 @@ def get_guard_providers():
     return _GUARD_PROVIDERS
 
 
+def _bound_guard_input(title: str, description: str):
+    """Cap the title/description that reach any guard provider.
+
+    A stored job description can sit at the scraper's full 200K chars,
+    which exceeds every guard model's request payload (Groq returns a
+    deterministic HTTP 413 "Request too large"). Bounding here, at the
+    single choke point every evaluation path (allow / decide) flows
+    through, makes that failure mode impossible instead of retryable.
+    Keeps the head of the text, matching app.classification._bounded_input.
+    """
+    if description is not None and len(description) > MAX_GUARD_TEXT_CHARS:
+        description = description[:MAX_GUARD_TEXT_CHARS]
+    if title is not None and len(title) > MAX_GUARD_TITLE_CHARS:
+        title = title[:MAX_GUARD_TITLE_CHARS]
+    return title, description
+
+
 def _evaluate_guard(title: str, description: str, system_prompt: str, deadline=None):
     """Try every registered guard provider, first success wins.
 
@@ -85,6 +106,7 @@ def _evaluate_guard(title: str, description: str, system_prompt: str, deadline=N
     Raises RuntimeError, with every provider's failure message joined,
     if every registered provider fails (or none are registered).
     """
+    title, description = _bound_guard_input(title, description)
     providers = get_guard_providers()
     failures = []
     last_exception = None
@@ -126,6 +148,7 @@ def _evaluate_guard_with_category(
     evaluate_with_category). Same fallback/fail behavior as
     _evaluate_guard.
     """
+    title, description = _bound_guard_input(title, description)
     providers = get_guard_providers()
     failures = []
     last_exception = None

@@ -252,6 +252,125 @@ def test_notification_guard_wrapper_is_none_when_disabled(monkeypatch):
     assert result["allowed"] is True
 
 
+class _CapturingGuard(FakeGuard):
+
+    def __init__(self):
+        super().__init__()
+        self.last_title = None
+        self.last_description = None
+
+    def evaluate(self, title, description, system_prompt, deadline=None):
+        self.last_title = title
+        self.last_description = description
+        return super().evaluate(title, description, system_prompt, deadline=deadline)
+
+    def evaluate_with_category(
+        self, title, description, system_prompt, original_category_id, deadline=None
+    ):
+        self.last_title = title
+        self.last_description = description
+        return super().evaluate_with_category(
+            title, description, system_prompt, original_category_id, deadline=deadline
+        )
+
+
+def test_evaluate_bounds_oversized_description_and_title(monkeypatch):
+    """A description/title larger than every model's payload limit must
+    be shrunk before it reaches the provider -- a 200K-char Wuzzuf
+    description would otherwise produce an unrecoverable HTTP 413."""
+    capturing = _CapturingGuard()
+
+    monkeypatch.setattr(
+        guard_module,
+        "_GUARD_PROVIDERS",
+        [(FAKE_ID, lambda: capturing)],
+    )
+
+    allowed, provider_id, model = guard_module._evaluate_guard(
+        "t" * 10_000,
+        "x" * 200_000,
+        "p",
+    )
+
+    assert allowed is True
+    assert provider_id == FAKE_ID
+    assert model == FAKE_MODEL
+    assert len(capturing.last_description) == guard_config.MAX_GUARD_TEXT_CHARS
+    assert len(capturing.last_title) == guard_config.MAX_GUARD_TITLE_CHARS
+
+
+def test_evaluate_with_category_bounds_oversized_input(monkeypatch):
+    capturing = _CapturingGuard()
+
+    monkeypatch.setattr(
+        guard_module,
+        "_GUARD_PROVIDERS",
+        [(FAKE_ID, lambda: capturing)],
+    )
+
+    result = guard_module._evaluate_guard_with_category(
+        "t" * 10_000,
+        "x" * 200_000,
+        "p",
+        "data_analysis",
+    )
+    allowed, resolved_id, provider_id, model = result
+
+    assert allowed is True
+    assert resolved_id == "data_analysis"
+    assert len(capturing.last_description) == guard_config.MAX_GUARD_TEXT_CHARS
+    assert len(capturing.last_title) == guard_config.MAX_GUARD_TITLE_CHARS
+
+
+def test_guard_input_small_inputs_pass_through_unchanged(monkeypatch):
+    capturing = _CapturingGuard()
+
+    monkeypatch.setattr(
+        guard_module,
+        "_GUARD_PROVIDERS",
+        [(FAKE_ID, lambda: capturing)],
+    )
+
+    title, description = "Power BI dashboard", "Build a sales dashboard."
+    allowed, _, _ = guard_module._evaluate_guard(title, description, "p")
+
+    assert allowed is True
+    assert capturing.last_title == title
+    assert capturing.last_description == description
+
+
+def test_notification_guard_decision_bounds_input_end_to_end(monkeypatch):
+    """The production path (resolve_category -> decide -> provider) with
+    a 200K description must hand the provider a bounded payload instead
+    of a deterministic 413."""
+    capturing = _CapturingGuard()
+
+    monkeypatch.setattr(
+        guard_module,
+        "_GUARD_PROVIDERS",
+        [(FAKE_ID, lambda: capturing)],
+    )
+    monkeypatch.setattr(guard_config, "NOTIFICATION_GUARD_ENABLED", True)
+    _disable_db_logging(monkeypatch)
+
+    wrapper = guard_module.NotificationGuard()
+
+    result = asyncio.run(
+        wrapper.decide(
+            {
+                **_JOB,
+                "description": "x" * 200_000,
+            },
+            category_id="data_analysis",
+            original_decision="Accepted",
+        )
+    )
+
+    assert result["allowed"] is True
+    assert capturing.evaluate_with_category_calls == 1
+    assert len(capturing.last_description) == guard_config.MAX_GUARD_TEXT_CHARS
+
+
 def test_adding_a_fallback_provider_needs_no_wrapper_change(monkeypatch):
     """The exact scenario the user wants easy: registering a second
     provider is all it takes -- the wrapper and orchestration already

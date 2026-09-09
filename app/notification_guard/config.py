@@ -50,6 +50,29 @@ NOTIFICATION_GUARD_MAX_RETRIES = int(
 NOTIFICATION_GUARD_PROVIDERS = tuple(x.strip() for x in os.getenv("NOTIFICATION_GUARD_PROVIDERS", "groq").split(",") if x.strip())
 
 
+# Guard input bounding. Wuzzuf descriptions can legitimately sit at the
+# scraper's 200K-char cap, which exceeds every guard model's per-request
+# payload (Groq replies HTTP 413 "Request too large") and makes the
+# provider rotation retry a deterministic failure forever. Bound title
+# and description before they reach any provider, mirroring
+# app.classification._bounded_input: the guard only needs enough text to
+# make a notify/category decision, and a deterministic 413 should never
+# be a retryable error.
+MAX_GUARD_TEXT_CHARS = int(
+    os.getenv(
+        "MAX_GUARD_TEXT_CHARS",
+        "40000",
+    )
+)
+
+MAX_GUARD_TITLE_CHARS = int(
+    os.getenv(
+        "MAX_GUARD_TITLE_CHARS",
+        "2000",
+    )
+)
+
+
 def validate():
     if NOTIFICATION_GUARD_MAX_RETRIES < 1:
         raise ValueError("GROQ_NOTIFICATION_GUARD_MAX_RETRIES must be >= 1")
