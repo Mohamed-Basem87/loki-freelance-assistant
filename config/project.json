@@ -30,7 +30,7 @@
   "sources": [
     {
       "id": "kafiil",
-      "display_name": "كفيل",
+      "display_name": "Kafiil",
       "aliases": [
         "kafiil",
         "كفيل"
@@ -45,7 +45,7 @@
     },
     {
       "id": "mostaql",
-      "display_name": "مستقل",
+      "display_name": "Mostaql",
       "aliases": [
         "mostaql",
         "مستقل"
@@ -53,7 +53,7 @@
     },
     {
       "id": "nafezly",
-      "display_name": "نفذلي",
+      "display_name": "Nafezly",
       "aliases": [
         "nafezly",
         "نفذلي"
@@ -69,7 +69,7 @@
     },
     {
       "id": "wuzzuf",
-      "display_name": "وظف",
+      "display_name": "Wuzzuf",
       "aliases": [
         "wuzzuf",
         "وظف"
