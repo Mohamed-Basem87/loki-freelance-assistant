@@ -5,6 +5,7 @@ receive their dependencies via constructor injection from this root rather
 than constructing their own infrastructure.
 """
 import asyncio
+import os
 import sys
 from functools import partial
 
@@ -19,7 +20,7 @@ from app.parser import get_parser_registry
 from app.routing import queue_for_category
 from app.notification_guard.guard import NotificationGuard
 from app.notification_guard.integration import NotificationGuardIntegration, GuardedNotificationService
-from app.runtime_config import RUNTIME, RECOVERY
+from app.runtime_config import RUNTIME, RECOVERY, BASE_DIR
 
 
 class Runtime:
@@ -123,6 +124,11 @@ def compose():
     from app.adapters.sources.registry import register as register_source_factory
     from app.adapters.sources.freehub import FreeHubApiClient, FreeHubJobSource
     from app.adapters.sources.telegram import TelegramChannelJobSource
+    from app.adapters.sources.scraper_file import (
+        LinkedInFileJobSource,
+        WuzzufFileJobSource,
+        ScraperFileClient,
+    )
     from app.runtime_config import JOB_SOURCES
     import app.freehub as freehub_logic
     from app.config import (
@@ -183,6 +189,18 @@ def compose():
             ),
         )
 
+    def _scraper_file_factory(source_class, **overrides):
+        file_path = overrides.pop("file_path", None)
+        if not file_path:
+            file_path = str(BASE_DIR / "jobs_results.json")
+        elif not os.path.isabs(file_path):
+            file_path = str(BASE_DIR / file_path)
+        client = overrides.pop("client", None) or ScraperFileClient(
+            file_path=file_path,
+            platform=source_class.platform,
+        )
+        return source_class(client=client)
+
     for _cfg in JOB_SOURCES:
         if not _cfg.enabled:
             continue
@@ -191,6 +209,10 @@ def compose():
             register_source_factory(_cfg.id, _freehub_factory)
         elif _adapter is TelegramChannelJobSource:
             register_source_factory(_cfg.id, _telegram_channels_factory)
+        elif _adapter in (LinkedInFileJobSource, WuzzufFileJobSource):
+            register_source_factory(
+                _cfg.id, partial(_scraper_file_factory, _adapter)
+            )
         else:
             raise RuntimeError(
                 f"No composition wiring for job-source adapter {_cfg.adapter!r}"

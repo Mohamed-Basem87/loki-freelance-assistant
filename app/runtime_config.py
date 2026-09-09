@@ -367,7 +367,7 @@ if RUNTIME.notification_backoff_cap_seconds < RUNTIME.notification_backoff_base_
         "notification_backoff_cap_seconds must be >= notification_backoff_base_seconds"
     )
 
-_known_workers = {"telegram", "freehub", "classification_retry", "notification_retry", "user_notifications"}
+_known_workers = {"telegram", "freehub", "classification_retry", "notification_retry", "user_notifications", "linkedin", "wuzzuf"}
 _unknown_workers = sorted(set(RUNTIME.enabled_workers) - _known_workers)
 if _unknown_workers:
     raise ValueError(f"ENABLED_WORKERS contains unknown worker(s): {', '.join(_unknown_workers)}")

@@ -58,6 +58,22 @@
         "nafezly",
         "نفذلي"
       ]
+    },
+    {
+      "id": "linkedin",
+      "display_name": "LinkedIn",
+      "aliases": [
+        "linkedin",
+        "لينكد إن"
+      ]
+    },
+    {
+      "id": "wuzzuf",
+      "display_name": "وظف",
+      "aliases": [
+        "wuzzuf",
+        "وظف"
+      ]
     }
   ],
   "runtime": {
@@ -118,6 +134,32 @@
         "telegram_channels"
       ],
       "settings": {}
+    },
+    {
+      "id": "linkedin",
+      "adapter": "app.adapters.sources.scraper_file:LinkedInFileJobSource",
+      "poll_interval": 420,
+      "enabled": false,
+      "display_name": "LinkedIn",
+      "aliases": [
+        "linkedin"
+      ],
+      "settings": {
+        "file_path": "scraper/jobs_results.json"
+      }
+    },
+    {
+      "id": "wuzzuf",
+      "adapter": "app.adapters.sources.scraper_file:WuzzufFileJobSource",
+      "poll_interval": 420,
+      "enabled": false,
+      "display_name": "وظف",
+      "aliases": [
+        "wuzzuf"
+      ],
+      "settings": {
+        "file_path": "scraper/jobs_results.json"
+      }
     }
   ]
 }
