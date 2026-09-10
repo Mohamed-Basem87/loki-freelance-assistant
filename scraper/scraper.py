@@ -148,6 +148,17 @@ def strip_html_tags(value):
 
     text = str(value)
 
+    # Unescape HTML entities FIRST, before any tag-stripping. Some
+    # sources (confirmed: LinkedIn's own JSON-LD JobPosting.description
+    # field) double-encode - the tags themselves are entity-escaped
+    # ("&lt;ul&gt;&lt;li&gt;..." rather than "<ul><li>..."). Stripping
+    # tags before unescaping finds nothing to strip (there's no literal
+    # "<" yet), and then unescaping afterward resurrects those entities
+    # into real, now-unstripped tags - so raw "<ul><li><strong>" markup
+    # was reaching stored descriptions. Unescaping first guarantees any
+    # entity-encoded tags become real tags in time to be stripped below.
+    text = html_module.unescape(text)
+
     # Remove script/style/noscript blocks WHOLESALE (tag + inner
     # content) before generic tag-stripping below. Otherwise, on a
     # whole-page fallback, the tag-only strip below turns
@@ -167,8 +178,6 @@ def strip_html_tags(value):
         " ",
         text
     )
-
-    text = html_module.unescape(text)
 
     return clean_text(text)
 
@@ -1918,8 +1927,23 @@ def parse_linkedin_detail(
 
         if description_nodes:
 
-            description = clean_text(
-                description_nodes[0].text
+            # NOTE: was `clean_text(description_nodes[0].text)`.
+            # `.text` on a scrapling Selector node only returns that
+            # node's own DIRECT text, not descendant text - and this
+            # markup nests the actual content inside child <p>/<li>/
+            # <strong> tags with no direct text on the matched div
+            # itself. That made `.text` come back as pure whitespace
+            # (confirmed against real captured pages: 11-30 chars of
+            # blank space) even though the real content - thousands
+            # of characters - was sitting one level deeper. This was
+            # silently producing empty descriptions on jobs whose
+            # page/selectors were otherwise working correctly.
+            # `.get_all_text()` walks descendants and got the real
+            # content (3,010 / 5,149 chars on the two confirmed
+            # cases). strip_html_tags() (not just clean_text()) as a
+            # safety net in case any markup slips into the joined text.
+            description = strip_html_tags(
+                description_nodes[0].get_all_text()
             )
 
         # ----------------------------------------------------
@@ -1939,8 +1963,12 @@ def parse_linkedin_detail(
 
         for node in criteria_nodes:
 
+            # Same `.text`-only-grabs-direct-children issue as the
+            # description above - these criteria items nest their
+            # actual label/value text inside child spans, so `.text`
+            # returned blank for every item on the same sampled pages.
             text = clean_text(
-                node.text
+                node.get_all_text()
             )
 
             if text:
