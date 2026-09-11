@@ -2552,26 +2552,32 @@ def build_output_record(job):
 def to_output_schema(jobs):
 
     # Skip jobs whose detail fetch hit a login-wall/blocked response
-    # (see parse_linkedin_detail's DetailBlocked flag). Emitting these
-    # with an empty description would let the app permanently commit
-    # a bad, empty-description classification for that URL -- once
+    # (DetailBlocked) or failed outright for any other reason
+    # (DetailError -- HTTP failure, parse failure, missing job id,
+    # or Wuzzuf structured-description extraction failing). Both
+    # cases leave Description == "". Emitting either with an empty
+    # description would let the app permanently commit a bad,
+    # empty-description classification for that URL -- once
     # process_job() records a terminal decision for a job_uuid, a
-    # later run that gets past the authwall for the same URL will
-    # never be reprocessed. Leaving a blocked job out of this run's
-    # snapshot instead means it is simply retried on the next
-    # scrape, with no wrong data ever recorded in between.
-    skipped = sum(1 for job in jobs if job.get("DetailBlocked"))
+    # later run that succeeds for the same URL will never be
+    # reprocessed. Leaving these out of this run's snapshot instead
+    # means they are simply retried on the next scrape, with no
+    # wrong data ever recorded in between.
+    def _is_failed_detail(job):
+        return bool(job.get("DetailBlocked") or job.get("DetailError"))
+
+    skipped = sum(1 for job in jobs if _is_failed_detail(job))
 
     if skipped:
         print(
-            f"[Output] Skipping {skipped} blocked/authwalled job(s) "
+            f"[Output] Skipping {skipped} failed/blocked detail fetch(es) "
             f"this run; they will be retried on the next scrape."
         )
 
     return [
         build_output_record(job)
         for job in jobs
-        if not job.get("DetailBlocked")
+        if not _is_failed_detail(job)
     ]
 
 
@@ -2734,6 +2740,12 @@ async def unified_job_scraper():
         )
     )
 
+    detail_excluded = sum(
+        1
+        for job in detailed
+        if job.get("DetailBlocked") or job.get("DetailError")
+    )
+
     elapsed = (
         asyncio.get_running_loop()
         .time()
@@ -2772,6 +2784,11 @@ async def unified_job_scraper():
     print(
         f"Detail blocked: "
         f"{detail_blocked} (excluded from output, will retry next run)"
+    )
+
+    print(
+        f"Excluded from output (blocked+errored): "
+        f"{detail_excluded}"
     )
 
     print(
