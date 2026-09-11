@@ -7,10 +7,11 @@ import weakref
 from app.categories.registry import get_category, arbitration_only_categories
 from app.classification import classify_and_select
 from app.llm.manager import arbitrate_category
-from app.dependencies import logger, state, dedup, notifier, router, resolver
+from app.dependencies import logger, state, dedup, notifier, router, resolver, url_shortener
 from app.heartbeat import STATE_RUNNING, sleep_with_beats
 from app.runtime_config import RUNTIME
 from app.timeouts import call_with_timeout
+from app.url_shortener import UrlAlreadyExistsError
 
 
 class ClassificationPendingError(RuntimeError):
@@ -524,6 +525,35 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
     )
 
     if not existing_incomplete:
+        # Unify the project URL through the internal shortener BEFORE the
+        # job row is ever created -- the long URL must never reach the
+        # DB/notification flow on the success path. project_id was
+        # already extracted from the *original* URL above, so re-pointing
+        # job["url"] here does not affect cross-source dedup.
+        #
+        # UrlAlreadyExistsError is an authoritative duplicate signal (the
+        # shortener has seen this exact original URL before), not a
+        # failure -- treat it exactly like the other duplicate-detection
+        # paths in this function (legacy identity match, cross-source
+        # project claim failure): skip silently, no row created, no
+        # exception escapes, so the source still marks the job seen.
+        #
+        # Any other shortener failure is handled per URL_SHORTENER_FAILURE_MODE
+        # inside url_shortener.shorten() itself: fail_open falls back to the
+        # original URL and returns normally; fail_closed raises
+        # UrlShorteningError, which is deliberately NOT caught here -- it
+        # propagates out of process_job() uncaught, so the calling source
+        # worker logs it and does not mark the job seen, causing a natural
+        # retry on the source's next poll (see app.source_worker.SourceWorker.run).
+        try:
+            job["url"] = await url_shortener.shorten(job["url"])
+        except UrlAlreadyExistsError:
+            print(
+                f"[DEDUP] URL for job {job_id!r} was already shortened "
+                "previously -- skipping as duplicate."
+            )
+            return
+
         created = await logger.create_job_if_absent(legacy_job_uuid=legacy_job_uuid, job_uuid=job_uuid, job_id=job_id, source=job["source"], identity_source=identity_source, title=job["title"], description=job["description"], raw_message=job["raw_text"], filter_text=filter_text, company=job.get("company", ""), url=job["url"], filter_result=result, filter_time_ms=filter_time, save=False)
 
         if not created:

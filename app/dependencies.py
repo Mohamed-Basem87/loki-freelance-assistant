@@ -50,8 +50,9 @@ parser = DependencyProxy("parser", allowed={"parse", "resolve", "register"})
 resolver = DependencyProxy("resolver", allowed=None)
 user_messaging = DependencyProxy("user_messaging", allowed={"notify_user"})
 user_renderer = DependencyProxy("user_renderer", allowed={"render_user"})
+url_shortener = DependencyProxy("url_shortener", allowed={"shorten"})
 
-def configure(*, persistence=None, state_store=None, dedup_store=None, notification_service=None, routing=None, parser_registry=None, notification_resolver=None, user_messaging_service=None, user_renderer_service=None):
+def configure(*, persistence=None, state_store=None, dedup_store=None, notification_service=None, routing=None, parser_registry=None, notification_resolver=None, user_messaging_service=None, user_renderer_service=None, url_shortener_service=None):
     """Bind real instances into the proxy slots. Called once by the
     composition root. All proxies must be bound before any worker
     starts."""
@@ -64,3 +65,4 @@ def configure(*, persistence=None, state_store=None, dedup_store=None, notificat
     if notification_resolver is not None: resolver.bind(notification_resolver)
     if user_messaging_service is not None: user_messaging.bind(user_messaging_service)
     if user_renderer_service is not None: user_renderer.bind(user_renderer_service)
+    if url_shortener_service is not None: url_shortener.bind(url_shortener_service)

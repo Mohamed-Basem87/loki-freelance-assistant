@@ -214,3 +214,91 @@ def test_reason_collapse_is_preserved_through_the_pipeline(isolated_workbook):
         f"Jobs sheet, got {logged_reason!r} instead -- this is the "
         f"'Below Gemini Threshold' reason-collapse bug."
     )
+
+
+REJECT_TEXT_WITH_URL = REJECT_TEXT + " https://example.com/project/4242"
+
+
+def test_url_is_shortened_before_the_job_row_is_created(isolated_workbook, monkeypatch):
+    """The stored URL column must be the shortener's output, never the
+    original long URL, and the shortener must be called with the
+    ORIGINAL url (not something already mutated by an earlier step)."""
+    from app import job_processor
+
+    calls = []
+
+    class _FakeShortener:
+        async def shorten(self, url):
+            calls.append(url)
+            return "http://short.test/abc"
+
+    monkeypatch.setattr(job_processor, "url_shortener", _FakeShortener())
+
+    log = isolated_workbook
+    event = FakeEvent(700001, -100444, "Shortener Test", REJECT_TEXT_WITH_URL)
+    asyncio.run(process_message(event))
+
+    assert calls == ["https://example.com/project/4242"]
+
+    job = log.get_last_job()
+    assert job["URL"] == "http://short.test/abc"
+
+
+def test_duplicate_url_skips_job_creation_without_raising(isolated_workbook, monkeypatch):
+    """UrlAlreadyExistsError must be swallowed inside process_job(): no
+    row is created, and (unlike a real failure) nothing propagates out
+    to the caller -- the same shape as the other duplicate-detection
+    skip paths in this function."""
+    from app import job_processor
+    from app.url_shortener import UrlAlreadyExistsError
+
+    class _DuplicateShortener:
+        async def shorten(self, url):
+            raise UrlAlreadyExistsError(url)
+
+    monkeypatch.setattr(job_processor, "url_shortener", _DuplicateShortener())
+
+    log = isolated_workbook
+    jobs_before = log.count_jobs()
+
+    event = FakeEvent(700002, -100444, "Shortener Test", REJECT_TEXT_WITH_URL)
+    asyncio.run(process_message(event))  # must not raise
+
+    assert log.count_jobs() == jobs_before, (
+        "A duplicate-URL signal from the shortener must not create a job row."
+    )
+
+
+def test_fail_closed_shortener_error_leaves_no_row_and_is_not_treated_as_success(
+    isolated_workbook, monkeypatch
+):
+    """A genuine (non-duplicate) shortener failure in fail_closed mode
+    raises UrlShorteningError out of process_job() uncaught -- this is
+    what lets a calling source worker skip mark_seen()/watermark
+    advancement and retry the job on its next poll (see
+    app/source_worker.py). The Telegram entry point, process_message(),
+    catches it like any other processing exception, logs it, and
+    reports failure via its return value rather than re-raising (see
+    app/message_processor.py) -- so this must NOT create a job row and
+    must NOT report success, even though nothing escapes process_message()
+    itself."""
+    from app import job_processor
+    from app.url_shortener import UrlShorteningError
+
+    class _FailClosedShortener:
+        async def shorten(self, url):
+            raise UrlShorteningError("upstream unavailable")
+
+    monkeypatch.setattr(job_processor, "url_shortener", _FailClosedShortener())
+
+    log = isolated_workbook
+    jobs_before = log.count_jobs()
+
+    event = FakeEvent(700003, -100444, "Shortener Test", REJECT_TEXT_WITH_URL)
+    succeeded = asyncio.run(process_message(event))
+
+    assert succeeded is False, (
+        "A fail_closed shortener error must not be reported as a "
+        "successfully processed message."
+    )
+    assert log.count_jobs() == jobs_before

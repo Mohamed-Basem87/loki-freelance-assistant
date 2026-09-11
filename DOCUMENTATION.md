@@ -350,6 +350,73 @@ Future strict-recovery improvements should prefer:
 
 Do not remove the 10-page bound to solve this.
 
+## 6a. URL Shortening
+
+Every project URL is run through an internal shortener service --
+`UrlShortenerService` (`app/url_shortener.py`) -- before its job row is
+ever created, regardless of source. This unifies the URL representation
+across Telegram, FreeHub, and the scraper-file sources into one owned
+short-link format.
+
+### Where it runs
+
+Inside `app.job_processor.process_job()`, immediately before
+`logger.create_job_if_absent(...)`, and only for genuinely new jobs
+(`existing_incomplete` is False). A resumed/retried row never
+re-shortens -- the URL was already resolved on the first pass.
+
+Cross-source project-id extraction (`_extract_project_id()`, used for
+FreeHub/Telegram duplicate detection) runs earlier, against the
+*original* URL, so shortening never affects that dedup path.
+
+### Contract with the shortener service
+
+``` text
+POST {URL_SHORTENER_DOMAIN}{URL_SHORTENER_ENDPOINT}
+body:      {"url": "<original project url>"}
+
+success:   200 {"url": "<shortened url>"}
+duplicate: {URL_SHORTENER_DUPLICATE_STATUS} (default 409) -- this exact
+           original URL was already shortened before
+other:     any other non-2xx, timeout, or malformed body -- a genuine
+           failure
+```
+
+### Duplicate handling
+
+A duplicate-status response (`UrlAlreadyExistsError`) is an
+authoritative "already seen" signal, not a failure. It is always
+treated as a stop, independent of `URL_SHORTENER_FAILURE_MODE`: no job
+row is created and no notification is sent -- the same shape as the
+existing legacy-identity-match and cross-source project-claim skip
+paths already in `process_job()`. The exception is caught locally, so
+the source still marks the job seen and does not retry it.
+
+### Failure handling
+
+Any other shortener failure is governed by `URL_SHORTENER_FAILURE_MODE`,
+toggled purely by that env var (no code change required):
+
+``` text
+fail_open    (default) -- log and fall back to the original URL; the
+                           pipeline continues normally with the long URL.
+fail_closed             -- raise UrlShorteningError, uncaught, out of
+                           process_job(). The calling source worker logs
+                           it and does NOT mark the job seen / advance
+                           its watermark (see app/source_worker.py), so
+                           the job is retried from scratch on that
+                           source's next poll. No new durable "pending"
+                           state is needed for this -- it reuses the
+                           same seen/watermark mechanism FreeHub and
+                           Telegram already rely on for every other
+                           process_job() failure.
+```
+
+### Scope
+
+New jobs only. Existing rows created before this feature keep their
+original long URL; there is no backfill/migration step.
+
 ## 7. Parsing and Normalization
 
 Parsing is source-specific.
