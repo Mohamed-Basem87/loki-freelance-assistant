@@ -26,6 +26,7 @@ import sqlite3
 import time
 
 from app.runtime_config import RUNTIME, SOURCES
+from app.heartbeat import liveness, STATE_ALIVE, STATE_DEAD
 import uuid
 
 
@@ -903,7 +904,7 @@ class DBLogger:
         loop = asyncio.get_running_loop()
 
         try:
-            return await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 loop.run_in_executor(_EXECUTOR, lambda: func(*args, **kwargs)),
                 timeout=_DB_TIMEOUT_SECONDS,
             )
@@ -920,10 +921,23 @@ class DBLogger:
                 "SQLite backend is quarantined; no new DB operation will "
                 "run against it until process restart."
             )
+            # Surface the quarantine to the out-of-process healthcheck via
+            # the same heartbeat file every other worker reports through
+            # (audit finding: the healthcheck's separate sqlite3.connect()
+            # persistence check cannot see this in-process flag at all --
+            # a quarantined worker holds no lock, so that check alone would
+            # keep reporting healthy while the app can no longer persist
+            # anything). Once poisoned, every future call re-raises at the
+            # guard above before ever reaching the success beat below, so
+            # this "dead" report can never be silently overwritten back to
+            # "alive" -- it only clears on process restart.
+            liveness.beat("db_worker", STATE_DEAD)
             raise StuckExecutorError(
                 f"{func_name} did not complete within "
                 f"{_DB_TIMEOUT_SECONDS}s; SQLite backend quarantined."
             ) from None
+        liveness.beat("db_worker", STATE_ALIVE)
+        return result
 
     # ------------------------------------------------------------------
     # Generic row helpers

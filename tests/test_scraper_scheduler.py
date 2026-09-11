@@ -182,3 +182,86 @@ def test_default_registry_skips_scheduler_without_file_sources(monkeypatch):
     registered_ids = {worker_id for worker_id, _ in registry.factories()}
 
     assert "scraper_scheduler" not in registered_ids
+
+
+def test_scheduler_reports_dead_after_sustained_failures(tmp_path):
+    """A scraper that keeps failing must eventually report its worker as
+    dead (not just loop forever printing errors) so healthcheck.py's
+    existing bad-state handling can fail the container -- this is the
+    fix for 'worker liveness confused with source freshness': the loop
+    staying alive forever must not mask LinkedIn/Wuzzuf data going stale.
+    conftest._reset_worker_liveness clears the registry around this test,
+    so there is no need for the _beatless fixture here -- we want the
+    real beats."""
+    from app.heartbeat import liveness
+    from app.scraper_scheduler import CONSECUTIVE_FAILURE_THRESHOLD
+
+    script = tmp_path / "scraper.py"
+    script.write_text("import sys\nsys.exit(1)\n", encoding="utf-8")
+
+    loop = scraper_scheduler_factory(script_path=script, workdir=tmp_path, interval=0.05)
+
+    async def scenario():
+        task = asyncio.create_task(loop())
+        for _ in range(500):
+            entry = liveness.state("scraper_scheduler")
+            if entry and entry["state"] == "dead":
+                break
+            await asyncio.sleep(0.02)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        entry = liveness.state("scraper_scheduler")
+        assert entry is not None
+        assert entry["state"] == "dead"
+
+    asyncio.run(scenario())
+    assert CONSECUTIVE_FAILURE_THRESHOLD >= 1  # sanity: threshold is meaningful
+
+
+def test_scheduler_recovers_to_alive_after_a_successful_run_following_failures(tmp_path):
+    """Once a run succeeds again, the worker must self-heal back to
+    'alive' with no restart required -- sustained failure is reported,
+    not a permanent quarantine."""
+    from app.heartbeat import liveness
+    from app.scraper_scheduler import CONSECUTIVE_FAILURE_THRESHOLD
+
+    script = tmp_path / "scraper.py"
+    state = tmp_path / "state.txt"
+    fail_count = CONSECUTIVE_FAILURE_THRESHOLD
+    script.write_text(
+        "import pathlib, sys\n"
+        f'p = pathlib.Path(r"{state}")\n'
+        "count = int(p.read_text()) if p.exists() else 0\n"
+        "count += 1\n"
+        "p.write_text(str(count))\n"
+        f"if count <= {fail_count}:\n"
+        "    sys.exit(1)\n",
+        encoding="utf-8",
+    )
+
+    loop = scraper_scheduler_factory(script_path=script, workdir=tmp_path, interval=0.05)
+
+    async def scenario():
+        task = asyncio.create_task(loop())
+        # Wait until it goes dead...
+        for _ in range(500):
+            entry = liveness.state("scraper_scheduler")
+            if entry and entry["state"] == "dead":
+                break
+            await asyncio.sleep(0.02)
+        else:
+            pytest.fail("worker never reported dead after sustained failures")
+        # ...then wait until it recovers.
+        for _ in range(500):
+            entry = liveness.state("scraper_scheduler")
+            if entry and entry["state"] == "alive":
+                break
+            await asyncio.sleep(0.02)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        entry = liveness.state("scraper_scheduler")
+        assert entry is not None and entry["state"] == "alive"
+
+    asyncio.run(scenario())

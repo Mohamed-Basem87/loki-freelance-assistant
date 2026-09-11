@@ -79,6 +79,31 @@ _ADAPTER_LIVENESS_IDS = {
     "app.adapters.sources.telegram:TelegramChannelJobSource": "telegram",
 }
 
+# Any job-source adapter under this module is backed by app.scraper_scheduler
+# (a subprocess that refreshes a JSON snapshot on its own cadence) rather
+# than a live network poller. The poller worker (e.g. "linkedin"/"wuzzuf")
+# only proves the snapshot is being *read*; it says nothing about whether
+# the snapshot is still being *refreshed* -- the scraper can fail every
+# run forever (see scraper_scheduler.CONSECUTIVE_FAILURE_THRESHOLD) while
+# the poller keeps calmly re-reading stale data and beating "alive". When
+# any such source is actually running, the scheduler's own liveness key
+# is just as critical as the poller's.
+_SCRAPER_ADAPTER_MODULE_PREFIX = "app.adapters.sources.scraper_file:"
+_SCRAPER_SCHEDULER_WORKER_ID = "scraper_scheduler"
+
+# Persistence workers (app.logger.DBLogger, app.state.StateManager) report
+# their own liveness key only when they have actually run at least once,
+# and only ever move it to "dead" -- once quarantined after a timed-out
+# operation, every later call re-raises before it could beat "alive"
+# again, so "dead" here can only mean "still quarantined". Unlike the
+# critical-worker set above, these are not required to be *present*
+# (a freshly-started process, or one under test, may never have touched
+# the DB/state backend yet) -- only a positive "dead" report fails
+# health. This is deliberately independent of expected_critical_workers:
+# persistence quarantine must fail the container regardless of which
+# ingestion workers happen to be enabled in a given deployment.
+_PERSISTENCE_WORKER_IDS = ("db_worker", "state_worker")
+
 
 def expected_critical_workers(enabled_workers=None, job_sources=None):
     """Resolve the worker liveness keys the healthcheck must require from
@@ -124,6 +149,13 @@ def expected_critical_workers(enabled_workers=None, job_sources=None):
     }
     if "telegram" in enabled_workers:
         critical.add("telegram")
+    if any(
+        cfg.enabled
+        and cfg.id in enabled_workers
+        and cfg.adapter.startswith(_SCRAPER_ADAPTER_MODULE_PREFIX)
+        for cfg in job_sources
+    ):
+        critical.add(_SCRAPER_SCHEDULER_WORKER_ID)
     critical.add("__heartbeat__")
     return critical
 
@@ -309,6 +341,30 @@ def check_worker_runtime_health(
         "age_seconds": round(age, 1),
         "max_age_seconds": max_age_seconds
     }
+
+    # 1.5. A quarantined persistence worker (DB or state) must fail health
+    #    immediately and unconditionally, regardless of critical_workers.
+    #    See app.logger.DBLogger.run / app.state.StateManager.run: once
+    #    either backend is quarantined after a timed-out operation, every
+    #    future call fails closed until process restart, and the app can
+    #    no longer persist anything -- but the separate, out-of-process
+    #    check_persistence_integrity() cannot see this in-process flag: a
+    #    quarantined worker holds no SQLite lock, so that check alone
+    #    would keep passing. Only fires on a positive "dead" report --
+    #    a worker that has simply never run yet (fresh process, or a test
+    #    that never touches the DB/state backend) is not required to be
+    #    present here, unlike the critical-worker check below.
+    if workers:
+        quarantined = [
+            wid for wid in _PERSISTENCE_WORKER_IDS
+            if (workers.get(wid) or {}).get("state") == "dead"
+        ]
+        if quarantined:
+            details["checks"]["persistence_worker_quarantined"] = {
+                "status": "fail",
+                "workers": quarantined,
+            }
+            return UNHEALTHY, details
 
     # 2. Every critical worker must be present and in an acceptable state.
     #    A dead (or silently-missing) critical worker must fail health even

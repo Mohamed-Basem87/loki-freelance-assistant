@@ -26,11 +26,30 @@ import asyncio
 import sys
 from pathlib import Path
 
-from app.heartbeat import sleep_with_beats, STATE_ALIVE
+from app.heartbeat import sleep_with_beats, liveness, STATE_ALIVE, STATE_DEAD
 from app.runtime_config import BASE_DIR
 
 
 WORKER_ID = "scraper_scheduler"
+
+# How many consecutive failed runs (non-zero exit, or a hang killed by
+# the timeout guard) before this worker reports itself "dead" instead of
+# "alive". A single transient failure is a normal, self-healing event --
+# the loop already keeps running and retries next cycle -- so it must
+# stay "alive" (worker liveness is about the loop still turning, not
+# about the last run's outcome). But nothing before this fix ever
+# surfaced *sustained* failure anywhere: the scheduler swallows every
+# exception and loops forever, so a scraper that has been broken for
+# hours (site markup changed, every parse raises) looked identical to a
+# healthy one to both the heartbeat and the container healthcheck --
+# LinkedIn/Wuzzuf data goes stale while the container stays HEALTHY.
+# Crossing this threshold makes that failure visible: healthcheck.py
+# already fails the container when any critical worker reports "dead",
+# so escalating here, without any change to healthcheck.py's core
+# state-checking logic, turns "ingestion has been silently broken for a
+# while" into an actual UNHEALTHY container. It self-heals the moment a
+# run succeeds again -- no restart required.
+CONSECUTIVE_FAILURE_THRESHOLD = 3
 
 # The scraper writes OUTPUT_FILE (`jobs_results.json`) and its
 # seen-state sidecar to CWD, and the FileJobSource config points at
@@ -97,11 +116,37 @@ def scraper_scheduler_factory(
     interval = 300 if interval is None else int(interval)
 
     async def _loop():
+        consecutive_failures = 0
         while True:
+            failed = False
             try:
-                await _run_scraper_once(script_path, workdir)
+                returncode = await _run_scraper_once(script_path, workdir)
+                if returncode != 0:
+                    failed = True
+                    print(
+                        f"[SCRAPER] run exited with code {returncode}; "
+                        "treating as a failed run."
+                    )
             except Exception as exc:  # keep the worker alive across failures
+                failed = True
                 print(f"[SCRAPER] run failed: {type(exc).__name__}: {exc}")
-            await sleep_with_beats(interval, worker_id, state=STATE_ALIVE)
+
+            consecutive_failures = consecutive_failures + 1 if failed else 0
+
+            if consecutive_failures >= CONSECUTIVE_FAILURE_THRESHOLD:
+                if consecutive_failures == CONSECUTIVE_FAILURE_THRESHOLD:
+                    print(
+                        f"[SCRAPER] {consecutive_failures} consecutive failed "
+                        "runs; LinkedIn/Wuzzuf data is now stale. Reporting "
+                        f"worker {worker_id!r} as dead so the container "
+                        "healthcheck stops reporting healthy while ingestion "
+                        "is actually broken."
+                    )
+                loop_state = STATE_DEAD
+            else:
+                loop_state = STATE_ALIVE
+
+            liveness.beat(worker_id, loop_state)
+            await sleep_with_beats(interval, worker_id, state=loop_state)
 
     return _loop
