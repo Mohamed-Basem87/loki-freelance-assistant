@@ -113,7 +113,12 @@ def scraper_scheduler_factory(
     """
     script_path = Path(SCRAPER_SCRIPT if script_path is None else script_path)
     workdir = Path(SCRAPER_WORKDIR if workdir is None else workdir)
-    interval = 300 if interval is None else int(interval)
+    # Keep as a float: sleep_with_beats sleeps for exactly `interval` and
+    # tests drive the loop with sub-second intervals. int() truncated
+    # 0.05 to 0, turning the idle sleep into a busy-spin that starved the
+    # rest of the event loop (and made CI flaky for a /different/ reason:
+    # real subprocess spawn latency ate the tests' wait budgets).
+    interval = 300 if interval is None else float(interval)
 
     async def _loop():
         consecutive_failures = 0
