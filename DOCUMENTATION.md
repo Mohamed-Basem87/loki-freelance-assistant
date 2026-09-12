@@ -1,402 +1,725 @@
-# Loki Freelance Assistant --- Technical Documentation
+# Loki Freelance Assistant
 
-> Authoritative technical reference for the current SQLite/Docker
-> implementation.
+> Technical architecture and operations guide for the current
+> SQLite/Docker implementation of Loki.
 
-## 1. System Overview
+Loki is a resilient freelance-job aggregation and notification system.
+It collects opportunities from multiple sources, converts them into a
+common job model, deduplicates them, classifies them against registered
+categories, arbitrates ambiguous cases when required, and delivers
+durable Telegram notifications to subscribed users.
 
-Loki is a single-process Python application using `asyncio` for
-orchestration and dedicated serialized workers for durable SQLite and
-JSON state operations.
+The system is intentionally designed as a **single-process application**
+with `asyncio`, SQLite, JSON state, bounded workers, and durable
+recovery mechanisms.
 
-The production dependency graph is assembled by `app/composition.py`.
+------------------------------------------------------------------------
 
-The runtime contains:
+## Table of Contents
 
--   source ingestion workers
--   parsing/normalization
--   durable identity and deduplication
--   deterministic category classification
--   one-call LLM arbitration for ambiguous jobs
--   optional Notification Guard
--   fixed-destination notification
--   user subscription routing
--   durable user notification delivery
--   recovery/retry workers
--   heartbeat/liveness and health checks
+1.  [System Overview](#1-system-overview)
+2.  [Runtime Architecture](#2-runtime-architecture)
+3.  [Data Flow](#3-data-flow)
+4.  [Source Ingestion](#4-source-ingestion)
+5.  [Telegram Ingestion and
+    Recovery](#5-telegram-ingestion-and-recovery)
+6.  [FreeHub Ingestion and Recovery](#6-freehub-ingestion-and-recovery)
+7.  [LinkedIn and Wuzzuf Scraper](#7-linkedin-and-wuzzuf-scraper)
+8.  [Parsing, Normalization, and
+    Identity](#8-parsing-normalization-and-identity)
+9.  [Classification Architecture](#9-classification-architecture)
+10. [LLM Subsystem](#10-llm-subsystem)
+11. [Notification Guard](#11-notification-guard)
+12. [Job Processing Pipeline](#12-job-processing-pipeline)
+13. [Users, Categories, and
+    Subscriptions](#13-users-categories-and-subscriptions)
+14. [Notification Routing and
+    Delivery](#14-notification-routing-and-delivery)
+15. [Persistence](#15-persistence)
+16. [Concurrency, Leases, and Race
+    Prevention](#16-concurrency-leases-and-race-prevention)
+17. [Failure and Recovery Model](#17-failure-and-recovery-model)
+18. [Health, Observability, and
+    Deployment](#18-health-observability-and-deployment)
+19. [Testing](#19-testing)
+20. [Adding and Maintaining
+    Categories](#20-adding-and-maintaining-categories)
+21. [Design Decisions and Known
+    Boundaries](#21-design-decisions-and-known-boundaries)
 
-### Runtime flow
+------------------------------------------------------------------------
+
+# 1. System Overview
+
+Loki has two major responsibilities:
+
+1.  **Ingest and evaluate freelance opportunities.**
+2.  **Route accepted opportunities to the correct Telegram
+    destinations.**
+
+Sources are deliberately isolated from downstream processing. A source
+only needs to produce a normalized job candidate; the same processing
+pipeline can then be reused regardless of where the job originated.
+
+``` text
+Telegram source
+      │
+      ▼
+Source ingestion
+      │
+      ▼
+Parse + normalize
+      │
+      ▼
+Stable identity
+      │
+      ▼
+Deduplication / persistence
+      │
+      ▼
+Category classification
+      │
+   ┌──┴──────────┐
+   ▼             ▼
+Confident     Ambiguous
+   │             │
+   ▼             ▼
+Notification   LLM arbitration
+Guard             │
+   │              │
+   └──────┬───────┘
+          ▼
+Notification routing
+      │
+      ├──────────────────────┐
+      ▼                      ▼
+Fixed private           Durable user queue
+notification                 │
+      │                      ▼
+      ▼                Telegram Bot API
+BOT_CHAT_ID                 │
+                             ▼
+                        Subscribers
+
+FreeHub
+  │
+  ▼
+Source ingestion
+  │
+  └──────────────────────────┘
+
+LinkedIn / Wuzzuf
+  │
+  ▼
+Scraper
+  │
+  └──────────────────────────┘
+```
+
+### Core principle
 
 ``` text
 Sources
+   ↓
+Common job model
+   ↓
+One processing pipeline
+   ↓
+One durable decision
+   ↓
+Many notification destinations
+```
+
+The central application boundary is:
+
+``` text
+app.job_processor.process_job()
+```
+
+------------------------------------------------------------------------
+
+# 2. Runtime Architecture
+
+Loki runs as one Python process with several long-lived asynchronous
+activities.
+
+``` text
+Application startup
+      │
+      ├──────────────► Telegram User Bot
+      │
+      ├──────────────► Telegram Source Worker ───┐
+      │                                          │
+      ├──────────────► FreeHub Worker ───────────┤
+      │                                          │
+      ├──────────────► Scraper Scheduler ────────┤
+      │                                          │
+      ├──────────────► Notification Retry Worker │
+      │                                          │
+      └──────────────► User Notification Worker ─┤
+                                                 ▼
+                                          Shared Job Pipeline
+                                                 │
+                                      ┌──────────┴──────────┐
+                                      ▼                     ▼
+                                   SQLite            Persistent State
+                                      ▲                     ▲
+                                      │                     │
+                              Bot / Retry / User      Bot / Sources
+
+Heartbeat / Healthcheck
+      │
+      ├────────► Telegram worker
+      ├────────► FreeHub worker
+      ├────────► Scraper scheduler
+      ├────────► User notification worker
+      ├────────► DB worker
+      └────────► State worker
+```
+
+## Main runtime responsibilities
+
+  -----------------------------------------------------------------------
+  Component                           Responsibility
+  ----------------------------------- -----------------------------------
+  Telegram source worker              Live Telegram ingestion and
+                                      recovery
+
+  FreeHub worker                      Polling and bounded backfill
+
+  Scraper scheduler                   Runs LinkedIn/Wuzzuf scraper and
+                                      maintains snapshot freshness
+
+  Notification retry worker           Recovers durable fixed-destination
+                                      notifications
+
+  User notification worker            Claims and delivers subscriber
+                                      notifications
+
+  Telegram user bot                   Commands, category selection,
+                                      subscriptions
+
+  SQLite worker                       Serialized durable database access
+
+  State manager                       Durable source watermarks and
+                                      source-specific state
+
+  Healthcheck                         Detects stale/dead workers and
+                                      persistence quarantine
+  -----------------------------------------------------------------------
+
+The architecture intentionally keeps these responsibilities separate
+while allowing them to share the same persistence and processing layers.
+
+------------------------------------------------------------------------
+
+# 3. Data Flow
+
+## 3.1 Complete job lifecycle
+
+``` text
+Source
   │
-  ├── Telegram / Telethon
-  └── FreeHub
-        │
-        ▼
-   Source adapters
-        │
-        ▼
- parse + normalize
-        │
-        ▼
- identity + dedup
-        │
-        ▼
- deterministic classification
-        │
-   ┌────┴────┐
-   │         │
-confident  ambiguous
-   │         │
-   │         ▼
-   │    LLM arbitration
-   │         │
-   └────┬────┘
-        ▼
-   final category
-        │
-   ┌────┴──────────────┐
-   ▼                   ▼
-fixed destination   subscriber routing
-                       │
-                       ▼
-                durable user queue
-                       │
-                       ▼
-                 Telegram Bot API
+  ▼
+Parser / normalizer
+  │
+  ▼
+Job processor
+  │
+  ▼
+SQLite identity / dedup check
+  │
+  ├────────────── Duplicate ──────────────► Stop
+  │
+  ▼ New job
+Create durable job
+  │
+  ▼
+Classification
+  │
+  ├────────────── Confident ──────────────┐
+  │                                       │
+  └────────────── Ambiguous ──► LLM ──────┤
+                                          ▼
+                                   Notification Guard
+                                          │
+                                          ▼
+                                  Notification routing
+                                          │
+                                          ▼
+                                Durable user queue
+                                          │
+                                          ▼
+                                   Telegram Bot API
+                                          │
+                              ┌───────────┴───────────┐
+                              ▼                       ▼
+                           Sent / retry          Deactivate
+
+Duplicate jobs return without entering the downstream pipeline.
 ```
 
-## 2. Installation
-
-### Prerequisites
-
--   Python 3.11+
--   Telegram API ID/hash
--   Telethon user account
--   Telegram Bot token
--   Gemini API key(s)
--   Groq API key
--   FreeHub configuration
-
-### Install
-
-``` bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-On Windows PowerShell:
-
-``` powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-Create `.env` from `.env.example`.
-
-### First Telethon login
-
-``` bash
-python run.py
-```
-
-or:
-
-``` bash
-python run_guarded.py
-```
-
-The first login is interactive. The Telethon session is persisted and
-reused.
-
-## 3. Configuration
-
-Configuration is split between `app/config.py`, `app/runtime_config.py`,
-and Notification Guard configuration.
-
-Typical environment variables include:
-
-  ---------------------------------------------------------------------------------------
-  Variable                                Required                Purpose
-  --------------------------------------- ----------------------- -----------------------
-  `API_ID`                                Yes                     Telegram application ID
-
-  `API_HASH`                              Yes                     Telegram application
-                                                                  hash
-
-  `PHONE_NUMBER`                          Yes                     Telethon user-account
-                                                                  phone number
-
-  `BOT_TOKEN`                             Yes                     Telegram Bot API token
-
-  `BOT_CHAT_ID`                           Yes                     Fixed private
-                                                                  notification
-                                                                  destination
-
-  `BOT_CHANNEL_ID`                        No                      Optional public/channel
-                                                                  destination
-
-  `BOT_CHANNEL_CATEGORY_ID`               No                      Category used by the
-                                                                  configured channel
-                                                                  destination
-
-  `GEMINI_API_KEYS`                       Yes                     Comma-separated Gemini
-                                                                  credentials
-
-  `GROQ_API_KEY`                          Yes                     Main Groq fallback
-                                                                  credential
-
-  `TARGET_CHANNEL_IDS`                    Yes                     Monitored Telegram
-                                                                  source channels
-
-  `FREEHUB_USER_ID`                       Yes                     FreeHub account/user
-                                                                  identifier
-
-  `FREEHUB_BASE_URL`                      No                      FreeHub API base URL
-
-  `FREEHUB_POLL_INTERVAL`                 No                      FreeHub polling
-                                                                  interval
-
-  `FREEHUB_PAGE_SIZE`                     No                      FreeHub page size
-
-  `NOTIFICATION_GUARD_ENABLED`            No                      Enables Notification
-                                                                  Guard
-
-  `GROQ_NOTIFICATION_GUARD_API_KEY`       Guard-only              Guard provider
-                                                                  credential
-
-  `GROQ_NOTIFICATION_GUARD_MAX_RETRIES`   No                      Guard retry limit
-  ---------------------------------------------------------------------------------------
-
-The actual accepted configuration surface is defined by the
-runtime/config modules; `.env.example` is the deployment-oriented
-reference.
-
-## 4. Architecture and Module Responsibilities
-
-### 4.1 Composition root
-
-`app/composition.py` owns production dependency construction.
-
-Its responsibilities include:
-
--   constructing repositories
--   constructing state/dedup adapters
--   constructing HTTP transport
--   wiring source factories
--   wiring Telegram ingestion
--   wiring notification transports/sinks
--   wiring Notification Guard
--   wiring the user bot
--   assembling the runtime resource graph
-
-Application services should receive semantic dependencies rather than
-constructing SDK clients themselves.
-
-### 4.2 Ports
-
-`app/ports.py` defines semantic contracts such as:
-
--   `JobSource`
--   `JobRepository`
--   `StateStore`
--   `DedupStore`
--   `NotificationSink`
--   `NotificationTransport`
--   `LLMProvider`
-
-Concrete SDKs and persistence details remain in adapters.
-
-### 4.3 Registries
-
-Registries provide configuration/discovery boundaries for:
-
--   categories
--   sources
--   parsers
--   repositories
--   state/dedup
--   notifications
--   transports
--   LLM providers
--   user-facing surfaces
-
-Registries should remain wiring/discovery mechanisms, not hidden service
-locators.
-
-### 4.4 Compatibility seams
-
-Legacy compatibility entry points remain where existing
-imports/extensions depend on them.
-
-Examples include:
-
--   `app.dependencies.DependencyProxy`
--   module-level LLM/Guard compatibility functions
--   `app.freehub.fetch_projects()`
--   `app.llm.*` compatibility entry points
--   transitional `SQLiteRepository.run()`
-
-These are compatibility boundaries, not the preferred application
-architecture.
-
-## 5. Telegram Ingestion
-
-Telegram ingestion uses a Telethon user account.
-
-The production source is `TelegramChannelJobSource`.
-
-### Responsibilities
-
--   connect/login
--   resolve monitored channels
--   register live handlers
--   perform startup recovery
--   process new messages
--   persist per-channel progress
--   reconnect/recover when required
-
-### Recovery ordering
-
-Registration-before-recovery is intentional:
+## 3.2 State ownership
 
 ``` text
-register live handler
-        │
-        ▼
-recover historical messages
-        │
-        ▼
-release recovery barrier
-        │
-        ▼
-normal live processing
+Job facts
+(classification, notification state)
+          │
+          ▼
+        SQLite
+          │
+    ┌─────┴───────────────┐
+    ▼                     ▼
+Job recovery       Notification recovery
+
+Telegram watermarks
+FreeHub seen state
+Source identity state
+          │
+          ▼
+Persistent JSON state
+          │
+          ▼
+Source recovery
 ```
 
-This prevents a gap between historical recovery and live-event
-registration.
+SQLite is the source of truth for durable job and notification state.
+JSON state is used for source-specific progress that does not belong in
+the job database.
 
-### Recovery barrier
+------------------------------------------------------------------------
 
-Per-channel durable watermarks prevent live processing from advancing
-durable progress beyond unrecovered history.
+# 4. Source Ingestion
 
-### Hard recovery limit
-
-Telegram recovery is capped at:
+Loki currently supports three ingestion families:
 
 ``` text
-2,000 messages per recovery pass
+Telegram channels
+      │
+      ▼
+Telegram adapter
+      │
+      ├─────────────────────┐
+      │                     │
+      ▼                     │
+Common job model ◄──────────┤
+      ▲                     │
+      │                     │
+FreeHub adapter             │
+      │                     │
+      └─────────────────────┘
+
+LinkedIn / Wuzzuf
+      │
+      ▼
+Scraper + file adapter
+      │
+      └──────────────► Common job model
+                              │
+                              ▼
+                        process_job()
 ```
 
-This is intentional.
+The source boundary isolates transport and source-specific quirks from
+classification and notification logic.
 
-A bounded pass must not falsely declare an incompletely recovered
-channel permanently caught up. The recovery state remains retryable.
+### Source characteristics
 
-## 6. FreeHub Ingestion
+-   **Telegram:** event-driven live ingestion plus durable startup
+    recovery.
+-   **FreeHub:** HTTP polling with persisted seen state and bounded
+    recovery.
+-   **LinkedIn/Wuzzuf:** external scraper process producing a curated
+    JSON snapshot.
 
-FreeHub is represented through `FreeHubJobSource` and its HTTP client.
+------------------------------------------------------------------------
 
-The HTTP client is composed behind `HttpTransport`, with
-`AioHttpTransport` providing the current implementation.
+# 5. Telegram Ingestion and Recovery
 
-### Intentional HTTP transport
+Telegram ingestion uses Telethon as a logged-in Telegram user. The Bot
+API is a separate interface used for user interaction and notification
+delivery.
 
-FreeHub currently uses HTTP because that is the configured upstream
-endpoint. Do not treat "replace the client with HTTPS" as an
-application-only fix.
-
-The external HTTP boundary should remain clearly isolated and should be
-upgraded when the upstream supports secure transport.
-
-### Bounded pagination
-
-FreeHub backfill is capped at:
+## 5.1 Startup flow
 
 ``` text
-10 pages
+Application starts
+      │
+      ▼
+Load Telegram watermarks
+      │
+      ▼
+Recover missed messages
+      │
+      ▼
+Process recovered messages
+oldest ─────────────► newest
+      │
+      ▼
+Establish live listener
+      │
+      ▼
+Process new events
+      │
+      ▼
+Persist progress
 ```
 
-This bound is intentional.
-
-### Pagination limitation
-
-FreeHub uses newest-first offset/page pagination. New upstream
-insertions can shift existing projects between page numbers.
-
-Therefore:
+## 5.2 Live message flow
 
 ``` text
-saved page number
-        +
-new upstream insertions
-        =
-possible page-boundary movement
+Telegram
+   │
+   ▼
+Telegram handler
+   │
+   ▼
+Message processor
+   │
+   ▼
+Job processor
+   │
+   ├────────► SQLite identity / processing
+   │
+   └────────► Source state / watermark
+                │
+                ▼
+          Durable progress
 ```
 
-Durable project identity/deduplication protects against duplicates, but
-a pure page-number continuation mechanism cannot provide the same
-guarantee as a stable upstream cursor.
+## 5.3 Recovery
 
-Future strict-recovery improvements should prefer:
-
-1.  stable upstream cursor, if available;
-2.  otherwise bounded overlap around the continuation point plus
-    identity deduplication.
-
-Do not remove the 10-page bound to solve this.
-
-## 7. Parsing and Normalization
-
-Parsing is source-specific.
-
-Current parser adapters include generic, Mostaql, and Nafezly handling.
-
-The parser layer converts source-specific content into the shared job
-representation.
-
-Normalization:
-
--   handles Arabic/English text
--   normalizes whitespace and textual representation
--   prepares consistent input for deterministic classification and LLM
-    review
-
-External job content remains untrusted data.
-
-## 8. Category Profiles and Classification
-
-Category profiles are discovered from `app/categories`.
-
-Current registered profiles:
-
-  Category                   Deterministic   Arbitration
-  ------------------------ --------------- -------------
-  Data Analysis                        Yes           Yes
-  AI/ML Data Science                   Yes           Yes
-  Backend Development                  Yes           Yes
-  Frontend Development                 Yes           Yes
-  Mobile App Development               Yes           Yes
-  Game Development                     Yes           Yes
-  Full Stack Development            **No**       **Yes**
-
-Full Stack is explicitly:
+Telegram recovery uses durable per-channel watermarks.
 
 ``` text
-arbitration_only = true
+persisted watermark
+       ↓
+find messages after watermark
+       ↓
+recover in chronological order
+       ↓
+process through normal pipeline
+       ↓
+advance durable progress
 ```
 
-This is a design decision.
+The recovery pass is intentionally bounded at **2,000 messages**. This
+is a design constraint rather than an accidental pagination limit.
 
-It must not be inserted into deterministic keyword classification.
+A recovery barrier prevents live processing from advancing source
+progress in a way that could bypass older messages still waiting for
+recovery.
 
-### Category package contract
+``` text
+Older messages
+      │
+      ▼
+  Recovery
+      │
+      ├──────────────────┐
+      │                  │
+      ▼                  ▼
+Recovery barrier ◄──── Live events
+      │
+      ▼
+Shared job pipeline
+      │
+      ▼
+Durable watermark
+```
 
-Each category normally supplies:
+The goal is:
+
+> **Never let a newly received event make an older unrecovered message
+> permanently unreachable.**
+
+------------------------------------------------------------------------
+
+# 6. FreeHub Ingestion and Recovery
+
+FreeHub is accessed over HTTP by design.
+
+The worker polls the configured endpoint, converts projects into Loki's
+common job model, and sends them through the same downstream pipeline as
+Telegram jobs.
+
+## 6.1 Polling flow
+
+``` text
+Timer
+  │
+  ▼
+FreeHub HTTP request
+  │
+  ▼
+Parse projects
+  │
+  ▼
+Compare persistent seen state
+  │
+  ▼
+New projects?
+  │
+ ┌┴───────────────┐
+No                Yes
+ │                  │
+ ▼                  ▼
+Persist progress   Convert to common job
+ / sleep              │
+ │                    ▼
+ └──────────────► process_job()
+                      │
+                      ▼
+               Persist seen state
+                      │
+                      ▼
+                    Sleep
+                      │
+                      └────────► Timer
+```
+
+## 6.2 Bounded recovery
+
+FreeHub recovery is intentionally capped at **10 pages per pass**.
+
+``` text
+poll
+ ↓
+continue from persisted pagination state
+ ↓
+fetch page
+ ↓
+process unseen projects
+ ↓
+stop when caught up
+ ↓
+reset continuation state
+```
+
+The cap protects the application from unbounded historical crawling.
+
+Because FreeHub uses page/offset-style pagination, newly inserted
+projects can shift page boundaries. The 10-page bound therefore provides
+bounded backfill, not a mathematical guarantee of historical
+completeness.
+
+That is an upstream pagination constraint and an intentional operating
+boundary.
+
+------------------------------------------------------------------------
+
+# 7. LinkedIn and Wuzzuf Scraper
+
+LinkedIn and Wuzzuf are handled by a separate scraper process.
+
+``` text
+scraper_scheduler
+      │
+      ▼
+Launch scraper subprocess
+      │
+   ┌──┴──────────────┐
+   ▼                 ▼
+LinkedIn           Wuzzuf
+   │                 │
+   └────────┬────────┘
+            ▼
+     Discover listings
+            │
+            ▼
+      Open detail pages
+            │
+            ▼
+   Extract / curate details
+            │
+            ▼
+      Normalize records
+            │
+            ▼
+      jobs_results.json
+            │
+            ▼
+       FileJobSource
+            │
+            ▼
+   Shared Job Pipeline
+```
+
+The scraper is intentionally curated around detail extraction rather
+than treating a search-result card as a complete job.
+
+## Scheduler health
+
+A scraper subprocess can fail while its parent loop remains alive. The
+scheduler therefore tracks consecutive failed runs.
+
+``` text
+Scraper scheduler
+      │
+      ▼
+Run
+      │
+      ▼
+Successful?
+  │         │
+ Yes        No
+  │         │
+  ▼         ▼
+Alive    Failed run
+             │
+             ▼
+      3 consecutive failures?
+          │           │
+         No          Yes
+          │           │
+          ▼           ▼
+      Keep retrying   Dead
+                         │
+                         ▼
+                  Health becomes
+                    unhealthy
+
+A later successful run returns the scheduler to Alive.
+```
+
+This distinguishes:
+
+``` text
+scheduler process is alive
+```
+
+from:
+
+``` text
+scraper data is actually being refreshed
+```
+
+The distinction is surfaced through worker liveness and container
+health.
+
+------------------------------------------------------------------------
+
+# 8. Parsing, Normalization, and Identity
+
+## 8.1 Parsing
+
+Source adapters extract a common set of fields:
+
+``` text
+title
+description
+budget / metadata where available
+URL
+source
+source identifier
+```
+
+## 8.2 Normalization
+
+Normalization prepares text for deterministic matching while preserving
+the original job content for storage and LLM review.
+
+Typical operations include:
+
+-   lowercasing
+-   punctuation/separator normalization
+-   whitespace cleanup
+-   Arabic character normalization
+-   diacritic handling
+-   consistent textual representation
+
+``` text
+Raw source text
+      │
+      ▼
+Parse fields
+      │
+   ┌──┴───────────────┐
+   ▼                  ▼
+Normalize        Original job content
+   │                  │
+   ▼                  └──────► Storage
+Keyword classification
+   │
+   ├──────────────► Positive / supporting evidence
+   │
+   └──────────────► LLM context when required
+```
+
+## 8.3 Stable identity
+
+Jobs from different sources must not be confused with one another, while
+the same opportunity must not be processed repeatedly.
+
+``` text
+Source record
+      │
+      ▼
+Canonical identity inputs
+      │
+      ▼
+Stable job UUID / identity
+      │
+      ▼
+Already known?
+   │           │
+  Yes          No
+   │            │
+   ▼            ▼
+Reuse durable   Create new job
+record
+```
+
+Identity and notification deduplication are separate concerns:
+
+``` text
+job identity
+    ≠
+user notification identity
+```
+
+A single job can therefore be routed to many users without creating
+multiple job records.
+
+------------------------------------------------------------------------
+
+# 9. Classification Architecture
+
+Classification is split into:
+
+1.  **Category definitions**
+2.  **Shared deterministic engine**
+3.  **LLM arbitration for ambiguity**
+
+``` text
+Category registry
+      │
+      ▼
+Category profiles
+      │
+   ┌──┼───────────────┐
+   ▼  ▼               ▼
+Keywords  LLM context  Guard context
+   │          │             │
+   └──────────┼─────────────┘
+              ▼
+      Shared classification engine
+              │
+              ▼
+          Confident?
+          │       │
+         Yes      No
+          │       │
+          ▼       ▼
+     Final category   LLM arbitration
+                           │
+                           ▼
+                     Final category
+```
+
+## Category abstraction
+
+A category typically owns:
 
 ``` text
 profile.py
@@ -405,754 +728,952 @@ llm_prompt.py
 guard_prompt.py
 ```
 
-The shared classifier remains category-agnostic.
-
-### One final category
-
-A job has:
-
--   one final category, or
--   no category.
-
-Users may subscribe to many categories, but a single job is not
-broadcast as multiple categories.
-
-## 9. LLM Subsystem
-
-The LLM subsystem contains:
-
--   provider adapters
--   provider registry
--   manager
--   candidate rotation
--   rate-limit/cooldown tracking
--   response validation
-
-### Arbitration
-
-Ambiguous jobs are reviewed in one arbitration request containing the
-relevant candidate category definitions.
-
-The provider must return one candidate category ID or `none`.
-
-### Provider rotation
-
-Gemini rotates across configured key/model candidates.
-
-Groq uses configured model rotation.
-
-### Cooldown policy
-
-Local cooldown is advisory.
-
-If all candidates are locally cooling down, Loki still attempts them.
-
-Reason:
+The shared infrastructure owns:
 
 ``` text
-local cooldown = estimate
-provider response = authority
+filters
+LLM providers
+LLM rotation
+Guard execution
+persistence
+routing
+delivery
 ```
 
-Waiting for the local timer could cause a valid provider to be skipped
-and a job to be missed.
+This means adding a category does not require cloning core
+infrastructure.
 
-### Deadline behavior
+## Deterministic classification
 
-The review path is bounded by a global deadline so provider rotation
-cannot extend indefinitely.
+The keyword engine uses layered evidence rather than a simple substring
+check.
 
-### Failure policy
-
-If required LLM review cannot complete successfully, classification
-fails closed.
-
-## 10. Notification Guard
-
-The Guard is an optional safety filter for direct deterministic
-acceptance.
+Conceptually:
 
 ``` text
-deterministic acceptance
+Job title + description
+          │
+          ▼
+     Normalization
+          │
+   ┌──────┼──────────────┐
+   ▼      ▼              ▼
+Positive  Supporting   Negative /
+evidence  evidence     reject evidence
+   │      │              │
+   └──────┼──────────────┘
+          ▼
+   Tiered evaluation
+          │
+          ▼
+     Strong enough?
+       │       │
+      Yes      No
+       │       │
+       ▼       ▼
+Category      Reject /
+candidate     ambiguous
+```
+
+The exact thresholds and signals are owned by the category profile.
+
+## One final category
+
+A job receives one final category rather than one category per
+subscription.
+
+``` text
+Job
+ ↓
+candidate evaluation
+ ↓
+one final category
+ ↓
+all users subscribed to that category may receive it
+```
+
+------------------------------------------------------------------------
+
+# 10. LLM Subsystem
+
+LLM infrastructure is shared across classification and other LLM-backed
+decisions.
+
+``` text
+LLM request
+    │
+    ▼
+LLM manager
+    │
+ ┌──┴───────────┐
+ ▼              ▼
+Gemini         Groq
+ │              │
+ ▼              ▼
+Key rotation   Model / key rotation
+ │              │
+ └──────┬───────┘
+        ▼
+Validated result
         │
         ▼
-Notification Guard
-        │
-   ┌────┴────┐
- notify   do_not_notify
+Application decision
 ```
 
-LLM-reviewed jobs do not receive a redundant Guard pass because they
-have already undergone LLM review.
+## Candidate rotation
 
-Guard provider construction is isolated from core classification.
-
-## 11. User Bot and Subscriptions
-
-The user bot uses the Telegram Bot API.
-
-### `/start`
-
--   registers/activates the user
--   exposes enabled categories
--   allows multiple category selections
--   persists subscription preferences
-
-### `/categories`
-
-Allows subscription changes after initial setup.
-
-### `/stop`
-
-Deactivates the user and cancels undelivered queued notifications.
-
-Previously delivered notifications are not removed.
-
-A later `/start` does not replay the cancelled backlog.
-
-### Source preferences
-
-Users may select source preferences in addition to categories.
-
-Empty source preference means all sources.
-
-## 12. User Notification Routing and Delivery
-
-Routing evaluates both:
-
--   category
--   source
-
-for subscriber destinations.
-
-Destination type does not bypass subscription criteria.
-
-### Durable queue
-
-Subscriber notifications are persisted before delivery.
-
-Each `(job, user)` relationship is protected against duplicate queue
-insertion.
-
-### Delivery
-
-Delivery workers use bounded concurrency.
-
-Current defaults:
+The manager tracks provider candidates and cooldowns.
 
 ``` text
-concurrency = 10
-batch size  = 20
-max attempts = 5
+Need LLM decision
+      │
+      ▼
+Build candidate list
+      │
+      ▼
+Candidate available?
+   │            │
+  Yes           No
+   │             │
+   ▼             ▼
+Call provider   Try cooled candidate
+   │             │
+   └──────┬──────┘
+          ▼
+       Success?
+       │      │
+      Yes     No / transient
+       │          │
+       ▼          ▼
+Validate      Record cooldown
+result            │
+       │           └──────► next candidate
+       ▼
+Return decision
 ```
 
-Delivery state is persisted so retries can resume after restart.
+The system intentionally tries all configured candidates when necessary.
+If every candidate is locally marked as cooling down, Loki can still
+attempt them rather than silently dropping a potentially recoverable
+job.
 
-Telegram rate limits are delayed/retried. Unavailable bot chats can
-deactivate the affected user.
+That behavior is deliberate.
 
-## 13. SQLite Database
+## Timeouts and retries
 
-SQLite is the primary durable store.
+Provider SDK/network requests are bounded. The higher-level
+classification/Guard operation also has an orchestration deadline.
+
+The important distinction is:
+
+``` text
+SDK timeout
+    ↓
+bounds the actual external request
+
+outer deadline
+    ↓
+prevents starting additional work after the decision window
+```
+
+Because provider calls may run in worker threads, the outer timeout is
+an orchestration boundary rather than a mechanism for forcibly killing a
+running Python thread.
+
+------------------------------------------------------------------------
+
+# 11. Notification Guard
+
+The Notification Guard is a second decision layer for eligible
+deterministic classifications.
+
+``` text
+Accepted by deterministic classifier
+          │
+          ▼
+     Guard enabled?
+       │       │
+      No      Yes
+       │       │
+       ▼       ▼
+   Continue  Guard LLM
+       │       │
+       │       ▼
+       │     Decision
+       │      │    │
+       │    notify  do_not_notify
+       │      │        │
+       └──────┘        ▼
+          │       Stop notification
+          ▼
+   Persist / route
+```
+
+The Guard is deliberately separate from category classification.
+
+### Guard principles
+
+-   Fail closed when a required Guard decision cannot be safely
+    obtained.
+-   Bound input size.
+-   Validate structured output.
+-   Rotate configured provider candidates.
+-   Persist the decision.
+-   Avoid re-evaluating durable `do_not_notify` decisions unnecessarily.
+
+The Guard does not replace category classification.
+
+------------------------------------------------------------------------
+
+# 12. Job Processing Pipeline
+
+`process_job()` is the central orchestration boundary.
+
+``` text
+Job candidate
+      │
+      ▼
+Normalize / canonicalize
+      │
+      ▼
+Identity
+      │
+      ▼
+Known job?
+   │          │
+Duplicate   New / reprocessable
+   │          │
+   ▼          ▼
+Stop      Persist job
+             │
+             ▼
+Deterministic classification
+             │
+             ▼
+         Ambiguous?
+          │       │
+         Yes      No
+          │        │
+          ▼        ▼
+     LLM arbitration
+          │        │
+          └───┬────┘
+              ▼
+        Selected category
+              │
+              ▼
+      Category assigned?
+         │          │
+        No         Yes
+         │           │
+         ▼           ▼
+ Persist unresolved  Notification Guard
+ / stop                  │
+                         ▼
+                      Notify?
+                    │         │
+                   No        Yes
+                    │         │
+                    ▼         ├────────► Fixed private notification
+               Persist        │
+               decision       └────────► User routing
+                                           │
+                                           ▼
+                                    user_notifications
+```
+
+The key architectural property is that all source-specific jobs converge
+here.
+
+------------------------------------------------------------------------
+
+# 13. Users, Categories, and Subscriptions
+
+The user-facing Telegram bot uses the Telegram Bot API.
+
+Users can subscribe to multiple categories.
+
+``` text
+Telegram user
+      │
+      ▼
+   User Bot
+      │
+      ▼
+Category selector
+      │
+      ▼
+Persist subscriptions
+      │
+      ▼
+SQLite
+
+Category registry
+      │
+      └──────────────► Category selector
+```
+
+## `/start`
+
+``` text
+User
+ │
+ ▼
+/start
+ │
+ ▼
+User Bot
+ │
+ ├────────► Create / update user
+ │
+ └────────► Read enabled categories
+                │
+                ▼
+        Inline category selector
+                │
+                ▼
+        User selects categories
+                │
+                ▼
+       Persist subscriptions
+                │
+                ▼
+              SQLite
+```
+
+## `/categories`
+
+Reopens the same selector using the currently registered categories.
+
+The user does not need to provide a phone number. Telegram user/chat IDs
+are sufficient for subscription identity.
+
+## Subscription model
+
+``` text
+users
+  │
+  ├── user_categories ──> categories
+  │
+  └── user_notifications
+```
+
+A user's category subscriptions determine which jobs are routed to them.
+
+------------------------------------------------------------------------
+
+# 14. Notification Routing and Delivery
+
+Once a job has a final category and is eligible for notification,
+routing converts that decision into durable recipient-specific work.
+
+``` text
+Final category
+      │
+      ▼
+Find active subscribers
+      │
+      ▼
+Create user_notifications
+      │
+      ▼
+Claim pending rows
+      │
+      ▼
+Bounded concurrent delivery
+      │
+      ▼
+Telegram Bot API
+      │
+   ┌──┼───────────────────┐
+   ▼  ▼                   ▼
+Success  RetryAfter     Forbidden
+   │       │               │
+   ▼       ▼               ▼
+ Sent   Rate-limited   Deactivate user
+          retry
+   │
+   └──────────────► Retryable failures
+                         │
+                         ▼
+                    Next attempt
+```
+
+## Durable notification state
+
+Conceptually:
+
+``` text
+Pending
+  │
+  ▼
+Sending
+  │
+ ├──────────────► Sent
+ │
+ ├──────────────► Failed
+ │                   │
+ │                   ▼
+ │             Eligible retry
+ │                   │
+ │                   └────► Sending
+ │
+ └──────────────► Rate Limited
+                         │
+                         ▼
+                   Retry time reached
+                         │
+                         └────► Sending
+```
+
+The `(job, user)` relationship is unique so repeated routing cannot
+create duplicate user notifications for the same job.
+
+## Fixed private destination
+
+The existing fixed private notification path remains separate from
+subscriber routing.
+
+``` text
+accepted job
+   ├──> BOT_CHAT_ID
+   └──> subscribed users
+```
+
+This preserves the original private notification behavior while allowing
+the user-subscription system to scale delivery across categories.
+
+------------------------------------------------------------------------
+
+# 15. Persistence
+
+## 15.1 SQLite
+
+SQLite stores durable application data.
+
+Major logical areas include:
+
+``` text
+USERS
+  │
+  ├──────────────► USER_CATEGORIES ◄────────────── CATEGORIES
+  │
+  └──────────────► USER_NOTIFICATIONS ◄────────── JOBS
+                                      ▲              │
+                                      │              └────► CATEGORIES
+                                      │
+                              NOTIFICATION_GUARD
+                                      │
+                                      ▼
+                                   JOBS
+
+JOBS
+  │
+  └──────────────► NOTIFICATIONS
+                    (fixed destination)
+```
 
 Important logical tables include:
 
-``` text
-jobs
-gemini
-notifications
-errors
-notification_guard
-users
-categories
-user_categories
-user_notifications
-```
+-   `jobs`
+-   `gemini`
+-   `notifications`
+-   `notification_guard`
+-   `errors`
+-   `users`
+-   `categories`
+-   `user_categories`
+-   `user_notifications`
 
-The repository exposes semantic methods to application code.
+## 15.2 Serialized database access
 
-The SQLite adapter owns the underlying serialized DB execution.
-
-### Single-process rule
-
-The database is intentionally single-process:
+The database layer uses a dedicated executor to serialize database
+operations.
 
 ``` text
-one Loki process
-one SQLite file
-one DB worker
+Async workers
+      │
+      ▼
+    DB API
+      │
+      ▼
+Single DB executor
+      │
+      ▼
+   SQLite
 ```
 
-Multiple containers must not share the same database volume.
+This keeps database concurrency predictable while retaining asynchronous
+application behavior.
 
-### Transactional claims
+## 15.3 Persistence quarantine
 
-Claim/state transitions that must be atomic are implemented using SQLite
-transactional semantics rather than application-level "check then
-update" sequences.
-
-## 14. Persistent JSON State
-
-Source watermarks and source-specific state are stored under:
+If a database operation exceeds the configured execution timeout, the
+persistence backend is quarantined rather than allowing an unknown stuck
+worker to continue operating.
 
 ``` text
-database/state.json
+Healthy
+   │
+   ▼
+DB operation exceeds deadline
+   │
+   ▼
+Timeout
+   │
+   ▼
+Quarantined
+   │
+   ├────────► Future operations fail closed
+   │
+   └────────► Process restart
+                    │
+                    ▼
+                 Healthy
 ```
 
-The state implementation provides:
+The same concept applies to the JSON state worker.
 
--   serialized execution
--   atomic file replacement
--   backup/recovery behavior
--   semantic `StateStore` methods
+------------------------------------------------------------------------
 
-The underlying state executor is an infrastructure mechanism and should
-not leak into application code.
+# 16. Concurrency, Leases, and Race Prevention
 
-## 15. Recovery and Failure Semantics
+Loki combines asynchronous workers with durable state.
 
-The system is designed around the principle:
+The important rule is:
 
-> Never mark durable progress past work that has not been safely
-> accounted for.
+> **In-memory concurrency controls improve throughput; durable state
+> controls correctness.**
 
-Important recovery cases include:
-
--   Telegram startup recovery
--   Telegram reconnect/recovery
--   FreeHub bounded backfill
--   notification retries
--   classification retries
--   state corruption recovery
--   persistence worker failures
--   interrupted delivery
-
-### Persistence worker quarantine
-
-A timed-out persistence worker cannot safely be killed in Python.
-
-Therefore a stuck DB/state worker is quarantined rather than replaced
-in-process against the same underlying resource.
-
-The defined safe boundary is process restart.
-
-This prevents two workers from concurrently operating on one SQLite
-connection or one serialized state backend.
-
-## 16. Concurrency and Race Prevention
-
-The runtime uses bounded asynchronous concurrency and explicit
-per-resource synchronization.
-
-Important invariants include:
-
-### Telegram
+## Job-level correctness
 
 ``` text
-register handler
-      before
-recovery
+stable identity
+    +
+atomic deduplication
+    ↓
+one durable job
 ```
 
-and:
+## Notification correctness
 
 ``` text
-live processing cannot advance a channel
-past unrecovered durable history
+unique (job, user)
+    +
+claim/lease state
+    ↓
+one durable delivery decision
 ```
 
-### Notifications
+## Bounded delivery
 
-Live delivery and retry sweeps coordinate around durable notification
-state and per-job/destination synchronization.
+``` text
+Pending queue
+      │
+      ▼
+Claim batch
+      │
+      ▼
+Concurrency semaphore
+      │
+   ┌──┼───────┬─────────┐
+   ▼  ▼       ▼         ▼
+Send Send    Send      Send
+  1    2       3        N
+   │  │       │         │
+   └──┴───────┴─────────┘
+            │
+            ▼
+      Telegram Bot API
+```
 
-### SQLite
+Delivery concurrency is bounded to avoid turning a large queue into an
+uncontrolled Telegram request burst.
 
-All application database mutations go through the serialized repository
-infrastructure.
+------------------------------------------------------------------------
 
-### Shutdown
+# 17. Failure and Recovery Model
 
-The runtime owns resource shutdown and attempts deterministic cleanup
-for:
+Loki generally follows four rules:
 
--   HTTP transport
--   notification transport
--   user bot
--   registered shutdown hooks
+1.  **Persist progress before relying on it for recovery.**
+2.  **Do not mark work complete until the relevant durable operation
+    succeeds.**
+3.  **Retry transient external failures.**
+4.  **Fail closed when correctness cannot be established.**
 
-Shutdown errors are surfaced without preventing the remaining cleanup
-sequence.
+## Recovery map
 
-## 17. Docker Deployment
+``` text
+Failure
+   │
+   ▼
+Failure type
+   │
+   ├── Telegram interruption ─────► Watermark recovery
+   ├── FreeHub interruption ──────► Seen-state / bounded backfill
+   ├── LLM transient failure ─────► Provider rotation
+   ├── Notification failure ──────► Durable retry
+   ├── Process crash ─────────────► Restart + durable state recovery
+   ├── DB/state timeout ──────────► Quarantine + unhealthy
+   └── Scraper repeated failure ──► Dead worker state + unhealthy
+```
 
-Docker deployment must preserve:
+## Restart recovery
 
--   Telethon session
--   SQLite database
+``` text
+Process stops / crashes
+      │
+      ▼
+Container restart
+      │
+   ┌──┼───────────────────────┐
+   ▼  ▼                       ▼
+Load SQLite   Load JSON state   Reset recoverable
+                              notification leases
+   │          │                       │
+   ▼          ▼                       ▼
+Resume jobs  Resume source       Resume notification
+/ notifications progress            work
+      │          │                       │
+      └──────────┴───────────┬───────────┘
+                             ▼
+                       Workers restart
+```
+
+The system is designed so a process restart is a recovery mechanism, not
+a reset of application history.
+
+------------------------------------------------------------------------
+
+# 18. Health, Observability, and Deployment
+
+## 18.1 Worker health
+
+Workers publish liveness state through the shared heartbeat mechanism.
+
+``` text
+Telegram worker ─────────┐
+FreeHub worker ───────────┤
+Scraper Scheduler ────────┤
+User Notifications ───────┤
+DB Worker ────────────────┤
+State Worker ─────────────┘
+             │
+             ▼
+         Heartbeat
+             │
+             ▼
+      External healthcheck
+             │
+             ▼
+   Healthy / Degraded / Unhealthy
+```
+
+Persistence workers are treated specially: they do not need to have run
+before they can be considered healthy, but an explicit quarantined/dead
+state fails health.
+
+Scraper-backed sources also require the scraper scheduler to be healthy
+because a live file poller alone does not prove that fresh scraper data
+exists.
+
+## 18.2 Docker model
+
+``` text
+Host
+  │
+  ▼
+Loki container
+  │
+  ▼
+Python application
+  │
+  ├────────► Telegram
+  ├────────► FreeHub
+  ├────────► Gemini / Groq
+  └────────► Telegram Bot API
+  │
+  ├────────► Persistent SQLite volume
+  └────────► Persistent state / session volume
+
+Docker healthcheck
+  │
+  └──────────────► Loki container
+```
+
+Persistent storage is required for:
+
+-   SQLite
+-   Telegram session data
 -   JSON state
 
-Do not mount one database/state directory into multiple Loki replicas.
+The deployment intentionally remains **single-instance** because SQLite
+and local state are not designed for multiple application replicas
+sharing the same files.
 
-The process model is intentionally:
+------------------------------------------------------------------------
+
+# 19. Testing
+
+The repository contains tests across the major system boundaries.
 
 ``` text
-1 container/process
-1 SQLite DB
-1 JSON state
+Test suite
+   │
+   ├── Parsing / normalization
+   ├── Classification
+   ├── LLM / Guard
+   ├── Telegram recovery
+   ├── FreeHub
+   ├── SQLite / migrations
+   ├── Notifications
+   ├── Subscriptions / routing
+   ├── State recovery
+   ├── Health / worker liveness
+   └── Scraper scheduler
 ```
-
-## 18. Testing
 
 Run:
 
 ``` bash
-./scripts/test.sh
-```
-
-or:
-
-``` bash
-pip install -r requirements.txt
 pytest tests/ -q
 ```
 
-The repository includes tests for:
+The suite emphasizes state transitions and failure behavior rather than
+only happy-path unit tests.
 
--   parser behavior
--   normalization
--   classification
--   category discovery
--   LLM behavior
--   provider rotation
+Provider-dependent tests may require credentials or controlled mocks.
+
+------------------------------------------------------------------------
+
+# 20. Adding and Maintaining Categories
+
+Categories are implemented as profiles rather than separate pipelines.
+
+A category normally provides:
+
+``` text
+app/categories/<category>/
+├── profile.py
+├── keywords.py
+├── llm_prompt.py
+└── guard_prompt.py
+```
+
+Then it is registered centrally.
+
+``` text
+Create category profile
+      │
+      ▼
+Define keywords
+      │
+      ▼
+Define LLM context
+      │
+      ▼
+Define Guard context
+      │
+      ▼
+Register category
+      │
+      ▼
+Add tests
+      │
+      ▼
+Bot selector exposes category
+      │
+      ▼
+Classifier can select category
+      │
+      ▼
+Subscribers can receive category
+```
+
+Do not duplicate shared infrastructure for a new category.
+
+Shared infrastructure includes:
+
+-   deterministic classification machinery
+-   LLM providers
+-   LLM rotation/cooldowns
+-   Notification Guard execution
 -   SQLite persistence
--   migrations
--   identity/deduplication
--   notification state
--   Guard
 -   routing
--   user bot behavior
--   Telegram lifecycle
--   Telegram recovery and recovery caps
--   reconnect behavior
--   FreeHub polling/backfill
--   state recovery
--   message/HTML safety
--   timeouts
--   worker liveness
--   source registry behavior
--   pluggable architecture
+-   Telegram delivery
 
-Live provider tests require credentials.
+The category owns domain knowledge; Loki owns the machinery.
 
-## 19. Troubleshooting
+------------------------------------------------------------------------
 
-### Loki exits because Telegram credentials are missing
+# 21. Design Decisions and Known Boundaries
 
-Verify:
+The following are intentional characteristics of the system.
 
-``` text
-API_ID
-API_HASH
-PHONE_NUMBER
-```
+## Telegram recovery: 2,000 messages
 
-and ensure the Telethon session can be created.
+The recovery pass is deliberately bounded at 2,000 messages to prevent
+unbounded startup work.
 
-### Bot commands work but users receive nothing
+A recovery barrier and durable watermark protect ordering and progress.
 
-Check:
+## FreeHub recovery: 10 pages
 
--   `BOT_TOKEN`
--   user activation
--   category subscriptions
--   source preferences
--   `user_notifications`
--   Telegram Bot API permissions/rate limits
+FreeHub backfill is intentionally capped at 10 pages per recovery pass.
 
-### FreeHub appears to stop recovering
+The limitation is a practical bound around page-based pagination rather
+than an assumption that page numbers are permanent cursors.
 
-Remember:
+## LLM candidate rotation
 
-``` text
-FREEHUB_MAX_BACKFILL_PAGES = 10
-```
+Loki tries configured LLM candidates rather than abandoning a job
+because every candidate is locally marked as cooling down.
 
-is an intentional bound.
+This favors **not missing potentially recoverable classification work**
+over strict adherence to a local cooldown estimate.
 
-Inspect durable continuation and dedup state before changing the bound.
+## FreeHub uses HTTP
 
-### Telegram recovery appears incomplete
+FreeHub is intentionally accessed through its HTTP interface. The source
+boundary isolates this choice from the rest of the application.
 
-A single recovery pass is capped at 2,000 messages by design. Check the
-durable watermark/recovery state and allow subsequent recovery to
-continue.
+## Full Stack is arbitration-only
 
-### All LLM candidates show cooldown
+Full Stack is not a normal classification category.
 
-This does not mean Loki will stop.
+It exists as an arbitration outcome when a job genuinely spans multiple
+technical domains.
 
-The system intentionally attempts all candidates anyway because local
-cooldown state is advisory.
+The system therefore avoids treating Full Stack as an ordinary keyword
+bucket.
 
-### SQLite worker becomes stuck
+## Single-process SQLite architecture
 
-Do not start a replacement worker against the same connection.
-
-The safe recovery boundary is process restart.
-
-## 20. Known Limitations and Engineering Follow-ups
-
-### FreeHub offset pagination
-
-Newest-first page-number pagination is inherently weaker than stable
-cursor pagination. New upstream inserts can move projects across page
-boundaries.
-
-Preferred future solution:
+The application intentionally uses:
 
 ``` text
-stable cursor
+one process
+one SQLite database
+serialized DB access
+persistent local state
 ```
 
-or, if unavailable:
+This is appropriate for the current operating scale and greatly
+simplifies correctness.
+
+It is not a horizontally scalable distributed architecture.
+
+## Bot API vs Telethon
+
+The two Telegram interfaces have different jobs:
 
 ``` text
-bounded overlap + durable identity dedup
+Telethon
+  → source ingestion from channels
+
+Telegram Bot API
+  → user commands
+  → subscriptions
+  → notification delivery
 ```
 
-The 10-page bound remains intentional.
+They intentionally coexist in the same application.
 
-### Compatibility seams
+## Durable state over in-memory state
 
-Some legacy module-level entry points remain for compatibility.
+In-memory locks, semaphores, and cooldowns are performance/concurrency
+mechanisms.
 
-They should not become new application dependencies.
+Durable SQLite/state records are the source of truth for correctness and
+recovery.
 
-### Timestamp representation
+------------------------------------------------------------------------
 
-New durable time fields should prefer UTC-aware timestamps rather than
-naive local `datetime.now()` values.
+# Operational Mental Model
 
-Existing behavior should only be changed with a migration/compatibility
-plan.
+When debugging Loki, follow the data in this order:
 
-### CI workflow duplication
-
-If multiple CI workflows duplicate dependency bootstrap and smoke-test
-logic, keep them synchronized or consolidate common steps into reusable
-workflow components.
-
-### Dependency-injection hygiene
-
-Avoid eager default expressions such as:
-
-``` python
-overrides.pop("api_id", get_api_id())
+``` text
+SOURCE
+  ↓
+PARSE
+  ↓
+NORMALIZE
+  ↓
+IDENTITY
+  ↓
+DEDUP
+  ↓
+CLASSIFY
+  ↓
+ARBITRATE IF NEEDED
+  ↓
+GUARD IF APPLICABLE
+  ↓
+ROUTE
+  ↓
+QUEUE
+  ↓
+DELIVER
+  ↓
+PERSIST RESULT
 ```
 
-because `get_api_id()` executes even when the override exists.
+If a job appears to be missing, identify the **last stage it
+successfully crossed** before investigating anything else.
 
-Prefer explicit lazy resolution.
+For a user notification:
 
-## 21. Maintenance Guidelines
-
-When adding a source:
-
-1.  define the semantic `JobSource`
-2.  isolate upstream SDK/HTTP behavior in an adapter
-3.  expose a stable identity/checkpoint contract
-4.  wire it through the composition root/registry
-5.  add recovery and failure tests
-
-When adding a category:
-
-1.  add a category package
-2.  implement `profile.py`
-3.  implement `keywords.py`
-4.  implement `llm_prompt.py`
-5.  implement `guard_prompt.py`
-6.  decide whether it is deterministic, arbitration-only, or both
-7.  register/discover it
-8.  add classification and routing tests
-
-When adding a notification destination:
-
-1.  keep rendering separate from transport
-2.  preserve durable per-destination state
-3.  make retries idempotent
-4.  route through subscription filters
-5.  test rate-limit and unavailable-destination behavior
-
-When changing persistence:
-
--   preserve transaction boundaries
--   preserve single-process invariants
--   add migration tests
--   test crash/interruption scenarios
--   do not expose raw DB execution primitives to application services
-
-## 22. Design Philosophy
-
-Loki prioritizes:
-
--   correctness over cleverness
--   bounded recovery over unbounded resource usage
--   durable state over in-memory assumptions
--   deterministic classification before probabilistic review
--   one category per job
--   idempotent delivery
--   explicit dependency boundaries
--   recoverability after crashes
--   fail-closed decisions where classification cannot be trusted
--   compatibility without allowing legacy seams to become the new
-    architecture
-
-## 23. License
-
-MIT
-
----
-
-# 24. Abstraction Architecture
-
-`app/composition.py` is the authoritative production composition root.
-
-```text
-validated/runtime configuration
-            │
-            ▼
-      composition root
-            │
-   ┌────────┼────────┐
-   ▼        ▼        ▼
-sources  persistence LLM/Guard
-   │        │        │
-   └────────┼────────┘
-            ▼
-     application services
-            │
-            ▼
-     workers + recovery
-            │
-            ▼
-          runtime
+``` text
+job exists
+  ↓
+final category exists
+  ↓
+Guard allows notification
+  ↓
+user is subscribed
+  ↓
+user_notification row exists
+  ↓
+row is claimable
+  ↓
+Telegram send succeeds
+  ↓
+row becomes Sent
 ```
 
-The application depends on semantic ports. Concrete SDKs, HTTP clients, SQLite execution, and JSON file I/O stay behind adapters.
+That sequence is the fastest way to localize most operational problems.
 
-## Semantic ports
+------------------------------------------------------------------------
 
-### `JobSource`
+## Architecture Summary
 
-Represents a source ingestion adapter such as Telegram channels or FreeHub.
+Loki's architecture can be reduced to five layers:
 
-`identity_source` provides the adapter's fallback identity namespace. A multi-platform adapter may normalize a job to an upstream identity namespace; that upstream identity is not itself a `JobSource` adapter.
+``` text
+1. Sources
+   Telegram · FreeHub · LinkedIn · Wuzzuf
+          │
+          ▼
+2. Processing
+   Parsing · normalization · identity · dedup
+          │
+          ▼
+3. Decisions
+   Deterministic classification · LLM arbitration · Guard
+          │
+          ▼
+4. Delivery
+   Routing · durable queues · Telegram Bot API
 
-### `JobRepository`
-
-Exposes semantic persistence operations used by application services:
-
-- job creation/deduplication
-- job reads and updates
-- audit logging
-- Guard decisions
-- notification recovery
-- subscriber queue operations
-- user/subscription persistence
-
-Application code should use semantic repository methods rather than passing raw repository execution methods around.
-
-### `StateStore`
-
-Owns semantic source state such as:
-
-- Telegram watermarks
-- recovery state
-- FreeHub continuation state
-
-The current JSON implementation uses a serialized blocking executor internally.
-
-### `DedupStore`
-
-Owns durable identity claims and FreeHub-specific seen/pending/continuation state.
-
-Its purpose is to keep ingestion idempotent across:
-
-- multiple source paths
-- retries
-- reconnects
-- process restarts
-
-### `NotificationSink`
-
-Represents a destination-level notification contract.
-
-The notification service treats sinks independently so one failed destination does not erase successful destination state.
-
-### `NotificationTransport`
-
-Represents the concrete outbound transport, such as the Telegram Bot API.
-
-Rendering and transport are intentionally separate.
-
-### `LLMProvider`
-
-Represents an LLM provider implementation behind the LLM manager.
-
-Provider adapters own:
-
-- SDK clients
-- provider exceptions
-- response parsing
-- provider-specific retry semantics
-- key/model rotation
-
-The manager owns cross-provider orchestration and deadlines.
-
-## Source abstraction
-
-### Telegram
-
-Telegram preserves:
-
-- registration-before-recovery
-- per-channel recovery barriers
-- durable watermarks
-- bounded 2,000-message recovery passes
-- bounded recovery retry
-
-### FreeHub
-
-FreeHub preserves:
-
-- HTTP adapter isolation
-- 10-page bounded backfill
-- durable seen/continuation state
-
-FreeHub page-number continuation is an upstream pagination limitation. A stable cursor or bounded overlap would be preferable if strict no-gap historical recovery becomes a requirement.
-
-## Category abstraction
-
-`app/categories/registry.py` discovers category packages and distinguishes:
-
-```text
-enabled
-deterministic
-arbitration-only
+5. Reliability
+   SQLite · state · retries · leases · health
+   │
+   └──── supports ingestion, processing,
+         decisions, and delivery
 ```
 
-Current policy:
-
-```text
-Data Analysis          deterministic + arbitration
-AI/ML Data Science     deterministic + arbitration
-Backend Development    deterministic + arbitration
-Frontend Development   deterministic + arbitration
-Mobile App Development deterministic + arbitration
-Game Development       deterministic + arbitration
-Full Stack Development arbitration-only
-```
-
-Full Stack must not be inserted into deterministic keyword classification.
-
-## LLM and Guard abstraction
-
-Provider SDKs, exceptions, prompt details, and provider-specific mechanics stay inside adapters.
-
-LLM candidate rotation intentionally attempts locally cooled candidates when necessary because local cooldown state is advisory.
-
-The Notification Guard is independently composed and category-aware.
-
-## Notification abstraction
-
-Notification architecture separates:
-
-```text
-routing
-   ↓
-rendering
-   ↓
-sink semantics
-   ↓
-transport
-```
-
-Notification state is persisted per destination/sink where required.
-
-User routing applies both category and source filters.
-
-## Startup and worker abstraction
-
-There is one production startup sequence in `app/startup.py` and one production worker registry in `app/workers.py`.
-
-The runtime owns resource shutdown.
-
-## Compatibility boundaries
-
-Legacy compatibility mechanisms remain only where existing callers/extensions depend on them, including:
-
-- `app.dependencies.DependencyProxy`
-- module-level LLM/Guard functions
-- `app.freehub.fetch_projects()`
-- `app.llm.*` entry points
-- transitional `SQLiteRepository.run()`
-
-These are compatibility boundaries, not the preferred application API.
-
-## Architectural rules
-
-1. New application behavior should depend on semantic ports.
-2. Concrete SDK clients belong in adapters/composition.
-3. Infrastructure state machines must remain durable where correctness depends on them.
-4. Do not introduce unbounded recovery.
-5. Do not introduce multi-process SQLite access.
-6. Do not turn Full Stack into deterministic classification.
-7. Do not change the intentional Telegram 2,000-message bound.
-8. Do not change the intentional FreeHub 10-page bound.
-9. Do not make local LLM cooldown state authoritative.
-10. Preserve idempotency and crash recovery before optimizing throughput.
-
----
-
-# 25. Current Engineering Follow-ups
-
-These are known considerations for future maintenance; they are not reasons to rewrite the current architecture.
-
-### FreeHub offset pagination
-
-Newest-first page-number pagination is inherently weaker than stable cursor pagination. New upstream inserts can move projects across page boundaries.
-
-Preferred future solution:
-
-```text
-stable cursor
-```
-
-or, if unavailable:
-
-```text
-bounded overlap + durable identity dedup
-```
-
-The 10-page bound remains intentional.
-
-### Dependency-injection hygiene
-
-Avoid eager expressions such as:
-
-```python
-overrides.pop("api_id", get_api_id())
-```
-
-because `get_api_id()` executes even when the override exists.
-
-Prefer explicit lazy resolution.
-
-### Time representation
-
-New durable time fields should prefer UTC-aware timestamps rather than naive local `datetime.now()` values.
-
-### CI maintenance
-
-If multiple CI workflows duplicate dependency bootstrap and smoke-test logic, keep them synchronized or consolidate common steps into reusable workflow components.
+The result is a source-independent pipeline where ingestion,
+decision-making, and delivery can evolve independently while durable
+state preserves correctness across retries, failures, and restarts.
