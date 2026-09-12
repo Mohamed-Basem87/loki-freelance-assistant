@@ -147,4 +147,26 @@ def _reset_llm_rate_limit_cooldowns():
     """
     rate_limit_tracker.clear()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_worker_liveness():
+    """app.heartbeat.liveness is process-lifetime, in-memory, global state
+    by design (see its own module docstring) -- the running bot's
+    healthcheck depends on exactly one shared registry, snapshotted into
+    the heartbeat file. Across a test session that means any test which
+    exercises real code beating a worker id (e.g. app.logger.DBLogger.run
+    / app.state.StateManager.run reporting "db_worker"/"state_worker" dead
+    after a real timed-out-operation test) leaves that state sitting in
+    the registry for every later test that calls write_heartbeat() or
+    otherwise reads the shared registry -- including tests with no
+    relationship to DB/state timeouts at all. Clearing before *and* after
+    each test keeps that state from ever leaking across test boundaries.
+    """
+    from app.heartbeat import liveness as _liveness
+    with _liveness._lock:
+        _liveness._states.clear()
+    yield
+    with _liveness._lock:
+        _liveness._states.clear()
     rate_limit_tracker.clear()

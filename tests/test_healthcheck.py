@@ -164,6 +164,10 @@ def test_worker_runtime_health_fails_when_heartbeat_missing(tmp_paths):
 
 
 def test_worker_runtime_health_passes_for_a_fresh_heartbeat(tmp_paths):
+    """A freshly-written heartbeat, with nothing beaten yet, hits the
+    legacy/no-worker-data fallback path (empty registry -> {} snapshot)
+    and is healthy. See _reset_worker_liveness in conftest.py for why
+    this is deterministic regardless of what other tests do."""
     _, _, heartbeat_path = tmp_paths
     write_heartbeat(path=heartbeat_path)
     state, _ = healthcheck.check_worker_runtime_health(heartbeat_path, max_age_seconds=90)
@@ -256,7 +260,7 @@ def test_fresh_alive_worker_with_recent_beat_is_healthy(tmp_paths):
     tick_monotonic = 1_000_000.0
     _write_worker_snapshot(
         heartbeat_path,
-        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "__heartbeat__": "alive"},
+        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "scraper_scheduler": "alive", "__heartbeat__": "alive"},
         tick_monotonic=tick_monotonic,
         last_beat=tick_monotonic - 2,
     )
@@ -274,7 +278,7 @@ def test_stale_alive_worker_fails_even_with_fresh_global_heartbeat(tmp_paths):
     tick_monotonic = 1_000_000.0
     _write_worker_snapshot(
         heartbeat_path,
-        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "__heartbeat__": "alive"},
+        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "scraper_scheduler": "alive", "__heartbeat__": "alive"},
         tick_monotonic=tick_monotonic,
         last_beat=tick_monotonic - 200,
         per_worker_beats={
@@ -298,7 +302,7 @@ def test_staleness_is_measured_relative_to_snapshot_not_wall_clock(tmp_paths):
     tick_monotonic = 1_000_000.0
     _write_worker_snapshot(
         heartbeat_path,
-        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "__heartbeat__": "alive"},
+        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "scraper_scheduler": "alive", "__heartbeat__": "alive"},
         tick_monotonic=tick_monotonic,
         last_beat=tick_monotonic - 30,
     )
@@ -322,7 +326,7 @@ def test_reconnecting_worker_is_exempt_from_staleness(tmp_paths):
     tick_monotonic = 1_000_000.0
     _write_worker_snapshot(
         heartbeat_path,
-        {"telegram": "reconnecting", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "__heartbeat__": "alive"},
+        {"telegram": "reconnecting", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "scraper_scheduler": "alive", "__heartbeat__": "alive"},
         tick_monotonic=tick_monotonic,
         last_beat=tick_monotonic - 1,
         per_worker_beats={"telegram": tick_monotonic - 200},
@@ -342,7 +346,7 @@ def test_shutting_down_worker_does_not_create_false_alarm(tmp_paths):
     _, _, heartbeat_path = tmp_paths
     _write_worker_snapshot(
         heartbeat_path,
-        {"telegram": "shutdown", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "__heartbeat__": "alive"},
+        {"telegram": "shutdown", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "scraper_scheduler": "alive", "__heartbeat__": "alive"},
     )
     state, _ = healthcheck.check_worker_runtime_health(heartbeat_path, max_age_seconds=90)
     assert state == healthcheck.HEALTHY
@@ -373,7 +377,7 @@ def test_staleness_check_is_skipped_for_legacy_payloads(tmp_paths):
     _, _, heartbeat_path = tmp_paths
     _write_worker_snapshot(
         heartbeat_path,
-        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "__heartbeat__": "alive"},
+        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "scraper_scheduler": "alive", "__heartbeat__": "alive"},
     )  # no tick_monotonic key
     state, _ = healthcheck.check_worker_runtime_health(
         heartbeat_path, max_age_seconds=90, worker_stale_after_seconds=45
@@ -412,7 +416,7 @@ def test_telegram_reconnecting_is_healthy(tmp_paths):
     _, _, heartbeat_path = tmp_paths
     _write_worker_snapshot(
         heartbeat_path,
-        {"telegram": "reconnecting", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "__heartbeat__": "alive"},
+        {"telegram": "reconnecting", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "scraper_scheduler": "alive", "__heartbeat__": "alive"},
     )
     state, _ = healthcheck.check_worker_runtime_health(heartbeat_path, max_age_seconds=90)
     # Reconnecting should be DEGRADED, not HEALTHY
@@ -423,7 +427,7 @@ def test_telegram_alive_plus_heartbeat_is_healthy(tmp_paths):
     _, _, heartbeat_path = tmp_paths
     _write_worker_snapshot(
         heartbeat_path,
-        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "__heartbeat__": "alive"},
+        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "scraper_scheduler": "alive", "__heartbeat__": "alive"},
     )
     state, _ = healthcheck.check_worker_runtime_health(heartbeat_path, max_age_seconds=90)
     assert state == healthcheck.HEALTHY
@@ -450,7 +454,7 @@ def test_freehub_stale_alive_worker_fails_health(tmp_paths):
     tick_monotonic = 1_000_000.0
     _write_worker_snapshot(
         heartbeat_path,
-        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "__heartbeat__": "alive"},
+        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "scraper_scheduler": "alive", "__heartbeat__": "alive"},
         tick_monotonic=tick_monotonic,
         last_beat=tick_monotonic - 2,
         per_worker_beats={"freehub": tick_monotonic - 200},
@@ -499,10 +503,71 @@ _DEFAULT_WORKERS = {
 def test_expected_critical_workers_matches_the_standard_deployment_default():
     """With the default configuration the derived set must be exactly the
     deployed ingestion workers plus the heartbeat beat -- matching the
-    historical hardcoded set, so an unmodified deployment behaves identically."""
+    historical hardcoded set, so an unmodified deployment behaves
+    identically. linkedin/wuzzuf are scraper-file-backed sources, so the
+    scraper_scheduler worker that keeps their snapshot fresh must also be
+    required (see _SCRAPER_ADAPTER_MODULE_PREFIX)."""
     assert healthcheck.expected_critical_workers() == {
-        "telegram", "freehub", "linkedin", "wuzzuf", "__heartbeat__",
+        "telegram", "freehub", "linkedin", "wuzzuf",
+        "scraper_scheduler", "__heartbeat__",
     }
+
+
+def test_expected_critical_workers_requires_scraper_scheduler_only_when_a_scraper_source_is_enabled():
+    """A deployment with no scraper-file-backed source enabled must not
+    require the scraper_scheduler worker -- it never runs, so requiring
+    it would fail an otherwise-healthy deployment."""
+    result = healthcheck.expected_critical_workers(
+        enabled_workers={"telegram", "freehub"},
+        job_sources=[_FREEHUB_CFG, _TG_CHANNELS_CFG],
+    )
+    assert "scraper_scheduler" not in result
+
+    linkedin_cfg = _cfg(
+        "linkedin", "app.adapters.sources.scraper_file:LinkedInFileJobSource"
+    )
+    result = healthcheck.expected_critical_workers(
+        enabled_workers={"telegram", "linkedin"},
+        job_sources=[_TG_CHANNELS_CFG, linkedin_cfg],
+    )
+    assert "scraper_scheduler" in result
+
+
+def test_persistence_worker_quarantine_fails_health_even_when_not_a_critical_worker(tmp_paths):
+    """A quarantined DB/state worker must fail health immediately and
+    unconditionally, regardless of expected_critical_workers -- this is
+    the exact 'quarantine invisible to healthcheck' gap: the worker holds
+    no SQLite lock, so check_persistence_integrity's separate
+    out-of-process check alone would keep passing."""
+    _, _, heartbeat_path = tmp_paths
+    _write_worker_snapshot(
+        heartbeat_path,
+        {"freehub": "alive", "__heartbeat__": "alive", "db_worker": "dead"},
+    )
+    state, details = healthcheck.check_worker_runtime_health(
+        heartbeat_path,
+        max_age_seconds=90,
+        critical_workers={"freehub", "__heartbeat__"},
+    )
+    assert state == healthcheck.UNHEALTHY
+    assert details["checks"]["persistence_worker_quarantined"]["workers"] == ["db_worker"]
+
+
+def test_persistence_worker_absent_is_not_a_failure(tmp_paths):
+    """A persistence worker that has simply never run yet (fresh process)
+    must not be treated as a failure -- only a positive 'dead' report
+    counts, unlike the critical-worker presence check."""
+    _, _, heartbeat_path = tmp_paths
+    _write_worker_snapshot(
+        heartbeat_path,
+        {"freehub": "alive", "__heartbeat__": "alive"},
+    )
+    state, _ = healthcheck.check_worker_runtime_health(
+        heartbeat_path,
+        max_age_seconds=90,
+        critical_workers={"freehub", "__heartbeat__"},
+    )
+    assert state == healthcheck.HEALTHY
 
 
 def test_expected_critical_workers_maps_telegram_channel_source_to_its_liveness_key():
@@ -559,7 +624,7 @@ def test_disabling_telegram_worker_drops_telegram_from_the_critical_set(tmp_path
     _, _, heartbeat_path = tmp_paths
     _write_worker_snapshot(
         heartbeat_path,
-        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "__heartbeat__": "alive"},
+        {"telegram": "alive", "freehub": "alive", "linkedin": "alive", "wuzzuf": "alive", "scraper_scheduler": "alive", "__heartbeat__": "alive"},
     )
     healthcheck.check_worker_runtime_health(
         heartbeat_path,

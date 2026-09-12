@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from app.runtime_config import RUNTIME
+from app.heartbeat import liveness, STATE_ALIVE, STATE_DEAD
 
 
 STATE_FILE = Path(RUNTIME.state_file_path)
@@ -181,7 +182,7 @@ class StateManager:
         loop = asyncio.get_running_loop()
 
         try:
-            return await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 loop.run_in_executor(_EXECUTOR, lambda: func(*args, **kwargs)),
                 timeout=_STATE_TIMEOUT_SECONDS,
             )
@@ -197,10 +198,17 @@ class StateManager:
                 "The worker thread cannot be killed safely, so the shared "
                 "state backend is quarantined until process restart."
             )
+            # Same reporting seam as app.logger.DBLogger.run -- see its
+            # comment. Once poisoned every future call re-raises at the
+            # guard above before reaching the success beat below, so this
+            # can never be silently overwritten back to "alive".
+            liveness.beat("state_worker", STATE_DEAD)
             raise StuckExecutorError(
                 f"{func_name} did not complete within "
                 f"{_STATE_TIMEOUT_SECONDS}s; state backend quarantined."
             ) from None
+        liveness.beat("state_worker", STATE_ALIVE)
+        return result
 
     def get_last_message_id(self, channel_id):
         return int(self.data.get(str(channel_id), 0))
