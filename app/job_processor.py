@@ -525,35 +525,23 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
     )
 
     if not existing_incomplete:
-        # Unify the project URL through the internal shortener BEFORE the
-        # job row is ever created -- the long URL must never reach the
-        # DB/notification flow on the success path. project_id was
-        # already extracted from the *original* URL above, so re-pointing
-        # job["url"] here does not affect cross-source dedup.
+        # Create the durable job row FIRST, with the original (long) URL;
+        # shortening then runs after as a best-effort follow-up (below).
+        # job_uuid -- derived only from identity_source + job_id -- is the
+        # authoritative dedup key, never the URL, so this ordering is safe:
+        # genuine duplicates are still caught by the atomic create plus the
+        # legacy/cross-source checks above.
         #
-        # UrlAlreadyExistsError is an authoritative duplicate signal (the
-        # shortener has seen this exact original URL before), not a
-        # failure -- treat it exactly like the other duplicate-detection
-        # paths in this function (legacy identity match, cross-source
-        # project claim failure): skip silently, no row created, no
-        # exception escapes, so the source still marks the job seen.
-        #
-        # Any other shortener failure is handled per URL_SHORTENER_FAILURE_MODE
-        # inside url_shortener.shorten() itself: fail_open falls back to the
-        # original URL and returns normally; fail_closed raises
-        # UrlShorteningError, which is deliberately NOT caught here -- it
-        # propagates out of process_job() uncaught, so the calling source
-        # worker logs it and does not mark the job seen, causing a natural
-        # retry on the source's next poll (see app.source_worker.SourceWorker.run).
-        try:
-            job["url"] = await url_shortener.shorten(job["url"])
-        except UrlAlreadyExistsError:
-            print(
-                f"[DEDUP] URL for job {job_id!r} was already shortened "
-                "previously -- skipping as duplicate."
-            )
-            return
-
+        # Ordering is the crash-safety invariant: the shortener keeps its
+        # own independent "have I seen this URL" memory that is not
+        # transactional with Loki's database. If the process died between a
+        # successful shorten() and the create, the next poll would re-shorten
+        # the same URL, receive the duplicate signal, and silently drop a
+        # genuinely new job with no row ever written. Creating the row first
+        # means a crash can never orphan a job -- the long URL is already
+        # durable, and shortening only enriches the stored URL afterwards.
+        # project_id was already extracted from the *original* URL above, so
+        # cross-source dedup is unaffected either way.
         created = await logger.create_job_if_absent(legacy_job_uuid=legacy_job_uuid, job_uuid=job_uuid, job_id=job_id, source=job["source"], identity_source=identity_source, title=job["title"], description=job["description"], raw_message=job["raw_text"], filter_text=filter_text, company=job.get("company", ""), url=job["url"], filter_result=result, filter_time_ms=filter_time, save=False)
 
         if not created:
@@ -568,6 +556,34 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
                 elif existing.get("Final Decision"):
                     return
             return
+
+        # Best-effort URL shortening, now that the row is durably committed.
+        # Because job_uuid already proved this is a genuinely new job, the
+        # shortener's "already shortened" signal (UrlAlreadyExistsError) is
+        # NOT a reason to drop the job anymore -- it just means the upstream
+        # store already has this URL, so the row keeps its original URL (the
+        # same fallback fail_open would produce). A crash between the create
+        # and this update is likewise harmless: the job survives with the
+        # long URL.
+        #
+        # Any other failure follows URL_SHORTENER_FAILURE_MODE inside
+        # url_shortener.shorten(): fail_open returns the original URL and the
+        # no-op guard below skips the rewrite; fail_closed raises
+        # UrlShorteningError, deliberately NOT caught here, so the source
+        # worker leaves the job un-seen and it resumes from this durable row
+        # on the next poll instead of being lost (see app.source_worker.
+        # SourceWorker.run).
+        try:
+            shortened = await url_shortener.shorten(job["url"])
+        except UrlAlreadyExistsError:
+            print(
+                f"[URL] Job {job_id!r} uses a URL already shortened "
+                "upstream -- keeping the original URL."
+            )
+        else:
+            if shortened and shortened != job["url"]:
+                await logger.update_job(job_uuid, url=shortened, save=True)
+                job["url"] = shortened
 
     # Claim the canonical project ID after the durable job row has
     # been created. The claim itself is atomic inside StateManager's

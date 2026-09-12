@@ -219,10 +219,14 @@ def test_reason_collapse_is_preserved_through_the_pipeline(isolated_workbook):
 REJECT_TEXT_WITH_URL = REJECT_TEXT + " https://example.com/project/4242"
 
 
-def test_url_is_shortened_before_the_job_row_is_created(isolated_workbook, monkeypatch):
-    """The stored URL column must be the shortener's output, never the
-    original long URL, and the shortener must be called with the
-    ORIGINAL url (not something already mutated by an earlier step)."""
+def test_url_is_shortened_after_row_creation_and_row_is_updated(isolated_workbook, monkeypatch):
+    """The row is created FIRST with the ORIGINAL long URL; shortening is
+    a best-effort follow-up that rewrites the stored URL. The shortener
+    must be called with the original url (not something already mutated),
+    and when shorten() runs the row must already exist -- that durable-row-
+    first ordering is what makes the feature crash-safe (a process death
+    between the create and the shorten leaves the job intact with the long
+    URL instead of silently losing it)."""
     from app import job_processor
 
     calls = []
@@ -230,6 +234,14 @@ def test_url_is_shortened_before_the_job_row_is_created(isolated_workbook, monke
     class _FakeShortener:
         async def shorten(self, url):
             calls.append(url)
+            job = log.get_last_job()
+            assert job is not None, (
+                "the job row must already exist before shortening runs"
+            )
+            assert job["URL"] == url, (
+                "the row must still hold the original long URL when "
+                "shortening runs"
+            )
             return "http://short.test/abc"
 
     monkeypatch.setattr(job_processor, "url_shortener", _FakeShortener())
@@ -244,11 +256,13 @@ def test_url_is_shortened_before_the_job_row_is_created(isolated_workbook, monke
     assert job["URL"] == "http://short.test/abc"
 
 
-def test_duplicate_url_skips_job_creation_without_raising(isolated_workbook, monkeypatch):
-    """UrlAlreadyExistsError must be swallowed inside process_job(): no
-    row is created, and (unlike a real failure) nothing propagates out
-    to the caller -- the same shape as the other duplicate-detection
-    skip paths in this function."""
+def test_duplicate_url_signal_no_longer_drops_the_job(isolated_workbook, monkeypatch):
+    """A 'already shortened' signal from the shortener is no longer
+    treated as a duplicate job. The row is created from job_uuid dedup
+    (identity_source + job_id) BEFORE the shortener is consulted, so a
+    duplicate-status response just leaves the row holding its original
+    long URL and the job proceeds normally -- it must not be silently
+    dropped, and nothing may escape to the caller."""
     from app import job_processor
     from app.url_shortener import UrlAlreadyExistsError
 
@@ -264,24 +278,29 @@ def test_duplicate_url_skips_job_creation_without_raising(isolated_workbook, mon
     event = FakeEvent(700002, -100444, "Shortener Test", REJECT_TEXT_WITH_URL)
     asyncio.run(process_message(event))  # must not raise
 
-    assert log.count_jobs() == jobs_before, (
-        "A duplicate-URL signal from the shortener must not create a job row."
+    assert log.count_jobs() == jobs_before + 1, (
+        "A duplicate-URL signal from the shortener must not drop the job: "
+        "its row was already created from job_uuid dedup and must survive."
+    )
+    job = log.get_last_job()
+    assert job["URL"] == "https://example.com/project/4242", (
+        "The row must keep its original URL when the shortener reports "
+        "the URL as already shortened."
     )
 
 
-def test_fail_closed_shortener_error_leaves_no_row_and_is_not_treated_as_success(
+def test_fail_closed_shortener_error_is_reported_failed_but_keeps_the_row(
     isolated_workbook, monkeypatch
 ):
     """A genuine (non-duplicate) shortener failure in fail_closed mode
-    raises UrlShorteningError out of process_job() uncaught -- this is
-    what lets a calling source worker skip mark_seen()/watermark
-    advancement and retry the job on its next poll (see
-    app/source_worker.py). The Telegram entry point, process_message(),
-    catches it like any other processing exception, logs it, and
-    reports failure via its return value rather than re-raising (see
-    app/message_processor.py) -- so this must NOT create a job row and
-    must NOT report success, even though nothing escapes process_message()
-    itself."""
+    still raises UrlShorteningError so the source worker skips
+    mark_seen()/watermark advancement and retries the job (see
+    app/source_worker.py). But because the durable row is created FIRST,
+    that retry is now crash-safe: it resumes the existing row (which keeps
+    the original URL) instead of re-shortening the same URL into a
+    permanent duplicate-drop. process_message() catches the error, logs it,
+    and reports failure via its return value (see app/message_processor.py).
+    The job row must still exist."""
     from app import job_processor
     from app.url_shortener import UrlShorteningError
 
@@ -301,4 +320,9 @@ def test_fail_closed_shortener_error_leaves_no_row_and_is_not_treated_as_success
         "A fail_closed shortener error must not be reported as a "
         "successfully processed message."
     )
-    assert log.count_jobs() == jobs_before
+    assert log.count_jobs() == jobs_before + 1, (
+        "The row must exist even when fail_closed raises -- a crash or a "
+        "retry must resume it, never lose it."
+    )
+    job = log.get_last_job()
+    assert job["URL"] == "https://example.com/project/4242"
