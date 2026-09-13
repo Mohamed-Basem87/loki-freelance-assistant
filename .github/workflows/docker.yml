@@ -82,6 +82,8 @@ jobs:
           API_ID: "10000000"
           API_HASH: "test-api-hash-not-a-real-secret"
           PHONE_NUMBER: "+10000000000"
+          URL_SHORTENER_DOMAIN: "http://test-shortener.invalid"
+          URL_SHORTENER_ENDPOINT: "/shorten"
         run: python scripts/ci_smoke_test.py
 
   build-and-push:
