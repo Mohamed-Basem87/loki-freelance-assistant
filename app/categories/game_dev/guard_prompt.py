@@ -29,6 +29,16 @@ development, such as:
 - VR/AR game development
 - Game scripting (Blueprint, GDScript, etc.)
 
+SERVER / MINIGAME DEPLOYMENT IS IN SCOPE (2026-09-13 run 1):
+Setting up, configuring, and stabilizing a game server for a specific
+game mode -- e.g. a Minecraft Paper/Spigot server for an FFA minigame,
+with world/game-mode config, plugin installation and tuning, and
+stability fixes -- is game deployment/configuration work within this
+category's scope (see "Game publishing and deployment" above) and
+MUST be approved. Do not reject merely because the word "server
+setup" or "configure" appears. Pure general-purpose VPS/hosting
+administration with no game deliverable stays rejected.
+
 ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
 A posting that engages a developer on a recurring/part-time/month-to-month
 basis to develop, maintain, and evolve an existing game -- adding features,

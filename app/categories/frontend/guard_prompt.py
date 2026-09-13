@@ -36,6 +36,59 @@ product-entry push you to do_not_notify an otherwise genuine
 site/store build, and do not let the word "setup" alone make an
 otherwise purely-configuration task look like development.
 
+HARD RULE AGAINST MISSED IN-SCOPE BUILDS (2026-09-13 run 1):
+The following were wrongly suppressed in run 1 and MUST be approved
+whenever the actual work is as described below:
+
+- Single-page WordPress page edits that involve real refinement (layout,
+  color palette, copy, forms, sliders, responsive fixes) -- editing and
+  polishing ONE page of an existing site is development, not hosting/
+  administration, as long as code-level or configuration-level changes
+  to the page itself are requested ("refine this page", "makeover",
+  "tweak the layout and colors", "add a form or slider").
+- Custom integration syncs built in code between store platforms and
+  third-party systems (e.g. Shopify <-> Lightspeed inventory sync,
+  M-Paisa/Stripe/local payment-gateway wiring with custom checkout or
+  order flow). Building the integration is development even when the
+  word "sync"/"integration" appears; do not treat it as the platform-
+  configuration class (Google Merchant Center feed, marketplace account
+  linking, inventory reporting) that stays rejected.
+- Landing pages / marketing pages where the post requests design AND
+  implementation (e.g. Arabic "تصميم وتنفيذ لاندنج بيج") -- approving
+  the deliverable web page. Only PURE design (mockup/wireframe/figma
+  only, no implementation) is rejected.
+- Fixing a specific interactive feature/flow in an existing web app
+  (e.g. step-based booking buttons that must advance the checkout
+  funnel) -- bug-fix/feature development, not operational maintenance.
+- Custom product-import pipelines: importing a very large catalog via
+  custom mapping, cleansing, or scripted import logic (six-figure
+  budget, platform-agnostic). Distinguish from MANUAL product entry /
+  copy-paste population, which stays rejected.
+- Deploying AND finishing the remaining development of an already-built
+  site ("deploy and finish this built static site") -- finishing the
+  build (remaining pages, responsiveness, wiring) is development. Only
+  pure deploy with no development remaining stays rejected.
+- Clean/generic full web-development builds with a terse or abstract
+  title ("Clean Web Development Build") -- a brief spec without stack
+  detail is still a build; do not reject for terseness.
+- Full web applications delivered with a UI on server-side stacks
+  (Laravel + MySQL admin/CRUD interfaces, etc.) -- a working web app
+  with pages/UI is frontend/web development, not the "pure backend/API
+  with no website deliverable" rejection class.
+- Arabic store builds from scratch (e.g. "تصميم متجر إلكتروني احترافي
+  من الصفر على منصة سلة") -- a from-scratch store/site build on any
+  CMS is development and must be approved; "من الصفر"/"from scratch"
+  makes the build intent explicit.
+
+The following remain SUPPRESSED (do not newly approve these classes):
+pure hosting/server setup, migration-only, theme-install/theme-
+configuration-only, setup-only store gigs (no build or customization),
+manual product entry even in bulk, pure deployment with no remaining
+development, SEO/link-building/banner-ads-management/rank-guarantee
+spam, brand-identity/logo/design-only deliverables, product 3D-model
+renders, and any marketing-funnel or page only "for SEO" without a
+build deliverable.
+
 Approve only when the actual work requested is primarily building,
 developing, redesigning, or meaningfully customizing a website or web
 application, such as:

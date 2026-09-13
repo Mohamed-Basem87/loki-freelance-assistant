@@ -225,8 +225,17 @@ POSITIVE_KEYWORDS = {
             # FNs: 1857/2425/2991 (company/corp sites), 1405 (tourism).
             "تصميم وتطوير موقع": 7,
             "تطوير مواقع": 6,
+            # Arabic singular 'develop a website' (2026-09-13 run 1): the
+            # plural-only 'تطوير مواقع' cannot match 'تطوير موقع'. run-1
+            # siblings 18897/18903 'تطوير موقع ويب' (both rejected; 18903
+            # scoped to website development) now route to frontend.
+            "تطوير موقع": 7,
             "تصميم مواقع": 6,
             "مطور مواقع": 6,
+            # Arabic 'website designer' (2026-09-13 run 1): singular
+            # 'مصمم مواقع' was uncovered -> run-1 siblings 18575/18577
+            # 'مصمم مواقع لتجديد موقع' (website renewal) silently rejected.
+            "مصمم مواقع": 6,
             "web developer": 7,
             "web development": 7,
             "web designer": 6,
@@ -288,6 +297,17 @@ POSITIVE_KEYWORDS = {
             # 'منصة ويب' phrase, NOT bare منصة (high collateral).
             "منصة ويب": 8,
             "منصت ويب": 8,
+            # Arabic 'web app' (2026-09-13 run 1): sibling pair 18596/18600
+            # 'تطبيق ويب لإدارة الاشتراكات الشهرية لمطعم' (subscription
+            # SaaS web app) only reached mobile_app supporting (8 < 12) and
+            # rejected. Mirrors منصة ويب: CORE here AND in backend so a web
+            # app produces two direct matches -> needs_gemini -> full_stack.
+            "تطبيق ويب": 6,
+            # Arabic 'meetings site' (2026-09-13 run 1): sibling pair
+            # 18918/18922 'موقع اجتماعات' (event/meetings platform build)
+            # had ZERO vocabulary coverage -> silent reject. CORE here AND
+            # in backend -> ambiguity -> full_stack arbitration.
+            "موقع اجتماعات": 7,
         },
         "supporting": {
             # Store mention alone is not web-dev evidence (customer service,

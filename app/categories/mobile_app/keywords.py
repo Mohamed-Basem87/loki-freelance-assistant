@@ -262,6 +262,16 @@ NEGATIVE_KEYWORDS = {
             "app store submission": 8,
             "submit the app": 8,
             "submit the application": 8,
+            # English store-upload engagement class (2026-09-13 run 1):
+            # 18574 'App Store Upload Specialist' DELIVERED as mobile
+            # notify_directly -- pure store-upload/listing work, no
+            # engineering. Title 'app store upload specialist' now reads
+            # app-store positive + these negatives -> mixed_core_signals
+            # -> needs_gemini -> LLM arbitration rejects the publishing
+            # scope. Mirrors the existing Arabic نشر تطبيق family.
+            "app store upload": 8,
+            "upload process": 6,
+            "upload specialist": 6,
         },
         "supporting": {},
     },
