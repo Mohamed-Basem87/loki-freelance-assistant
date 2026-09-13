@@ -79,6 +79,12 @@ REJECT when the PRIMARY DELIVERABLE is:
   for any gambling-related deliverable, regardless of any positive
   keywords, including moderation, detection, filtering, or analytics
   tooling for gambling and any job materially related to gambling.
+- Dating/online-matchmaking apps, sites, or platforms (2026-09-13
+  policy override: same treatment as gambling). ALWAYS REJECT -- do not
+  notify for any dating-app or matchmaking-platform deliverable,
+  regardless of any positive keywords, including moderation, detection,
+  filtering, or analytics tooling for dating and any job materially
+  related to dating.
 - Adult/sexually-explicit deliverables: porn/paysite/adult websites or
   platforms (including adult video-distribution sites), escort or
   adult-service platforms, sexually-explicit games (including NSFW
@@ -88,6 +94,17 @@ REJECT when the PRIMARY DELIVERABLE is:
   including tooling or services that moderate, detect, filter, classify,
   or otherwise analyze adult content, and any job materially related to
   adult content.
+- Automation explicitly designed to EVADE a platform's anti-bot /
+  anti-fraud detection (2026-09-13 run 2). Named reject criterion, not a
+  "gray" judgment call: software whose explicit purpose includes defeating
+  a platform's own anti-automation defenses -- auto-accepting requests with
+  randomized tap timing/coordinates so the activity "looks organic", "no
+  detection or logout", bot-evasion tuning, account-rotation to avoid
+  flags -- is out of scope (same rationale as the DRM-circumvention and
+  gray-market-trading rejects). Rowid 19086 (Android Accessibility
+  auto-accept bot with explicit anti-detection randomization) was
+  suppressed in run 2 on these grounds; keep treating it as a clear
+  reject, not borderline.
 - Web development (websites, web apps, landing pages)
 - Game development
 - Desktop application development

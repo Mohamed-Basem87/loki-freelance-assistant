@@ -565,6 +565,14 @@ HARD_REJECT_KEYWORDS = {
     "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
     "blackjack", "satta matka", "spin and win", "spin win", "lucky jet",
     "sportsbook", "sports betting", "slot machine",
+    # Dating/online-matchmaking apps and platforms are out of scope
+    # (policy block, 2026-09-13): same as gambling -- ALWAYS reject.
+    # Bare 'matchmaking' kept OUT (legit positive, see app_types above);
+    # bare 'dating' kept OUT (19087 'history dating back to 2002').
+    "dating app", "dating apps", "online dating", "dating site",
+    "dating website", "dating platform", "dating service",
+    "matchmaking app", "matchmaking platform",
+    "موقع تعارف", "تطبيق تعارف",
     # lottery/lotto added 2026-08-28 run 20: full-corpus sweep found 1
     # historical ACCEPTED 'Automated Lottery' backend job (rowid 8863);
     # unambiguous gambling, 0 window / 0 corpus innocent collateral.

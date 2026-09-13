@@ -841,6 +841,15 @@ HARD_REJECT_KEYWORDS = {
     "letter writing", "request letter",
     # Gambling/real-money gaming products are out of scope (policy block).
     "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
+    # Dating/online-matchmaking apps and platforms are out of scope
+    # (policy block, 2026-09-13): same as gambling -- ALWAYS reject.
+    # Corpus sweep (latest-1000): phrase hits only dating jobs; bare
+    # 'dating' also matches 19087 'history dating back to 2002' (innocent,
+    # kept OUT); bare 'matchmaking' kept OUT (game_dev positive).
+    "dating app", "dating apps", "online dating", "dating site",
+    "dating website", "dating platform", "dating service",
+    "matchmaking app", "matchmaking platform",
+    "موقع تعارف", "تطبيق تعارف",
     "blackjack", "sportsbook", "sports betting", "slot machine",
     # lottery/lotto added 2026-08-28 run 20: full-corpus sweep found 1
     # historical ACCEPTED 'Automated Lottery' backend job (rowid 8863);

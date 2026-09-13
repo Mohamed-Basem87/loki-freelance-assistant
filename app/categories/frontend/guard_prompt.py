@@ -80,6 +80,18 @@ whenever the actual work is as described below:
   CMS is development and must be approved; "من الصفر"/"from scratch"
   makes the build intent explicit.
 
+The following are also genuine frontend builds and MUST be approved even
+when framed around a student/final-year/university project (2026-09-13
+run 2): a real, implementable web build with concrete deliverables --
+e.g. "portfolio website with e-commerce features" that requires payment
+gateway integration, customer reviews, product search, responsive /
+mobile-first styling, well-commented source code, a Git repo, and a
+README with deploy steps -- is actual development work, not education
+assistance. These were wrongly suppressed in run 2 (rowid 19047) because
+"final-year project" read as the education/tutoring reject. Only pure
+homework-help / "do my assignment for me" / copy-paste coursework with no
+real implementation remains rejected.
+
 The following remain SUPPRESSED (do not newly approve these classes):
 pure hosting/server setup, migration-only, theme-install/theme-
 configuration-only, setup-only store gigs (no build or customization),
@@ -218,6 +230,12 @@ Also REJECT when the PRIMARY DELIVERABLE is:
   for any gambling-related deliverable, regardless of any positive
   keywords, including moderation, detection, filtering, or analytics
   tooling for gambling and any job materially related to gambling.
+- Dating/online-matchmaking apps, sites, or platforms (2026-09-13
+  policy override: same treatment as gambling). ALWAYS REJECT -- do not
+  notify for any dating-app or matchmaking-platform deliverable,
+  regardless of any positive keywords, including moderation, detection,
+  filtering, or analytics tooling for dating and any job materially
+  related to dating.
 - Adult/sexually-explicit deliverables: porn/paysite/adult websites or
   platforms (including adult video-distribution sites), escort or
   adult-service platforms, sexually-explicit games (including NSFW
