@@ -48,13 +48,13 @@ accepted jobs to Telegram destinations and subscribed users.
 
 ## Core Architecture
 
-The production dependency graph is assembled in `app/composition.py`.
+The production dependency graph is assembled in `app/wiring/composition.py`.
 
 ``` text
-                         ┌──────────────────────┐
-                         │   Composition Root   │
-                         │ app/composition.py   │
-                         └──────────┬───────────┘
+                         ┌──────────────────────────────┐
+                         │      Composition Root        │
+                         │  app/wiring/composition.py   │
+                         └──────────────┬───────────────┘
                                     │
                     configuration + dependency wiring
                                     │
@@ -446,7 +446,7 @@ Do not share one SQLite/state volume between multiple Loki containers.
 
 ``` text
 app/
-├── adapters/
+├── adapters/            # concrete SDK/IO implementations behind each port
 │   ├── http/
 │   ├── notifications/
 │   ├── parsers/
@@ -455,7 +455,7 @@ app/
 │   ├── state/
 │   ├── transports/
 │   └── user/
-├── categories/
+├── categories/          # category-owned keywords/prompts/profiles
 │   ├── ai_ml/
 │   ├── backend/
 │   ├── data_analysis/
@@ -465,27 +465,39 @@ app/
 │   ├── mobile_app/
 │   ├── profile.py
 │   └── registry.py
+├── core/                # config, cross-cutting utilities, no service state
+│   ├── classification.py
+│   ├── config.py
+│   ├── filters.py
+│   ├── healthcheck.py
+│   ├── heartbeat.py
+│   ├── message_builder.py
+│   ├── normalize.py
+│   ├── routing.py
+│   ├── runtime_config.py
+│   ├── timeouts.py
+│   └── url_shortener.py
+├── services/            # stateful domain services (DB, jobs, sources, bots)
+│   ├── freehub.py
+│   ├── job_processor.py
+│   ├── logger.py
+│   ├── message_processor.py
+│   ├── notifier.py
+│   ├── parser.py
+│   ├── state.py
+│   └── user_bot.py
+├── wiring/              # composition root and process/worker orchestration
+│   ├── composition.py
+│   ├── dependencies.py
+│   ├── scraper_scheduler.py
+│   ├── source_worker.py
+│   ├── startup.py
+│   └── workers.py
+├── handlers/
 ├── llm/
 ├── notification_guard/
-├── recovery/
-├── repositories/
 ├── bot.py
-├── classification.py
-├── composition.py
-├── config.py
-├── job_processor.py
-├── message_processor.py
-├── notifier.py
-├── normalize.py
-├── ports.py
-├── routing.py
-├── runtime_config.py
-├── source_worker.py
-├── startup.py
-├── state.py
-├── telegram_bot.py
-├── user_bot.py
-└── workers.py
+└── ports.py
 
 database/
 tests/
@@ -545,7 +557,7 @@ MIT
 
 ## Architecture & Abstraction Boundaries
 
-The production dependency graph is assembled in `app/composition.py`.
+The production dependency graph is assembled in `app/wiring/composition.py`.
 
 Application code depends on semantic boundaries such as:
 

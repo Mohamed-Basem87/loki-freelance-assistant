@@ -8,7 +8,7 @@ underlying job, arriving through different call shapes (a second
 Telegram message, a second FreeHub poll, or -- the one nothing
 exercised before -- the SAME project surfacing through Telegram and
 FreeHub) is actually recognized as a duplicate end-to-end through
-app.job_processor.process_job(), not just at the _make_job_uuid()
+app.services.job_processor.process_job(), not just at the _make_job_uuid()
 unit level.
 
 Assumption, documented per the task instructions: FreeHub's
@@ -17,7 +17,7 @@ Assumption, documented per the task instructions: FreeHub's
 (evidenced in tests/test_parser.py, e.g.
 "https://mostaql.com/project/12345"). This is a reasonable assumption
 because "mostaql" is itself one of FreeHub's own configured upstream
-sources (app.freehub.SOURCES), so a FreeHub project polled from
+sources (app.services.freehub.SOURCES), so a FreeHub project polled from
 Mostaql plausibly carries a project_link pointing at the same
 mostaql.com/project/<id> page a human would also see posted to
 Telegram. The repository does not contain a captured real FreeHub API
@@ -33,9 +33,9 @@ from pathlib import Path
 
 import pytest
 
-import app.state as state_module
-from app.job_processor import _make_job_uuid, process_job
-from app.logger import logger
+import app.services.state as state_module
+from app.services.job_processor import _make_job_uuid, process_job
+from app.services.logger import logger
 
 
 REJECT_TEXT = "Need someone to create SQL queries for a reporting system."
@@ -58,7 +58,7 @@ def isolated_database():
 
 @pytest.fixture()
 def isolated_state_file(tmp_path, monkeypatch):
-    """Point app.state.STATE_FILE at a throwaway path, matching
+    """Point app.services.state.STATE_FILE at a throwaway path, matching
     tests/test_state.py and tests/test_freehub.py exactly, and reset
     the shared `state` singleton's in-memory data so a previous test's
     cross-source claims can't leak in."""
@@ -150,7 +150,7 @@ def test_same_project_from_telegram_and_freehub_cross_source_dedup(
     message id, FreeHub uses "mostaql" + the FreeHub uid). They can
     never collide through _make_job_uuid(). Cross-source dedup instead
     relies entirely on _extract_project_id() pulling the same numeric
-    ID out of both jobs' `url`, and app.state.StateManager atomically
+    ID out of both jobs' `url`, and app.services.state.StateManager atomically
     claiming that ID for whichever one is processed first (see
     process_job()'s `state.async_claim_cross_source_project` call).
 

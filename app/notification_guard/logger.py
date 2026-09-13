@@ -21,7 +21,7 @@ async def log_guard_decision(
     `guard_category` is written in the same insert as `guard_decision`
     so the two are always durably consistent together -- see
     NOTIFICATION_GUARD_HEADERS / get_latest_guard_decision_with_category
-    in app.logger for why this atomicity matters.
+    in app.services.logger for why this atomicity matters.
 
     ``repository`` is injected by the notification guard (which owns its
     configured repository). When omitted -- e.g. tests or standalone
@@ -47,5 +47,5 @@ async def log_guard_decision(
 def _default_repository():
     # Legacy fallback for callers that have not been wired by the
     # composition root (the guard path always injects its own repository).
-    from app.dependencies import logger as _logger
+    from app.wiring.dependencies import logger as _logger
     return _logger

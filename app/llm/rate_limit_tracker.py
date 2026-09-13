@@ -31,7 +31,7 @@ import re
 import threading
 import time
 
-from app.runtime_config import RUNTIME
+from app.core.runtime_config import RUNTIME
 
 
 _lock = threading.Lock()
@@ -318,7 +318,7 @@ def filter_available(candidate_ids: list) -> list:
     knowledge from the provider -- so a job that still needs an
     answer is better served by an attempt that might succeed than by
     being failed outright on a guess that might be wrong. Higher up
-    the stack, app.job_processor's own durable classification-retry
+    the stack, app.services.job_processor's own durable classification-retry
     schedule (see "Classification Retry Not Before") is what actually
     paces how often a genuinely-still-failing job gets retried; this
     tracker only decides which candidate to try first within a single

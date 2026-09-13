@@ -12,7 +12,7 @@ wiring is present even though no real provider call is made.
 """
 import pytest
 
-from app.runtime_config import RUNTIME
+from app.core.runtime_config import RUNTIME
 
 
 def test_gemini_client_is_constructed_with_http_layer_timeout(monkeypatch):

@@ -3,7 +3,7 @@
 The canonical implementation lives entirely in
 app.adapters.sources.telegram and has NO application/config-global
 dependencies -- every credential, channel set, and recovery option is
-injected by the composition root (app.composition.compose) or threaded
+injected by the composition root (app.wiring.composition.compose) or threaded
 through parameters.
 
 This module is the LEGACY compatibility surface. It owns only the two
@@ -17,19 +17,19 @@ must never grow a second Telegram implementation.
 
 from app.adapters.sources import telegram as _canonical
 
-from app.config import (
+from app.core.config import (
     SESSION_NAME,
     TARGET_CHANNELS,
     get_api_id,
     get_api_hash,
     get_phone_number,
 )
-from app.runtime_config import RECOVERY
+from app.core.runtime_config import RECOVERY
 
 
 async def start():
     """Legacy compatibility entry point: builds a TelegramClient from the
-    configured credentials (app.config), then runs the canonical live loop
+    configured credentials (app.core.config), then runs the canonical live loop
     (_canonical._run_telegram_loop) over the configured channels with the
     configured recovery options. Production uses TelegramChannelWorker over
     a composition-injected TelegramChannelJobSource instead."""
@@ -59,7 +59,7 @@ def build_telegram_source():
     """Legacy compatibility constructor for a TelegramChannelJobSource
     using config-derived credentials and recovery options. The canonical
     production path injects every collaborator -- including recovery
-    options -- through the composition root (app.composition.compose)."""
+    options -- through the composition root (app.wiring.composition.compose)."""
     return _canonical.TelegramChannelJobSource(
         channels=tuple(TARGET_CHANNELS),
         parser=None,

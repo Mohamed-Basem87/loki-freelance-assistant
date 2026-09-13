@@ -88,7 +88,7 @@ class AioHttpTransport(HttpTransport):
     transport never requires a running event loop) and creation is
     guarded by an asyncio.Lock so concurrent first requests cannot each
     create and leak their own session. Shutdown is explicit: whoever
-    owns this transport (see app.workers' shutdown hooks) calls
+    owns this transport (see app.wiring.workers' shutdown hooks) calls
     close() exactly once when it is no longer needed. After close(),
     further requests fail loudly with RuntimeError instead of silently
     opening a replacement session that would never get closed.

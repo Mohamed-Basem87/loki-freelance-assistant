@@ -7,14 +7,14 @@ class NotificationGuardIntegration:
 
     The production application remains untouched (aside from one
     resolution hook -- see resolve_category() below and
-    app.job_processor._resolve_notification_category). The adapter
-    replaces the notification references inside app.job_processor at
+    app.services.job_processor._resolve_notification_category). The adapter
+    replaces the notification references inside app.services.job_processor at
     runtime.
 
     The guard decision belongs to the *job*, not to an individual
     notification attempt. It is looked up from the durable
     `notification_guard` table (the existing persistence architecture
-    -- see app.logger / app.notification_guard.logger) before ever
+    -- see app.services.logger / app.notification_guard.logger) before ever
     asking the guard's provider:
 
     - A previously persisted "notify" or "do_not_notify" is a valid,
@@ -37,12 +37,12 @@ class NotificationGuardIntegration:
     touch this lookup.
 
     A "notify" decision also carries a category (see "Guard Category"
-    in app.logger.NOTIFICATION_GUARD_HEADERS): either the job's
+    in app.services.logger.NOTIFICATION_GUARD_HEADERS): either the job's
     original keyword-matched category, unchanged, or "full_stack" when
     the guard determined the work is broader than a single specialist
     category. resolve_category() is the single place this is decided
     and persisted -- it runs once, before either notification leg,
-    from app.job_processor._resume_pending_notifications_unlocked.
+    from app.services.job_processor._resume_pending_notifications_unlocked.
     wrap_private/wrap_routing below never trigger a fresh evaluation
     themselves; they only ever consult the decision resolve_category()
     already made and persisted. That ordering is what keeps the
@@ -53,7 +53,7 @@ class NotificationGuardIntegration:
     def __init__(self, guard: NotificationGuard, repository=None):
         self.guard = guard
         if repository is None:
-            from app.dependencies import logger
+            from app.wiring.dependencies import logger
             repository = logger
         self.repository = repository
 
@@ -96,7 +96,7 @@ class NotificationGuardIntegration:
         Determine (and durably persist) whether this job should be
         delivered under its original keyword-matched category or
         reclassified to "full_stack", and return the category to
-        actually use. Installed in place of app.job_processor's
+        actually use. Installed in place of app.services.job_processor's
         _resolve_notification_category no-op; called once per
         _resume_pending_notifications_unlocked invocation, before
         either notification leg.
@@ -233,7 +233,7 @@ def wire(integration):
 
 def install():
 
-    import app.job_processor as job_processor
+    import app.services.job_processor as job_processor
 
     integration = NotificationGuardIntegration(
         NotificationGuard()

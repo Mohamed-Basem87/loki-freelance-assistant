@@ -15,7 +15,7 @@ import asyncio
 import pytest
 from telegram.error import Forbidden
 
-import app.user_bot as user_bot
+import app.services.user_bot as user_bot
 
 
 class _Notification(dict):

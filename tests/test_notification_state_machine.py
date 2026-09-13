@@ -25,13 +25,13 @@ from pathlib import Path
 
 import pytest
 
-import app.job_processor as job_processor
-from app.job_processor import (
+import app.services.job_processor as job_processor
+from app.services.job_processor import (
     _make_job_uuid,
     process_job,
     retry_incomplete_notifications,
 )
-from app.logger import logger
+from app.services.logger import logger
 
 
 DIRECT_TITLE = "Power BI Dashboard Needed"
@@ -175,7 +175,7 @@ def test_full_lifecycle_pending_suppressed(
 
     job_uuid = _make_job_uuid("-100802", "lifecycle-suppress-1")
 
-    from app.filters import keyword_filter
+    from app.core.filters import keyword_filter
     from app.notification_guard.logger import log_guard_decision
 
     result = keyword_filter(
@@ -240,7 +240,7 @@ def test_full_lifecycle_pending_suppressed(
 
 
 def test_notification_service_skips_durable_successful_sink_on_retry(tmp_path):
-    from app.notifier import NotificationService
+    from app.services.notifier import NotificationService
     class Sink:
         def __init__(self, sink_id, outcomes): self.id, self.outcomes, self.calls = sink_id, list(outcomes), 0
         async def send(self, **kwargs):
@@ -250,7 +250,7 @@ def test_notification_service_skips_durable_successful_sink_on_retry(tmp_path):
             return outcome
     # The durable repository is exercised through the existing DB logger in the
     # service's normal production shape.
-    from app.logger import logger
+    from app.services.logger import logger
     original = logger.path
     logger.path = tmp_path / "notify-sinks.db"
     logger.initialize()

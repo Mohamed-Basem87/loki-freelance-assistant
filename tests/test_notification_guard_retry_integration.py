@@ -20,13 +20,13 @@ from pathlib import Path
 
 import pytest
 
-import app.job_processor as job_processor
-from app.job_processor import (
+import app.services.job_processor as job_processor
+from app.services.job_processor import (
     _make_job_uuid,
     process_job,
     retry_incomplete_notifications,
 )
-from app.logger import logger
+from app.services.logger import logger
 from app.notification_guard.integration import NotificationGuardIntegration
 from app.notification_guard.logger import log_guard_decision
 
@@ -188,7 +188,7 @@ class ScriptedGuard:
 
 def _wire_guard(monkeypatch, fake_private, outcomes):
     """
-    Set app.job_processor.send_notification to `fake_private`, then wrap
+    Set app.services.job_processor.send_notification to `fake_private`, then wrap
     that with a NotificationGuardIntegration backed by a ScriptedGuard
     -- exactly the composition app.notification_guard.integration.install()
     builds in production (guard wraps the real notifier function, and
@@ -270,7 +270,7 @@ def test_guard_suppression_decision_survives_retry_sweep(
 
     job_uuid = _make_job_uuid("-100902", "suppress-retry-1")
 
-    from app.filters import keyword_filter
+    from app.core.filters import keyword_filter
 
     result = keyword_filter(
         f"{DIRECT_TITLE}\n{DIRECT_DESCRIPTION}",
@@ -479,7 +479,7 @@ def test_guard_suppression_blocks_subscriber_routing(isolated_database, monkeypa
     }
 
     # Mirrors production order: resolve_category() runs once, up
-    # front (see app.job_processor._resume_pending_notifications_
+    # front (see app.services.job_processor._resume_pending_notifications_
     # unlocked), and only afterward do wrap_private/wrap_routing
     # consult the persisted result -- they never trigger evaluation
     # themselves anymore.

@@ -1,7 +1,7 @@
 """URL shortener service.
 
 Every project URL is run through an internal shortener before the job
-row is ever created (see app.job_processor.process_job). This module
+row is ever created (see app.services.job_processor.process_job). This module
 owns the semantic contract for that call; the concrete HTTP mechanics
 stay behind the injected HttpTransport port (see app.ports.HttpTransport
 / app.adapters.http.aiohttp.AioHttpTransport), exactly like FreeHub's
@@ -15,7 +15,7 @@ Contract with the upstream shortener service:
               shortened before, the existing record's path is returned
               instead of a conflict error. `jobId` is deliberately the
               same job id the rest of the pipeline already uses (see
-              app.job_processor.process_job's `job_id` parameter), so
+              app.services.job_processor.process_job's `job_id` parameter), so
               this call never needs to check for prior existence itself
               -- the shortener does that check, keyed on the id we
               already have.
@@ -28,7 +28,7 @@ failure does, without any code change:
                    job pipeline continues normally. Default.
     fail_closed -- raise UrlShorteningError. process_job() does not
                    catch this, so it propagates out to the calling
-                   source worker (see app.source_worker.SourceWorker.run),
+                   source worker (see app.wiring.source_worker.SourceWorker.run),
                    which logs it and does NOT call mark_seen()/advance
                    the watermark -- the job is therefore retried from
                    scratch on the source's next poll, with no new durable
@@ -55,7 +55,7 @@ class UrlShortenerService:
     `failure_mode` selects between two independent handler methods via
     a plain dict dispatch built once at construction time, so behavior
     is switched entirely by the URL_SHORTENER_FAILURE_MODE env var (see
-    app.runtime_config) -- no code change needed to flip it.
+    app.core.runtime_config) -- no code change needed to flip it.
     """
 
     def __init__(self, transport, domain: str, endpoint: str,

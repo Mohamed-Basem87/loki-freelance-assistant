@@ -1,10 +1,10 @@
 """
-app.freehub tests: seen-state dedup and job-identity invariants.
+app.services.freehub tests: seen-state dedup and job-identity invariants.
 
-Importing app.freehub pulls in app.config (for FREEHUB_USER_ID/
+Importing app.services.freehub pulls in app.core.config (for FREEHUB_USER_ID/
 FREEHUB_PAGE_SIZE), so -- like test_pipeline.py etc. -- this relies on
 tests/conftest.py's environment defaults to import without a real
-.env. No real HTTP request is ever made: app.freehub.fetch_projects is
+.env. No real HTTP request is ever made: app.services.freehub.fetch_projects is
 monkeypatched with a fake in-memory paginator, so poll_once()'s own
 dedup/backfill/tagging logic is exercised directly and offline.
 """
@@ -13,17 +13,17 @@ import asyncio
 
 import pytest
 
-import app.freehub as freehub_module
-import app.state as state_module
-from app.state import StateManager
+import app.services.freehub as freehub_module
+import app.services.state as state_module
+from app.services.state import StateManager
 
 
 @pytest.fixture()
 def isolated_freehub_state(tmp_path, monkeypatch):
     """
-    Give app.freehub a clean, isolated slate for one test:
-      - a throwaway STATE_FILE (via app.state.state, the singleton
-        app.freehub actually reads/writes through)
+    Give app.services.freehub a clean, isolated slate for one test:
+      - a throwaway STATE_FILE (via app.services.state.state, the singleton
+        app.services.freehub actually reads/writes through)
       - a fresh in-memory _seen cache and _seeded_from_state flag,
         since both are module-level globals that would otherwise leak
         between tests (poll_once() only ever seeds once per process)

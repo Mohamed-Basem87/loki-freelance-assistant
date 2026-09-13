@@ -13,7 +13,7 @@ class TelegramCommandSurface(CommandSurface):
         if self._channel_registrar is None:
             raise RuntimeError(
                 "TelegramCommandSurface requires an injected channel_registrar "
-                "(the composition root wires app.user_bot.register_configured_channel)"
+                "(the composition root wires app.services.user_bot.register_configured_channel)"
             )
         await self._channel_registrar(self._application)
     async def start(self): await self._application.start()

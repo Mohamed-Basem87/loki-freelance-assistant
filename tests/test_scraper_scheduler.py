@@ -1,4 +1,4 @@
-"""Tests for the in-container scraper scheduler (app.scraper_scheduler).
+"""Tests for the in-container scraper scheduler (app.wiring.scraper_scheduler).
 
 The scheduler runs scraper/scraper.py as a subprocess on the FileJobSource
 poll cadence so the whole LinkedIn/Wuzzuf pipeline lives inside the
@@ -10,15 +10,15 @@ import json
 
 import pytest
 
-from app.scraper_scheduler import _run_scraper_once, scraper_scheduler_factory
+from app.wiring.scraper_scheduler import _run_scraper_once, scraper_scheduler_factory
 
 
 @pytest.fixture()
 def _beatless(monkeypatch):
     """Make the loop idle without touching the process-global liveness
-    registry (app.heartbeat.liveness is sticky; beating an extra worker
+    registry (app.core.heartbeat.liveness is sticky; beating an extra worker
     here would pollute later healthcheck tests)."""
-    import app.scraper_scheduler as scheduler_module
+    import app.wiring.scraper_scheduler as scheduler_module
 
     async def _idle(seconds, worker_id, state=None, cadence=None):
         await asyncio.sleep(0)
@@ -41,7 +41,7 @@ def _scriptless_scraper(monkeypatch):
     dict's "exit_codes" list: a single element repeats forever; multiple
     elements are consumed in order and the last one repeats.
     """
-    import app.scraper_scheduler as scheduler_module
+    import app.wiring.scraper_scheduler as scheduler_module
 
     run_info = {"exit_codes": [], "runs": 0}
 
@@ -139,8 +139,8 @@ def test_scheduler_keeps_looping_across_failed_runs(
 
 
 def test_default_registry_registers_scheduler_for_file_sources(monkeypatch):
-    import app.workers as workers_module
-    from app.runtime_config import JobSourceConfig
+    import app.wiring.workers as workers_module
+    from app.core.runtime_config import JobSourceConfig
 
     fake_sources = (
         JobSourceConfig(
@@ -172,8 +172,8 @@ def test_default_registry_registers_scheduler_for_file_sources(monkeypatch):
 
 
 def test_default_registry_skips_scheduler_without_file_sources(monkeypatch):
-    import app.workers as workers_module
-    from app.runtime_config import JobSourceConfig
+    import app.wiring.workers as workers_module
+    from app.core.runtime_config import JobSourceConfig
 
     fake_sources = (
         JobSourceConfig(
@@ -215,8 +215,8 @@ def test_scheduler_reports_dead_after_sustained_failures(tmp_path, _scriptless_s
     real beats. _scriptless_scraper drives run outcomes directly (see
     that fixture) so the state transitions are deterministic instead of
     costing a full python subprocess spawn per failure."""
-    from app.heartbeat import liveness
-    from app.scraper_scheduler import CONSECUTIVE_FAILURE_THRESHOLD
+    from app.core.heartbeat import liveness
+    from app.wiring.scraper_scheduler import CONSECUTIVE_FAILURE_THRESHOLD
 
     _scriptless_scraper["exit_codes"] = [1]  # every run fails, forever
 
@@ -248,8 +248,8 @@ def test_scheduler_recovers_to_alive_after_a_successful_run_following_failures(
     """Once a run succeeds again, the worker must self-heal back to
     'alive' with no restart required -- sustained failure is reported,
     not a permanent quarantine."""
-    from app.heartbeat import liveness
-    from app.scraper_scheduler import CONSECUTIVE_FAILURE_THRESHOLD
+    from app.core.heartbeat import liveness
+    from app.wiring.scraper_scheduler import CONSECUTIVE_FAILURE_THRESHOLD
 
     _scriptless_scraper["exit_codes"] = [1] * CONSECUTIVE_FAILURE_THRESHOLD + [0]
 

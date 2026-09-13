@@ -27,7 +27,7 @@ import sqlite3
 
 import pytest
 
-from app.logger import logger
+from app.services.logger import logger
 
 
 class _LockedOnPrefix:

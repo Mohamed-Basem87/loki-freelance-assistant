@@ -10,12 +10,12 @@ from app.notification_guard.config import (
     GUARD_ESTIMATED_TOKENS_PER_CHAR,
     GUARD_MIN_TEXT_CHARS,
 )
-from app.runtime_config import RUNTIME
+from app.core.runtime_config import RUNTIME
 GroqNotificationGuard = None  # legacy monkeypatch seam; resolved lazily
 from app.notification_guard import registry as provider_registry
 from app.notification_guard.logger import log_guard_decision
 from app.categories.registry import get_category, arbitration_only_categories
-from app.timeouts import call_with_timeout
+from app.core.timeouts import call_with_timeout
 
 
 
@@ -33,7 +33,7 @@ from app.timeouts import call_with_timeout
 #      provider gets the same cooldown/classification behavior for free
 #      without reimplementing it);
 #   2. add its (provider_id, factory) here.
-# Nothing else in this file, or in app.job_processor, needs to change.
+# Nothing else in this file, or in app.services.job_processor, needs to change.
 #
 # GroqNotificationGuard is referenced by bare name inside the factory
 # lambdas (not tucked inside a class or list comprehension) so tests
@@ -91,7 +91,7 @@ def _bound_guard_input(title: str, description: str, system_prompt: str = ""):
     text to the headroom left after the (large) combined system prompt,
     title, and framing overhead are paid from MAX_GUARD_TOTAL_TOKENS --
     the max that fits, rather than a fixed conservative value. Keeps the
-    head of the text, matching app.classification._bounded_input.
+    head of the text, matching app.core.classification._bounded_input.
     """
     rate = GUARD_ESTIMATED_TOKENS_PER_CHAR
     title_len = len(title or "")
@@ -271,7 +271,7 @@ class NotificationGuard:
 
     def __init__(self, repository=None):
         if repository is None:
-            from app.dependencies import logger
+            from app.wiring.dependencies import logger
             repository = logger
         self.repository = repository
         self.enabled = guard_config.NOTIFICATION_GUARD_ENABLED

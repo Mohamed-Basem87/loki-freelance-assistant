@@ -10,7 +10,7 @@ a human running the bot for the first time in production.
 
 This script drives the real, non-network parts of startup:
 
-  1. app.composition.compose() -- builds the full dependency graph
+  1. app.wiring.composition.compose() -- builds the full dependency graph
      (repository, state, dedup, notification service + guard,
      parser registry, user-messaging surface) exactly as run.py does.
   2. Runtime.initialize_database() -- actually opens/creates the
@@ -126,7 +126,7 @@ def _run_smoke_checks() -> None:
     """Run every non-network startup check. DATABASE_FILE_PATH and
     STATE_FILE_PATH are already pointed at the throwaway temp dir by the
     caller. Raises RuntimeError on any failure so main() can fail CI."""
-    from app.composition import compose
+    from app.wiring.composition import compose
 
     runtime = compose()
     print("[SMOKE] compose() succeeded: repository, state, dedup, "
@@ -186,7 +186,7 @@ def main() -> int:
             # prevents the temp dir deletion (PermissionError: WinError
             # 32), which would otherwise mask the original failure with
             # a confusing cleanup error.
-            from app.logger import logger as _db
+            from app.services.logger import logger as _db
             _db.close()
 
 

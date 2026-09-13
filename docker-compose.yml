@@ -40,12 +40,12 @@ services:
     # and notification-claim guarantees (see ENGINEERING_REMEDIATION_REPORT.md).
     # Run exactly one replica per database volume.
     healthcheck:
-      test: ["CMD", "python", "-m", "app.healthcheck"]
+      test: ["CMD", "python", "-m", "app.core.healthcheck"]
       interval: 30s
       timeout: 5s
       retries: 3
       # Covers both the original DB-file-creation grace window and the
       # new worker heartbeat (app.heartbeat writes its first beat
       # immediately on startup, well inside this window; see
-      # app/healthcheck.py's worker/runtime health check).
+      # app/core/healthcheck.py's worker/runtime health check).
       start_period: 30s

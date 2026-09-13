@@ -5,8 +5,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from app.runtime_config import RUNTIME
-from app.heartbeat import liveness, STATE_ALIVE, STATE_DEAD
+from app.core.runtime_config import RUNTIME
+from app.core.heartbeat import liveness, STATE_ALIVE, STATE_DEAD
 
 
 STATE_FILE = Path(RUNTIME.state_file_path)
@@ -43,7 +43,7 @@ _CROSS_SOURCE_SEEN_KEY = "_cross_source_seen"
 # claim_cross_source_project), while genuinely distinct re-listings
 # eventually clear the window. Cross-source dedup is only best-effort at
 # the JSON/state layer; the durable per-identity SQLite job_uuid dedup in
-# app.job_processor remains the strong guarantee even after this window
+# app.services.job_processor remains the strong guarantee even after this window
 # expires.
 _CROSS_SOURCE_TTL_SECONDS = 30 * 24 * 60 * 60
 
@@ -198,7 +198,7 @@ class StateManager:
                 "The worker thread cannot be killed safely, so the shared "
                 "state backend is quarantined until process restart."
             )
-            # Same reporting seam as app.logger.DBLogger.run -- see its
+            # Same reporting seam as app.services.logger.DBLogger.run -- see its
             # comment. Once poisoned every future call re-raises at the
             # guard above before reaching the success beat below, so this
             # can never be silently overwritten back to "alive".

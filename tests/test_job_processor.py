@@ -1,13 +1,13 @@
 """
-app.job_processor tests -- the dedup identity primitive underneath
+app.services.job_processor tests -- the dedup identity primitive underneath
 every "same source + same job identity -> same UUID -> duplicate
 rejected" guarantee described in the audit's State/Recovery/Dedup
 analysis, plus the legacy-identity dedup compatibility fix (job_uuid
 scheme changed from job["source"] directly to a stable
 identity_source; historical rows logged under the old scheme must
-still be recognized as duplicates). No app.config dependency issues
+still be recognized as duplicates). No app.core.config dependency issues
 here beyond what's already covered by conftest.py (importing
-app.job_processor pulls in app.notifier -> app.config).
+app.services.job_processor pulls in app.services.notifier -> app.core.config).
 
 The isolated_workbook fixture and REJECT_TEXT fixture text mirror
 test_pipeline.py exactly -- all process_job() calls below use text the
@@ -21,8 +21,8 @@ from pathlib import Path
 
 import pytest
 
-from app.job_processor import _make_job_uuid, process_job
-from app.logger import logger
+from app.services.job_processor import _make_job_uuid, process_job
+from app.services.logger import logger
 
 
 from app.categories.data_analysis.profile import PROFILE
@@ -393,11 +393,11 @@ def test_pending_notification_is_resumed_without_reprocessing(
         "budget": "$100",
     }
 
-    from app.job_processor import _make_job_uuid
+    from app.services.job_processor import _make_job_uuid
 
     job_uuid = _make_job_uuid("-100888", "pending-1")
 
-    from app.filters import keyword_filter
+    from app.core.filters import keyword_filter
 
     result = keyword_filter(
         f"{job['title']}\n{job['description']}",
@@ -435,7 +435,7 @@ def test_pending_notification_is_resumed_without_reprocessing(
         return True
 
     monkeypatch.setattr(
-        "app.job_processor.send_notification",
+        "app.services.job_processor.send_notification",
         fake_private,
     )
 
@@ -453,7 +453,7 @@ def test_pending_notification_is_resumed_without_reprocessing(
 
 
 def _seed_notify_ready_job(log, job_uuid, job_id, source, status="Pending"):
-    from app.filters import keyword_filter
+    from app.core.filters import keyword_filter
 
     title = "Power BI Dashboard Needed"
     description = "Need a Power BI dashboard built from sales data."
@@ -494,7 +494,7 @@ def test_retry_sweep_resumes_a_previously_failed_notification(
     pick up a "Failed" row and resume it without the job being
     reprocessed through process_job() again.
     """
-    from app.job_processor import _make_job_uuid, retry_incomplete_notifications
+    from app.services.job_processor import _make_job_uuid, retry_incomplete_notifications
 
     log = isolated_workbook
 
@@ -509,7 +509,7 @@ def test_retry_sweep_resumes_a_previously_failed_notification(
         sends["private"] += 1
         return True
 
-    monkeypatch.setattr("app.job_processor.send_notification", fake_private)
+    monkeypatch.setattr("app.services.job_processor.send_notification", fake_private)
 
     retried = asyncio.run(retry_incomplete_notifications())
 
@@ -529,7 +529,7 @@ def test_retry_sweep_cannot_duplicate_a_live_notification(
     the second waiter must re-read the durable row after acquiring the
     lock, otherwise the same Telegram notification can be sent twice.
     """
-    from app.job_processor import _make_job_uuid, retry_incomplete_notifications
+    from app.services.job_processor import _make_job_uuid, retry_incomplete_notifications
 
     log = isolated_workbook
     job_uuid = _make_job_uuid("-100444", "race-1")
@@ -551,7 +551,7 @@ def test_retry_sweep_cannot_duplicate_a_live_notification(
         await release_private.wait()
         return True
 
-    monkeypatch.setattr("app.job_processor.send_notification", fake_private)
+    monkeypatch.setattr("app.services.job_processor.send_notification", fake_private)
 
     async def scenario():
         live = asyncio.create_task(
@@ -582,7 +582,7 @@ def test_retry_sweep_ignores_complete_and_suppressed_jobs(
     """The sweep must not touch jobs that already finished, either
     successfully ("Complete") or via a genuine guard rejection
     ("Suppressed")."""
-    from app.job_processor import _make_job_uuid, retry_incomplete_notifications
+    from app.services.job_processor import _make_job_uuid, retry_incomplete_notifications
 
     log = isolated_workbook
 
@@ -600,7 +600,7 @@ def test_retry_sweep_ignores_complete_and_suppressed_jobs(
         calls["count"] += 1
         return True
 
-    monkeypatch.setattr("app.job_processor.send_notification", fake_private)
+    monkeypatch.setattr("app.services.job_processor.send_notification", fake_private)
 
     retried = asyncio.run(retry_incomplete_notifications())
 
@@ -618,7 +618,7 @@ def test_retry_sweep_marks_guard_rejected_job_suppressed_not_failed(
     from future sweeps) rather than staying "Failed" and being
     re-sent (and re-asked of the guard's provider) forever.
     """
-    from app.job_processor import _make_job_uuid, retry_incomplete_notifications
+    from app.services.job_processor import _make_job_uuid, retry_incomplete_notifications
 
     log = isolated_workbook
 
@@ -644,7 +644,7 @@ def test_retry_sweep_marks_guard_rejected_job_suppressed_not_failed(
     async def denying_send(**kwargs):
         return False
 
-    monkeypatch.setattr("app.job_processor.send_notification", denying_send)
+    monkeypatch.setattr("app.services.job_processor.send_notification", denying_send)
 
     retried = asyncio.run(retry_incomplete_notifications())
     assert retried == 1
@@ -670,7 +670,7 @@ def test_incomplete_job_row_is_resumed_after_processing_crash(isolated_workbook)
     identity_source = "-100777"
     job = _build_job(source="Recovery Test Channel")
 
-    from app.filters import keyword_filter
+    from app.core.filters import keyword_filter
 
     filter_text = f"{job['title']}\n{job['description']}"
     result = keyword_filter(filter_text, title=job["title"], profile=PROFILE)
@@ -725,7 +725,7 @@ def test_accepted_job_without_notification_status_resumes_notification(
     job = _build_job(source="Accepted Recovery Channel")
     job_uuid = _make_job_uuid(identity_source, job_id)
 
-    from app.filters import keyword_filter
+    from app.core.filters import keyword_filter
 
     filter_text = f"{job['title']}\n{job['description']}"
     result = keyword_filter(filter_text, title=job["title"], profile=PROFILE)
@@ -755,7 +755,7 @@ def test_accepted_job_without_notification_status_resumes_notification(
     async def fake_send(**kwargs):
         return True
 
-    monkeypatch.setattr("app.job_processor.send_notification", fake_send)
+    monkeypatch.setattr("app.services.job_processor.send_notification", fake_send)
 
     asyncio.run(
         process_job(
@@ -772,8 +772,8 @@ def test_accepted_job_without_notification_status_resumes_notification(
 def test_llm_error_is_durable_and_retryable(isolated_workbook, monkeypatch):
     import asyncio
     import time
-    import app.job_processor as jp
-    from app.job_processor import ClassificationPendingError, retry_incomplete_classifications
+    import app.services.job_processor as jp
+    from app.services.job_processor import ClassificationPendingError, retry_incomplete_classifications
     job = {
         "title": "Build a Flutter Mobile App with Laravel Backend Dashboard",
         "description": "Need a cross-platform Flutter app with Laravel REST API backend and admin dashboard.",
@@ -851,7 +851,7 @@ def test_two_concurrent_callers_cannot_both_classify_the_same_pending_job(
     same job. Exactly one of them must ever reach the provider.
     """
     import asyncio
-    import app.job_processor as jp
+    import app.services.job_processor as jp
 
     job = {
         "title": "Build a Flutter Mobile App with Laravel Backend Dashboard",

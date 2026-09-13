@@ -14,6 +14,6 @@ async def queue_for_category(job_uuid, category_id, source="", repository=None):
         # composition root (tests, external callers). Production passes
         # the repository through the guard wrapper's construction
         # boundary and never reaches into the service locator here.
-        from app.dependencies import logger as _logger
+        from app.wiring.dependencies import logger as _logger
         repository = _logger
     return await repository.queue_user_notifications(job_uuid, category_id, source, save=True)

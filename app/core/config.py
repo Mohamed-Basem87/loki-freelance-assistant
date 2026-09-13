@@ -6,7 +6,7 @@ without unrelated Telegram/LLM secrets while preserving the existing names
 when the environment is configured.
 """
 import os
-from app.runtime_config import BASE_DIR, RUNTIME, RECOVERY, source_profile, LLM_PROVIDERS, SOURCES
+from app.core.runtime_config import BASE_DIR, RUNTIME, RECOVERY, source_profile, LLM_PROVIDERS, SOURCES
 from dotenv import load_dotenv
 load_dotenv(BASE_DIR / ".env")
 

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from app import logger as logger_module
-from app.notifier import NotificationService
+from app.services import logger as logger_module
+from app.services.notifier import NotificationService
 from app.adapters.sources.freehub import FreeHubJobSource
 
 
@@ -189,7 +189,7 @@ def test_stale_sending_lease_is_reopened_without_charging_an_attempt(tmp_path):
 
 def test_freehub_source_uses_injected_http_client_in_poll_path(monkeypatch):
     """FreeHubJobSource must thread its injected http_client through to
-    app.freehub.poll_once on every poll, rather than discarding it or
+    app.services.freehub.poll_once on every poll, rather than discarding it or
     constructing its own infrastructure. It never builds its own HTTP client
     or reads config -- the poller/marker/http_client are all injected."""
     sentinel = object()
@@ -199,7 +199,7 @@ def test_freehub_source_uses_injected_http_client_in_poll_path(monkeypatch):
         observed["client"] = client
         return []
 
-    from app import freehub as freehub_logic
+    from app.services import freehub as freehub_logic
     monkeypatch.setattr(freehub_logic, "poll_once", fake_poll_once)
 
     source = FreeHubJobSource(
@@ -214,7 +214,7 @@ def test_freehub_source_uses_injected_http_client_in_poll_path(monkeypatch):
 
 
 def test_db_timeout_quarantines_shared_executor_instead_of_replacing_it(monkeypatch):
-    import app.logger as lm
+    import app.services.logger as lm
 
     original_executor = lm._EXECUTOR
     original_timeout = lm._DB_TIMEOUT_SECONDS
@@ -256,7 +256,7 @@ def test_db_timeout_quarantines_shared_executor_instead_of_replacing_it(monkeypa
 
 
 def test_runtime_numeric_validation_rejects_non_positive_values():
-    from app.runtime_config import _validate_positive
+    from app.core.runtime_config import _validate_positive
 
     with pytest.raises(ValueError):
         _validate_positive("concurrency", 0)

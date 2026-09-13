@@ -5,7 +5,7 @@ registry only resolves the selected adapter class, so adding a provider does
 not require editing the orchestration layer.
 """
 import importlib
-from app.runtime_config import LLM_PROVIDERS
+from app.core.runtime_config import LLM_PROVIDERS
 
 _FACTORIES = {}
 

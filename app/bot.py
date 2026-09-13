@@ -1,12 +1,13 @@
 import asyncio
-from app.composition import compose
-from app.workers import default_registry
-from app.startup import default_startup_steps
+from app.wiring.composition import compose
+from app.wiring.workers import default_registry
+from app.wiring.startup import default_startup_steps
 
 async def run():
     runtime = compose()
+    steps = await default_startup_steps(runtime)
     try:
-        for step in default_startup_steps(runtime):
+        for step in steps:
             await step()
         registry = default_registry(runtime)
         await registry.run()

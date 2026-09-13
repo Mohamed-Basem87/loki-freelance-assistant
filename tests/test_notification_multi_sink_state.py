@@ -26,14 +26,14 @@ from pathlib import Path
 
 import pytest
 
-import app.job_processor as job_processor
-from app.job_processor import (
+import app.services.job_processor as job_processor
+from app.services.job_processor import (
     _make_job_uuid,
     process_job,
     retry_incomplete_notifications,
 )
-from app.logger import logger
-from app.notifier import NotificationService
+from app.services.logger import logger
+from app.services.notifier import NotificationService
 
 
 DIRECT_TITLE = "Power BI Dashboard Needed"

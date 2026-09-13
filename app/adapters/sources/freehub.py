@@ -1,7 +1,7 @@
 """FreeHub JobSource adapter.
 
 Every collaborator (HTTP client, poller, marker) is injected by the
-composition root. This module never reads app.config / app.runtime_config
+composition root. This module never reads app.core.config / app.core.runtime_config
 and never constructs infrastructure itself -- there is no hidden
 service-locator or adapter-owned dependency construction here.
 """
@@ -13,7 +13,7 @@ class FreeHubApiClient:
     """FreeHub API adapter. HTTP mechanics are delegated to an injected
     HttpTransport (app.ports). Configuration values (base_url, user_id,
     timeout, page_size) are injected by the composition root, never
-    resolved from app.config here."""
+    resolved from app.core.config here."""
 
     def __init__(self, base_url, user_id, *, timeout=None, page_size=None, transport=None):
         self.base_url = base_url.rstrip("/")
@@ -26,12 +26,12 @@ class FreeHubApiClient:
         if self.transport is None:
             raise RuntimeError(
                 "FreeHubApiClient requires an injected transport; construct "
-                "it via app.composition.compose()."
+                "it via app.wiring.composition.compose()."
             )
         if self.page_size is None:
             raise RuntimeError(
                 "FreeHubApiClient requires an injected page_size; construct "
-                "it via app.composition.compose()."
+                "it via app.wiring.composition.compose()."
             )
         url = f"{self.base_url}/{self.user_id}/projects?page={page}&page_size={self.page_size}&sort=newest&source={source}"
         return await self.transport.get_json(url, timeout=self.timeout)

@@ -14,9 +14,9 @@ This module is the single home for every Telegram ingestion path:
   constructs with all collaborators injected.
 
 Configuration contract: this module has NO application/config-global
-dependencies. It never imports ``app.config`` or ``app.runtime_config``:
+dependencies. It never imports ``app.core.config`` or ``app.core.runtime_config``:
 every Telegram credential, channel set, and recovery option is injected by
-the composition root (app.composition.compose) and flows down through
+the composition root (app.wiring.composition.compose) and flows down through
 ``TelegramChannelJobSource`` / ``TelegramChannelWorker``.
 ``app.handlers.telegram`` is the compatibility seam: it re-exports this
 module's machinery and owns only the config-reading ``start()`` /
@@ -68,11 +68,11 @@ from collections import defaultdict, deque
 
 from telethon import TelegramClient, events, errors as _errors
 
-from app.dependencies import logger, state
-from app.message_processor import process_message
+from app.wiring.dependencies import logger, state
+from app.services.message_processor import process_message
 from app.ports import JobSource
-from app.timeouts import call_with_timeout, iter_with_timeout
-from app.heartbeat import (
+from app.core.timeouts import call_with_timeout, iter_with_timeout
+from app.core.heartbeat import (
     liveness,
     STATE_ALIVE,
     STATE_RECONNECTING,
@@ -789,7 +789,7 @@ async def _recover_all_channels(client, channel_locks, recovery_blocked, channel
     The same underlying message can therefore be seen once by recovery
     (in its snapshot) and once by the live handler (queued behind the
     lock). That's harmless: the existing SQLite job_uuid dedup in
-    app.job_processor.process_job makes the second observation a
+    app.services.job_processor.process_job makes the second observation a
     no-op.
 
     If recovery stops on a failed message, the lock is still released

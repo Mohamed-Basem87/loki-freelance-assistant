@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from app import healthcheck
-from app.heartbeat import write_heartbeat
+from app.core import healthcheck
+from app.core.heartbeat import write_heartbeat
 
 
 @pytest.fixture()

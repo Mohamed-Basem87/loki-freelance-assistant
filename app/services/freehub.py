@@ -4,13 +4,13 @@ import time
 from collections import deque
 from pathlib import Path
 
-from app.config import (
+from app.core.config import (
     FREEHUB_BASE_URL,
     FREEHUB_USER_ID,
     FREEHUB_PAGE_SIZE,
 )
-from app.runtime_config import RUNTIME, RECOVERY, SOURCE_IDS
-from app.dependencies import dedup, logger
+from app.core.runtime_config import RUNTIME, RECOVERY, SOURCE_IDS
+from app.wiring.dependencies import dedup, logger
 
 
 # Configurable so deployments can switch to the TLS endpoint when
@@ -47,7 +47,7 @@ _SEEN_MAXLEN = max(500, FREEHUB_PAGE_SIZE * _MAX_BACKFILL_PAGES)
 # from whatever was last saved.
 #
 # Built lazily (on first poll_once() call) rather than at import
-# time: app.state.state.load() runs inside app.bot.run(), which
+# time: app.services.state.state.load() runs inside app.bot.run(), which
 # happens *after* this module has already been imported -- reading
 # state at import time would always see the empty pre-load default.
 _seen = {source: deque(maxlen=_SEEN_MAXLEN) for source in SOURCES}
@@ -126,10 +126,10 @@ async def _ensure_seeded_from_state():
 
 async def _persist_seen(source: str):
     # Goes through state.async_set_freehub_seen (a dedicated
-    # single-worker executor thread, mirroring app.logger.DBLogger)
+    # single-worker executor thread, mirroring app.services.logger.DBLogger)
     # rather than calling state.set_freehub_seen directly, since this
     # performs blocking file I/O and poll_once() runs concurrently
-    # with the Telegram side under asyncio.gather -- see app.state.
+    # with the Telegram side under asyncio.gather -- see app.services.state.
     await dedup.set_seen(source, list(_seen[source]))
 
 
@@ -140,8 +140,8 @@ async def fetch_projects(session, source: str, page: int = 1, *, client=None):
     config-derived collaborators so it stays a thin delegator into the
     canonical FreeHubApiClient."""
     if client is None:
-        from app.config import FREEHUB_BASE_URL, get_freehub_user_id
-        from app.runtime_config import RUNTIME
+        from app.core.config import FREEHUB_BASE_URL, get_freehub_user_id
+        from app.core.runtime_config import RUNTIME
         from app.adapters.http.registry import build as _build_transport
         from app.adapters.sources.freehub import FreeHubApiClient
         client = FreeHubApiClient(

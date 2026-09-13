@@ -4,26 +4,26 @@ The Telegram Application's lifecycle in this codebase is driven
 manually (TelegramCommandSurface.initialize() -> start() ->
 updater.start_polling(); stop() -> updater.stop() ->
 application.stop()/shutdown()), matched by the explicit step sequence
-in app.startup.default_startup_steps(). python-telegram-bot's
+in app.wiring.startup.default_startup_steps(). python-telegram-bot's
 `post_init` hook is only ever invoked by the library's own
 run_polling()/run_webhook() convenience methods, neither of which this
 codebase calls -- so a `post_init` registered on the Application
 builder here would never run. It previously sat on the builder,
 duplicating (and silently never performing) work -- resetting
 in-flight user notifications and registering the configured channel --
-that app.startup already does through the one authoritative manual
+that app.wiring.startup already does through the one authoritative manual
 sequence.
 """
 import asyncio
 
 import pytest
 
-from app.startup import default_startup_steps
+from app.wiring.startup import default_startup_steps
 
 
 def test_built_application_has_no_dead_post_init_hook(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123456:fake-token-for-tests")
-    from app.user_bot import create_user_bot_application
+    from app.services.user_bot import create_user_bot_application
 
     application = create_user_bot_application()
     assert application.post_init is None, (

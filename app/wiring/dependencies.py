@@ -5,7 +5,7 @@ and state proxies expose explicit allow-lists so arbitrary infrastructure APIs
 cannot leak into application code.
 
 New production code must use the canonical interfaces injected by the
-composition root (see app.composition). These proxies exist only as a
+composition root (see app.wiring.composition). These proxies exist only as a
 thin compatibility delegation layer for modules that have not yet been
 migrated to constructor injection. They contain NO independent business
 logic.
@@ -23,7 +23,7 @@ class DependencyProxy:
             raise RuntimeError(
                 f"DependencyProxy '{self.name}' accessed before "
                 "composition root configure() was called. "
-                "Ensure app.composition.compose() runs first."
+                "Ensure app.wiring.composition.compose() runs first."
             )
         return self._value
     def __getattr__(self, name):

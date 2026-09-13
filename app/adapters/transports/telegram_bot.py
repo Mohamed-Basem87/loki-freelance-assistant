@@ -25,7 +25,7 @@ class TelegramBotTransport(NotificationTransport):
         if callable(token):
             return token()
         if token is None:
-            from app.config import get_bot_token
+            from app.core.config import get_bot_token
             return get_bot_token()
         return token
     def _get_bot(self):

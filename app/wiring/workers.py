@@ -1,9 +1,9 @@
 """Worker registry. The composition root supplies runtime-owned surfaces."""
 import asyncio
-from app.runtime_config import JOB_SOURCES, RUNTIME
+from app.core.runtime_config import JOB_SOURCES, RUNTIME
 from app.adapters.sources.registry import build as build_source
-from app.source_worker import SourceWorker
-from app.heartbeat import liveness, STATE_ALIVE, STATE_SHUTDOWN, STATE_DEAD
+from app.wiring.source_worker import SourceWorker
+from app.core.heartbeat import liveness, STATE_ALIVE, STATE_SHUTDOWN, STATE_DEAD
 
 
 class WorkerRegistry:
@@ -92,7 +92,7 @@ class WorkerRegistry:
 
 
 async def _process_source_job(job, source):
-    from app.job_processor import process_job
+    from app.services.job_processor import process_job
     normalized = source.normalize(job) if hasattr(source, "normalize") else job
     job_id = normalized.get("job_id", normalized.get("uid"))
     if job_id is None or str(job_id).strip() == "":
@@ -146,7 +146,7 @@ def default_registry(runtime=None):
         registry.register("telegram", worker.run)
         if hasattr(source, "aclose"):
             registry.register_shutdown(source.aclose)
-    from app.heartbeat import heartbeat_loop
+    from app.core.heartbeat import heartbeat_loop
     registry.register("heartbeat", heartbeat_loop)
 
     # Generalized duplicate-registration guard (audit finding), extending
@@ -185,7 +185,7 @@ def default_registry(runtime=None):
         if hasattr(source, "aclose"):
             registry.register_shutdown(source.aclose)
     # The scraper that feeds the LinkedIn/Wuzzuf FileJobSource adapters
-    # ships inside the image (see app/scraper_scheduler.py). It only makes
+    # ships inside the image (see app/wiring/scraper_scheduler.py). It only makes
     # sense to schedule it when an enabled JobSource actually reads the
     # scraper snapshot, so the scheduler worker is started exactly when a
     # scraper_file-backed job source is running. It runs the scraper as a
@@ -196,7 +196,7 @@ def default_registry(runtime=None):
         if str(cfg.adapter or "").startswith("app.adapters.sources.scraper_file:")
     ]
     if scraper_file_sources:
-        from app.scraper_scheduler import (
+        from app.wiring.scraper_scheduler import (
             scraper_scheduler_factory,
             WORKER_ID,
             SCRAPER_SCRIPT,
@@ -213,13 +213,13 @@ def default_registry(runtime=None):
             ),
         )
     if "classification_retry" in enabled:
-        from app.job_processor import classification_retry_loop
+        from app.services.job_processor import classification_retry_loop
         registry.register("classification_retry", lambda: classification_retry_loop(RUNTIME.notification_retry_interval))
     if "notification_retry" in enabled:
-        from app.job_processor import notification_retry_loop
+        from app.services.job_processor import notification_retry_loop
         registry.register("notification_retry", lambda: notification_retry_loop(RUNTIME.notification_retry_interval))
     if "user_notifications" in enabled:
-        from app.user_bot import user_notification_worker
+        from app.services.user_bot import user_notification_worker
         if runtime is not None:
             registry.register("user_notifications_polling", lambda: runtime.user_bot.run())
             registry.register("user_notifications", user_notification_worker)

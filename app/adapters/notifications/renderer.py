@@ -1,5 +1,5 @@
 from app.ports import MessageRenderer
-from app.message_builder import build_job_message, safe_button_url
+from app.core.message_builder import build_job_message, safe_button_url
 
 class TelegramMessageRenderer(MessageRenderer):
     id = "telegram-html"

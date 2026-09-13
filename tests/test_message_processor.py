@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-import app.message_processor as message_processor
+import app.services.message_processor as message_processor
 
 
 def _event(message_id=123):
@@ -63,7 +63,7 @@ def test_process_message_does_not_log_classification_pending_as_error(monkeypatc
     error. It must still return False (callers must not advance the
     watermark/barrier), but it must not be recorded as a generic
     'Message Processor' system error."""
-    from app.job_processor import ClassificationPendingError
+    from app.services.job_processor import ClassificationPendingError
 
     errors = []
 

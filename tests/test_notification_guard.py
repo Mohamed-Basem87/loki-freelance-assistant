@@ -1,6 +1,6 @@
 """
 NotificationGuardIntegration is now backed by the durable
-`notification_guard` table (see app.logger / the retry-correctness
+`notification_guard` table (see app.services.logger / the retry-correctness
 fix in app.notification_guard.integration) rather than an in-memory,
 use-twice-then-evict cache, so every test in this file needs a real
 (isolated, temporary) database -- exactly like test_job_processor.py
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from app.logger import logger
+from app.services.logger import logger
 from app.notification_guard.integration import (
     NotificationGuardIntegration,
 )
@@ -94,7 +94,7 @@ async def run_guard_test(
 ):
     """
     Mirrors the real pipeline's call order (see
-    app.job_processor._resume_pending_notifications_unlocked):
+    app.services.job_processor._resume_pending_notifications_unlocked):
     resolve_category() runs once, up front, and only afterward do the
     wrapped private/routing calls consult the persisted result. Tests
     exercising wrap_private in isolation therefore have to drive

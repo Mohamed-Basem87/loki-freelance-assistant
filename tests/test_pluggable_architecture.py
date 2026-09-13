@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 from app.ports import JobSource
-from app.source_worker import SourceWorker
+from app.wiring.source_worker import SourceWorker
 
 
 class FakeSource(JobSource):
@@ -33,7 +33,7 @@ def test_source_worker_isolates_items_and_marks_after_success(monkeypatch):
         class FakeLogger:
             async def log_error(self, source_id, exc, *args):
                 logged.append((source_id, str(exc)))
-        monkeypatch.setattr("app.source_worker.asyncio.sleep", sleep)
+        monkeypatch.setattr("app.wiring.source_worker.asyncio.sleep", sleep)
         with pytest.raises(asyncio.CancelledError):
             await SourceWorker(source, process, 0, logger=FakeLogger()).run()
         assert processed == ["1", "2"]

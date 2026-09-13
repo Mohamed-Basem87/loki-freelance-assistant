@@ -435,21 +435,21 @@ def test_recovery_and_live_seeing_the_same_message_is_processed_once(
     The opposite overlap: recovery's snapshot AND the live handler
     both see the same message (e.g. it arrived just before recovery
     took its snapshot, so it's in both). The existing SQLite job_uuid
-    dedup in app.job_processor.process_job must make the second
+    dedup in app.services.job_processor.process_job must make the second
     observation a harmless no-op: the job is processed at most once,
     the watermark ends up correct, and no duplicate notification is
     sent.
 
-    This exercises the real app.message_processor.process_message ->
-    app.job_processor.process_job path (not a fake), since that's
+    This exercises the real app.services.message_processor.process_message ->
+    app.services.job_processor.process_job path (not a fake), since that's
     where the actual dedup guarantee lives.
     """
-    from app.job_processor import _make_job_uuid
-    from app.message_processor import process_message
+    from app.services.job_processor import _make_job_uuid
+    from app.services.message_processor import process_message
 
     tmp_dir = tempfile.mkdtemp(prefix="freelance_assistant_test_")
 
-    from app.logger import logger
+    from app.services.logger import logger
 
     original_log_path = logger.path
     logger.path = Path(tmp_dir) / "test_logs.db"
@@ -461,7 +461,7 @@ def test_recovery_and_live_seeing_the_same_message_is_processed_once(
         private_sends["count"] += 1
         return True
 
-    monkeypatch.setattr("app.job_processor.send_notification", fake_private)
+    monkeypatch.setattr("app.services.job_processor.send_notification", fake_private)
 
     class FakeChat:
         title = "Race Channel"

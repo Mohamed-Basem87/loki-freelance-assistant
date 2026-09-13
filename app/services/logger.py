@@ -21,14 +21,14 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
-from app.runtime_config import RUNTIME
+from app.core.runtime_config import RUNTIME
 import sqlite3
 import time
 
-from app.runtime_config import RUNTIME, SOURCES
-from app.heartbeat import liveness, STATE_ALIVE, STATE_DEAD
+from app.core.runtime_config import RUNTIME, SOURCES
+from app.core.heartbeat import liveness, STATE_ALIVE, STATE_DEAD
 import uuid
-
+from app.categories.registry import enabled_categories
 
 # The audit log lives in a SQLite database file next to docker-compose.yml
 # (bind-mounted read/write, never baked into the image), so it is directly
@@ -46,12 +46,12 @@ _EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="db-logger")
 # file living on a stalled volume), every subsequent DBLogger.run()
 # call system-wide -- including from a completely unrelated request --
 # would queue up behind it forever with no exception and nothing to
-# log. See the matching comment in app.state for a real incident this
+# log. See the matching comment in app.services.state for a real incident this
 # same failure shape caused there; this mirrors that module's fix so
 # the DB path (which touches far more of the app -- bot commands,
 # notifications, and ingestion all depend on it, not just ingestion)
 # gets the same protection even though it wasn't implicated in that
-# specific incident. 60s rather than app.state's 30s, since a schema
+# specific incident. 60s rather than app.services.state's 30s, since a schema
 # migration (_rebuild_table, on a large historical table) can
 # legitimately take longer than a routine single-row write without
 # actually being stuck.
@@ -568,7 +568,6 @@ class DBLogger:
         # Seed the category registry into SQLite. The registry is the
         # source of truth for available category definitions; SQLite
         # stores the user-facing selectable catalog.
-        from app.categories.registry import enabled_categories
         for profile in enabled_categories():
             self.ensure_category(
                 profile.id,
@@ -648,6 +647,8 @@ class DBLogger:
             self._conn.execute("ROLLBACK")
             raise
 
+
+#------------------------------------------------------------------
     def _merge_legacy_rows(self, target, source, headers):
         """Copy any rows from a separately-spelled legacy table into an
         existing current-schema table, then drop the legacy table.
@@ -884,7 +885,7 @@ class DBLogger:
         thread makes every read/write strictly serial and keeps all
         blocking database I/O off the event loop.
 
-        Wrapped in a timeout for the same reason as app.state.run() --
+        Wrapped in a timeout for the same reason as app.services.state.run() --
         see the comment above _DB_TIMEOUT_SECONDS. On timeout the shared
         SQLite backend is QUARANTINED: _executor_poisoned is set and
         this and every later call raises StuckExecutorError (fail-closed)
@@ -960,7 +961,7 @@ class DBLogger:
 
     def has_job(self, job_uuid) -> bool:
         """Cheap existence check so callers can skip reprocessing a
-        job they've already logged (see app.job_processor dedup)."""
+        job they've already logged (see app.services.job_processor dedup)."""
         row = self._conn.execute(
             'SELECT 1 FROM jobs WHERE "Job UUID" = ?',
             (job_uuid,),
@@ -1171,7 +1172,7 @@ class DBLogger:
         and whose scheduled retry time (if any) has already passed.
 
         The schedule check mirrors the guard in
-        app.job_processor.process_job (see the "Classification Retry
+        app.services.job_processor.process_job (see the "Classification Retry
         Not Before" column comment in JOB_HEADERS): a job that failed
         classification very recently is intentionally excluded from
         this sweep until its backoff window elapses, rather than being
@@ -1201,7 +1202,7 @@ class DBLogger:
         Notification Guard provider outage all leave a row exactly
         like this, and it stayed here forever with no retry (see the
         audit's P1-1). This is what the periodic retry sweep in
-        app.job_processor.retry_incomplete_notifications() reads from.
+        app.services.job_processor.retry_incomplete_notifications() reads from.
         """
         cursor = self._conn.execute(
             'SELECT * FROM jobs '
@@ -1385,7 +1386,7 @@ class DBLogger:
         recorded for a job ("notify" / "do_not_notify" / "error"), or
         None if the guard was never evaluated for it.
 
-        Used by the retry sweep (app.job_processor) to tell a genuine
+        Used by the retry sweep (app.services.job_processor) to tell a genuine
         content-based rejection ("do_not_notify" -- a final decision,
         not worth re-asking the guard about every sweep) apart from a
         provider outage ("error" -- transient, must keep being

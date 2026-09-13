@@ -1,8 +1,8 @@
 from google import genai
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
 
-from app.config import get_gemini_api_keys
-from app.runtime_config import LLM_PROVIDERS, RUNTIME
+from app.core.config import get_gemini_api_keys
+from app.core.runtime_config import LLM_PROVIDERS, RUNTIME
 from app.llm import rate_limit_tracker
 from app.llm.provider import LLMProvider
 from app.llm.rotation import run_with_rotation
@@ -15,7 +15,7 @@ from app.llm.utils import build_prompt, build_arbitration_prompt, parse_response
 # Previously _clients() built each genai.Client with only an api_key, so a
 # stalled network connection could block the SDK call forever. In the
 # pipeline that call runs on a dedicated thread via asyncio.to_thread wrapped
-# in asyncio.wait_for (app.job_processor / app.notification_guard.guard) --
+# in asyncio.wait_for (app.services.job_processor / app.notification_guard.guard) --
 # and wait_for CANNOT cancel a blocked thread: it fires, the Future is
 # cancelled, but the underlying thread keeps spinning indefinitely on the
 # dead socket, silently leaking one thread per stuck provider call and

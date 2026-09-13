@@ -79,7 +79,7 @@ Do not include markdown. Only output JSON.
 # Groq's on-demand tier rejects whole requests above a small
 # tokens-per-minute budget before inference runs, so an untruncated
 # posting can make every fallback attempt fail regardless of model.
-from app.runtime_config import RUNTIME
+from app.core.runtime_config import RUNTIME
 
 COMPACT_ARBITRATION_MAX_TEXT_CHARS = RUNTIME.llm_compact_arbitration_chars
 

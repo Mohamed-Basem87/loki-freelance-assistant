@@ -11,7 +11,7 @@ Two things are covered here:
    serialized executor (self._state.run(...)). The safe, already-used
    equivalents are DedupStore.get_seen()/set_seen().
 
-2. app.composition.compose() was passing the JsonStateStore *port*
+2. app.wiring.composition.compose() was passing the JsonStateStore *port*
    facade into build_dedup(state_backend=state) instead of letting it
    resolve its own raw StateManager backend. StateDedupStore expects
    the raw backend (it calls `self._state.run(...)`), and JsonStateStore
@@ -19,7 +19,7 @@ Two things are covered here:
    (get_seen/set_seen/get_pending/set_pending) raised AttributeError
    the moment it was exercised through the actual composition root.
    This test drives app.adapters.state.dedup_registry.build() the same
-   way app.composition.compose() does, to prove dedup and state share
+   way app.wiring.composition.compose() does, to prove dedup and state share
    the one serialized backend and dedup is actually usable.
 """
 import asyncio
@@ -51,13 +51,13 @@ def test_json_state_store_no_longer_implements_the_sync_freehub_seen_bypass():
 
 def test_build_dedup_as_used_by_composition_shares_the_serialized_backend():
     """Drives app.adapters.state.dedup_registry.build() the same way
-    app.composition.compose() does after the fix (no state_backend
+    app.wiring.composition.compose() does after the fix (no state_backend
     kwarg), and confirms a get_seen/set_seen round-trip actually works
     end to end -- this would raise AttributeError before the fix,
     since the dedup adapter was wired to the JsonStateStore port facade
     (no `.run()`) instead of the raw serialized StateManager backend.
     """
-    from app.state import state as raw_state_manager
+    from app.services.state import state as raw_state_manager
     from app.adapters.state.registry import build as build_state
     from app.adapters.state.dedup_registry import build as build_dedup
     from app.adapters.state.dedup import StateDedupStore
@@ -98,7 +98,7 @@ def test_compose_wires_dedup_without_the_broken_state_backend_kwarg():
     its own."""
     import inspect
 
-    import app.composition as composition_module
+    import app.wiring.composition as composition_module
 
     source = inspect.getsource(composition_module.compose)
     assert "build_dedup(state_backend=state)" not in source, (
@@ -114,7 +114,7 @@ def test_runtime_shutdown_closes_the_notification_transport():
     must shut it down during shutdown() -- before this fix, every
     production process exit leaked the transport's background
     telegram.Bot session."""
-    from app.composition import Runtime
+    from app.wiring.composition import Runtime
 
     closed = {"count": 0}
 
@@ -142,7 +142,7 @@ def test_runtime_shutdown_tolerates_a_missing_notification_transport():
     """A Runtime built without a notification transport (source-only
     deployment, or tests that construct one for a subsystem) must shut
     down cleanly."""
-    from app.composition import Runtime
+    from app.wiring.composition import Runtime
 
     async def scenario():
         runtime = Runtime(
@@ -162,7 +162,7 @@ def test_runtime_shutdown_continues_when_transport_close_fails():
     """Cleanup must never block the shutdown sequence: a failing
     transport close is reported and the remaining resources still shut
     down."""
-    from app.composition import Runtime
+    from app.wiring.composition import Runtime
 
     closed = {"count": 0}
 

@@ -1,24 +1,24 @@
 """
 Test-collection-time environment setup.
 
-app/config.py validates a full set of required production credentials
+app/core/config.py validates a full set of required production credentials
 (Telegram API/session, Gemini, Groq, bot token, target channels,
 FreeHub user id) eagerly at import time, and raises RuntimeError if
 any of them is missing. That's the right behavior for the *running
 bot* -- fail fast rather than start up half-configured -- but most of
-this project's own module graph transitively imports app.config just
-by importing app.job_processor, app.notifier, app.telegram_bot, etc.,
+this project's own module graph transitively imports app.core.config just
+by importing app.services.job_processor, app.services.notifier, app.services.user_bot, etc.,
 which meant a large chunk of the test suite (anything touching the
 pipeline/LLM/notification layers, not just the classifier itself)
 could not even be *collected* by pytest without a full, real .env
 file present.
 
-This file does NOT weaken app/config.py's validation, and does NOT
+This file does NOT weaken app/core/config.py's validation, and does NOT
 make any required production variable optional at runtime -- the
 real app still refuses to start without real credentials. It only
 ensures that, for the *test process*, every required variable has
 *some* syntactically valid value before any test module gets a chance
-to import app.config:
+to import app.core.config:
 
   - If a real .env is present (e.g. a developer's local checkout),
     its values are loaded first and take priority, so tests can still
@@ -27,7 +27,7 @@ to import app.config:
     tests/test_llm_manager.py for the opt-in "live" tests).
   - Anything still missing after that gets a clearly-fake placeholder
     (never a value that could be mistaken for a real secret), purely
-    so importing app.config succeeds. These placeholders are never
+    so importing app.core.config succeeds. These placeholders are never
     used to make real API/Telegram calls anywhere in the default
     (offline) test suite -- provider calls are mocked (see
     tests/test_llm_gemini.py etc.), and nothing in this test suite
@@ -35,11 +35,11 @@ to import app.config:
     message.
 
 The classifier's own tests (tests/test_keyword_filter.py) do not
-depend on this at all -- app.filters/app.keywords/app.normalize have
-no app.config dependency, so they run fully isolated regardless of
+depend on this at all -- app.core.filters/app.core.normalize have
+no app.core.config dependency, so they run fully isolated regardless of
 anything in this file. This fixture only unblocks the *other* test
 files that genuinely need the rest of the app's object graph to
-construct (e.g. app.notifier needs BOT_CHAT_ID to exist, even just to
+construct (e.g. app.services.notifier needs BOT_CHAT_ID to exist, even just to
 import).
 """
 
@@ -59,7 +59,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 # exist.
 load_dotenv(_REPO_ROOT / ".env")
 
-# Every variable app/config.py treats as required. Values below are
+# Every variable app/core/config.py treats as required. Values below are
 # deliberately obvious placeholders, not plausible-looking fakes, so
 # nobody mistakes one for a leaked credential in a log/diff.
 _TEST_ENV_DEFAULTS = {
@@ -84,35 +84,39 @@ for _name, _value in _TEST_ENV_DEFAULTS.items():
 def _bind_dependency_slots():
     """Bind the legacy DependencyProxy slots before any test runs.
 
-    app.dependencies.DependencyProxy is deliberately strict: application
+    app.wiring.dependencies.DependencyProxy is deliberately strict: application
     code may never lazily construct adapter instances (that was the old
     "lazy fallback factory" design the composition root removed -- see
-    app.dependencies). Production binds every slot through
-    app.composition.compose() before any worker starts. The test session
+    app.wiring.dependencies). Production binds every slot through
+    app.wiring.composition.compose() before any worker starts. The test session
     mirrors that contract by binding the same canonical module facades
-    up front: app.persistence.db (SQLiteRepository over the shared
-    DBLogger singleton), app.state_store.store (JsonStateStore over the
-    shared StateManager singleton), the default notification service,
+    up front: app.adapters.repositories.registry's SQLiteRepository over
+    the shared DBLogger singleton, app.adapters.state.registry's
+    JsonStateStore over the shared StateManager singleton, the default
+    notification service,
     routing, parser registry, and the standard no-op notification
     resolver. Tests that monkeypatch a proxy attribute (e.g.
     tests/test_telegram_recovery.py) still work because an instance
     attribute shadows the bound value, exactly as before.
     """
-    from app.dependencies import configure
-    from app.notifier import get_notification_service
-    from app.parser import get_parser_registry
-    from app.persistence import db
-    from app.routing import queue_for_category
-    from app.state_store import store
+    from app.adapters.repositories.registry import build as build_repository
+    from app.adapters.state.registry import build as build_state_store
+    from app.wiring.dependencies import configure
+    from app.services.notifier import get_notification_service
+    from app.services.parser import get_parser_registry
+    from app.core.routing import queue_for_category
+
+    db = build_repository()
+    store = build_state_store()
 
     async def _noop_resolver(job_uuid, row, category_id):
         return category_id
 
     class _NoopUrlShortener:
         """Pass-through stand-in for the real UrlShortenerService (see
-        app.url_shortener). Tests that specifically exercise shortening
-        behavior bind their own fake via app.dependencies.configure()
-        or by monkeypatching app.dependencies.url_shortener directly
+        app.core.url_shortener). Tests that specifically exercise shortening
+        behavior bind their own fake via app.wiring.dependencies.configure()
+        or by monkeypatching app.wiring.dependencies.url_shortener directly
         (an instance attribute shadows this bound value, same pattern
         used for the other proxies)."""
 
@@ -151,19 +155,19 @@ def _reset_llm_rate_limit_cooldowns():
 
 @pytest.fixture(autouse=True)
 def _reset_worker_liveness():
-    """app.heartbeat.liveness is process-lifetime, in-memory, global state
+    """app.core.heartbeat.liveness is process-lifetime, in-memory, global state
     by design (see its own module docstring) -- the running bot's
     healthcheck depends on exactly one shared registry, snapshotted into
     the heartbeat file. Across a test session that means any test which
-    exercises real code beating a worker id (e.g. app.logger.DBLogger.run
-    / app.state.StateManager.run reporting "db_worker"/"state_worker" dead
+    exercises real code beating a worker id (e.g. app.services.logger.DBLogger.run
+    / app.services.state.StateManager.run reporting "db_worker"/"state_worker" dead
     after a real timed-out-operation test) leaves that state sitting in
     the registry for every later test that calls write_heartbeat() or
     otherwise reads the shared registry -- including tests with no
     relationship to DB/state timeouts at all. Clearing before *and* after
     each test keeps that state from ever leaking across test boundaries.
     """
-    from app.heartbeat import liveness as _liveness
+    from app.core.heartbeat import liveness as _liveness
     with _liveness._lock:
         _liveness._states.clear()
     yield

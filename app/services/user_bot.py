@@ -15,10 +15,10 @@ from telegram.ext import (
 )
 
 from app.categories.registry import enabled_categories
-from app.config import BOT_CHANNEL_CATEGORY_ID, BOT_CHANNEL_ID, get_bot_token
-from app.dependencies import logger, user_messaging, user_renderer
-from app.heartbeat import STATE_RUNNING, sleep_with_beats
-from app.runtime_config import RUNTIME, SOURCES
+from app.core.config import BOT_CHANNEL_CATEGORY_ID, BOT_CHANNEL_ID, get_bot_token
+from app.wiring.dependencies import logger, user_messaging, user_renderer
+from app.core.heartbeat import STATE_RUNNING, sleep_with_beats
+from app.core.runtime_config import RUNTIME, SOURCES
 
 DELIVERY_CONCURRENCY = RUNTIME.delivery_concurrency
 POLL_INTERVAL = RUNTIME.user_bot_poll_interval
@@ -512,14 +512,14 @@ def create_user_bot_application():
     # TelegramCommandSurface (initialize() -> start() ->
     # updater.start_polling(), and stop() -> updater.stop() ->
     # application.stop()/shutdown()), and the equivalent manual
-    # startup sequence in app.startup.default_startup_steps(). A
+    # startup sequence in app.wiring.startup.default_startup_steps(). A
     # `post_init` hook registered on the builder here is only ever
     # invoked by python-telegram-bot's own run_polling()/run_webhook()
     # convenience methods, neither of which this codebase uses, so it
     # would never run -- it previously sat on the builder looking like
     # part of the startup path while silently never firing.
     # register_channel() and reset_inflight_notifications() in
-    # app.startup are the single authoritative place those two steps
+    # app.wiring.startup are the single authoritative place those two steps
     # happen; do not reintroduce a second one here.
     application = Application.builder().token(get_bot_token()).build()
     application.add_handler(CommandHandler("start", start_command))

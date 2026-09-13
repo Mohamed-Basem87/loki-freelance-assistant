@@ -1,5 +1,5 @@
 from app.categories.registry import enabled_categories, deterministic_categories
-from app.classification import classify_and_select, select_category
+from app.core.classification import classify_and_select, select_category
 
 
 def test_registry_has_data_analysis():
@@ -41,7 +41,7 @@ def test_ambiguous_category_selection_does_not_pick_a_category():
 
 
 def test_multiple_direct_matches_require_arbitration(monkeypatch):
-    from app import classification
+    from app.core import classification
     from app.categories.data_analysis.profile import CategoryProfile
 
     class FakeProfile:
@@ -79,7 +79,7 @@ def test_multiple_direct_matches_require_arbitration(monkeypatch):
 
 
 def test_huge_description_is_bounded_before_classification():
-    from app.classification import MAX_CLASSIFY_TEXT_CHARS
+    from app.core.classification import MAX_CLASSIFY_TEXT_CHARS
     word = "Power BI dashboard and Excel data analysis "
     huge = word * (MAX_CLASSIFY_TEXT_CHARS // len(word) * 3 + 10)
     result = classify_and_select(huge, title="Power BI Dashboard")
@@ -89,7 +89,7 @@ def test_huge_description_is_bounded_before_classification():
 
 
 def test_classify_and_select_is_bounded_with_runtime_limits():
-    from app.classification import MAX_CLASSIFY_TEXT_CHARS
+    from app.core.classification import MAX_CLASSIFY_TEXT_CHARS
     word = "Power BI dashboard and Excel data analysis "
     huge = word * (MAX_CLASSIFY_TEXT_CHARS // len(word) + 40)
 
@@ -107,5 +107,5 @@ def test_multiple_ambiguous_candidates_are_all_exposed_for_one_arbitration():
         "data_analysis": {"category_id": "data_analysis", "result": {"decision": "needs_gemini"}},
         "web_development": {"category_id": "web_development", "result": {"decision": "needs_gemini"}},
     }
-    from app.classification import select_category
+    from app.core.classification import select_category
     assert select_category(results) is None

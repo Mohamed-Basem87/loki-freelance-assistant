@@ -1,8 +1,8 @@
 from html import escape
 from urllib.parse import urlparse
 
-from app.config import source_display_name
-from app.runtime_config import RUNTIME
+from app.core.config import source_display_name
+from app.core.runtime_config import RUNTIME
 
 import re
 

@@ -7,7 +7,7 @@ category heading, tags, description, and project button content as the public
 category channel.
 """
 from app.ports import UserMessageRenderer
-from app.message_builder import build_job_message, safe_button_url
+from app.core.message_builder import build_job_message, safe_button_url
 from app.categories.registry import enabled_categories
 
 class TelegramUserMessageRenderer(UserMessageRenderer):

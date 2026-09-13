@@ -1,7 +1,7 @@
 import re
 import threading
 
-from app.normalize import normalize
+from app.core.normalize import normalize
 
 
 # ------------------------------------------------------------------

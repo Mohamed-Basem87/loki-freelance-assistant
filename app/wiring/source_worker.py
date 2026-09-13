@@ -2,7 +2,7 @@
 import asyncio
 import inspect
 from app.ports import Worker
-from app.heartbeat import liveness, STATE_ALIVE
+from app.core.heartbeat import liveness, STATE_ALIVE
 
 # Sub-window cadence for liveness beats during idle sleeps AND during
 # long-running job processing. The healthcheck flags a critical "alive"
@@ -20,7 +20,7 @@ class SourceWorker(Worker):
         self.source, self.process_job, self.interval, self.recovery = source, process_job, interval, recovery
         self._logger = logger
         if self._logger is None:
-            from app.dependencies import logger as _default_logger
+            from app.wiring.dependencies import logger as _default_logger
             self._logger = _default_logger
 
     async def _call(self, value, *args):
@@ -57,7 +57,7 @@ class SourceWorker(Worker):
         if self.recovery is not None:
             await self.recovery.recover()
         # Report per-worker liveness so a healthy global heartbeat cannot
-        # mask a dead FreeHub/source polling worker (see app/heartbeat.py).
+        # mask a dead FreeHub/source polling worker (see app/core/heartbeat.py).
         liveness.beat(self.source.id, STATE_ALIVE)
         while True:
             try:
@@ -68,7 +68,7 @@ class SourceWorker(Worker):
                         await self._call(self.process_job, job, self.source)
                         await self.source.mark_seen(job)
                     except Exception as exc:
-                        from app.job_processor import ClassificationPendingError
+                        from app.services.job_processor import ClassificationPendingError
                         if isinstance(exc, ClassificationPendingError):
                             # Expected control-flow from process_job (P3-B):
                             # the job is durably pending/claimed on another
@@ -77,7 +77,7 @@ class SourceWorker(Worker):
                             # retire a still-pending job) and do NOT record
                             # it as a worker error (any underlying LLM
                             # failure was already audited where it happened,
-                            # in app.job_processor). The durable pending row
+                            # in app.services.job_processor). The durable pending row
                             # stays reachable by the retry sweeps.
                             continue
                         await self._logger.log_error(self.source.id, exc, job.get("job_id", job.get("uid", "")))

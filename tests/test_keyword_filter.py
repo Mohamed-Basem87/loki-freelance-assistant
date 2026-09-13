@@ -1,14 +1,14 @@
 """
 Classifier regression suite.
 
-This file intentionally imports ONLY app.filters (and, transitively,
-app.keywords/app.normalize) -- none of which touch app.config -- so
+This file intentionally imports ONLY app.core.filters (and, transitively,
+app.core.normalize) -- none of which touch app.core.config -- so
 it can be collected and run with a bare `pytest`, with no .env file
 and no Telegram/Gemini/Groq/FreeHub credentials of any kind. A
 previous version of this file additionally imported
 app.llm.gemini.evaluate_job (unused by this file's own test cases,
 apparently a leftover from before the file was split), which
-transitively imports app.config and made the single most important
+transitively imports app.core.config and made the single most important
 regression suite in the repository impossible to even collect without
 a full production .env. See tests/test_llm_gemini.py for the
 (properly isolated, mocked) tests that actually exercise the Gemini
@@ -17,7 +17,7 @@ call path.
 
 import pytest
 
-from app.filters import keyword_filter
+from app.core.filters import keyword_filter
 from app.categories.data_analysis.profile import PROFILE as DATA_ANALYSIS_PROFILE
 
 
@@ -159,7 +159,7 @@ def test_keyword_filter_returns_well_formed_result(case):
     (deliberately varied, some ambiguous) postings, the result dict
     must always be internally consistent -- this is real regression
     value beyond "it didn't crash", since it directly encodes the
-    decision-table invariants documented in app/filters.py.
+    decision-table invariants documented in app/core/filters.py.
     """
     result = keyword_filter(case["text"], title=case["title"], profile=DATA_ANALYSIS_PROFILE)
 
@@ -169,7 +169,7 @@ def test_keyword_filter_returns_well_formed_result(case):
 
     # `matched` only asserts "some positive evidence existed somewhere"
     # -- it does not imply the decision was in the job's favor (see
-    # app/job_processor.py's fallthrough branch) -- but a
+    # app/services/job_processor.py's fallthrough branch) -- but a
     # notify_directly decision must always have some positive
     # evidence backing it.
     if result["notify_directly"]:
@@ -1126,7 +1126,7 @@ def test_classifier_regression_cases(case):
 
 def test_arabic_attached_clitic_matches_canonical_keyword():
     from app.categories.data_analysis.profile import PROFILE
-    from app.filters import keyword_filter
+    from app.core.filters import keyword_filter
     result = keyword_filter("والبيانات وتحليل البيانات", profile=PROFILE)
     assert result["matched"] is True
 
@@ -1136,7 +1136,7 @@ def test_compiled_profile_is_cached_and_not_recompiled_per_call(monkeypatch):
     once per keyword_filter() call -- classify_and_select() re-runs the
     filter for every enabled profile on every job, so recompiling per call
     is wasted work on the hot path."""
-    import app.filters as filters
+    import app.core.filters as filters
 
     from app.categories.data_analysis.profile import PROFILE as P
 

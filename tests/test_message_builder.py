@@ -1,5 +1,5 @@
 ﻿"""
-app.message_builder tests. Pure string-building module, no app.config
+app.core.message_builder tests. Pure string-building module, no app.core.config
 dependency -- runs fully offline like test_keyword_filter.py.
 """
 
@@ -7,7 +7,7 @@ import re
 
 import pytest
 
-from app.message_builder import (
+from app.core.message_builder import (
     MAX_MESSAGE_LENGTH,
     _safe_html_truncate,
     build_job_message,
@@ -234,7 +234,7 @@ def test_safe_html_truncate_never_breaks_html_at_any_cut_point(cut_point):
     _assert_balanced_b_tags(truncated)
 
 
-from app.message_builder import safe_button_url
+from app.core.message_builder import safe_button_url
 
 
 def test_safe_button_url_accepts_normal_public_urls():

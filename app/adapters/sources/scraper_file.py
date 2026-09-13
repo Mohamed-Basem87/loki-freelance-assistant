@@ -8,10 +8,10 @@ process_job -> mark_seen.
 
 One concrete subclass per platform so each is its own JobSource (its own
 worker, its own toggle, its own identity_source). A single class registered
-under two config ids would trip the duplicate-adapter guard in app/workers.py
+under two config ids would trip the duplicate-adapter guard in app/wiring/workers.py
 and could not be enabled/toggled independently.
 
-This module never touches app.config: the file path is injected through the
+This module never touches app.core.config: the file path is injected through the
 config job-source "settings".
 """
 

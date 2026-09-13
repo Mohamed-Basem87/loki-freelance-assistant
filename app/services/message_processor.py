@@ -1,6 +1,6 @@
-from app.job_processor import process_job, ClassificationPendingError
-from app.dependencies import logger
-from app.dependencies import parser
+from app.services.job_processor import process_job, ClassificationPendingError
+from app.wiring.dependencies import logger
+from app.wiring.dependencies import parser
 
 def parse_job(source, text): return parser.parse(source, text)
 
@@ -49,7 +49,7 @@ async def process_message(event):
             job=job,
             job_id=str(event.id),
             # job["source"] (the channel *title*) stays as display/
-            # logging metadata and, in app.parser.parse_job, as the
+            # logging metadata and, in app.services.parser.parse_job, as the
             # actual dispatch signal for Nafezly-specific parsing --
             # it must not be repurposed as identity. The channel's
             # numeric chat_id is stable across renames, so use that
@@ -74,7 +74,7 @@ async def process_message(event):
             # job is durably parked as Pending/claimed on another path
             # (attempt another process_job() caller owns), and any
             # underlying LLM/provider failure was already audited exactly
-            # where it happened (see app.job_processor.process_job).
+            # where it happened (see app.services.job_processor.process_job).
             # Recording it here as a generic "Message Processor" system
             # error would drown the audit trail in duplicate rows for a
             # non-crash. It still counts as "not processed" below, so
@@ -91,7 +91,7 @@ async def process_message(event):
         # Skipped on the normal path to avoid an extra write per
         # message. Routed through logger.run() (the same single
         # dedicated thread every other database access uses -- see
-        # app.logger.DBLogger.run) rather than a bare asyncio.to_thread(),
+        # app.services.logger.DBLogger.run) rather than a bare asyncio.to_thread(),
         # so this save can never overlap with another job's log write.
         if failed:
             try:

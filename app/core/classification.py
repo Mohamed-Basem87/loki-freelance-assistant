@@ -1,7 +1,7 @@
 """Category matching and deterministic selection orchestration."""
 
 from app.categories.registry import deterministic_categories
-from app.filters import keyword_filter
+from app.core.filters import keyword_filter
 
 
 # Bounds for the deterministic keyword-filter input. Scraper-backed sources can

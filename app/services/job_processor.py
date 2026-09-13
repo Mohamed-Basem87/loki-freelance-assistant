@@ -5,12 +5,12 @@ import uuid
 import weakref
 
 from app.categories.registry import get_category, arbitration_only_categories
-from app.classification import classify_and_select
+from app.core.classification import classify_and_select
 from app.llm.manager import arbitrate_category
-from app.dependencies import logger, state, dedup, notifier, router, resolver, url_shortener
-from app.heartbeat import STATE_RUNNING, sleep_with_beats
-from app.runtime_config import RUNTIME
-from app.timeouts import call_with_timeout
+from app.wiring.dependencies import logger, state, dedup, notifier, router, resolver, url_shortener
+from app.core.heartbeat import STATE_RUNNING, sleep_with_beats
+from app.core.runtime_config import RUNTIME
+from app.core.timeouts import call_with_timeout
 
 
 class ClassificationPendingError(RuntimeError):
@@ -65,7 +65,7 @@ def _make_job_uuid(source: str, job_id: str) -> str:
 
 
 # Cross-source dedup is persisted and claimed atomically by
-# app.state.StateManager.  The state executor serializes the
+# app.services.state.StateManager.  The state executor serializes the
 # check-and-claim operation, so FreeHub and Telegram cannot both win
 # for the same project when they arrive concurrently.
 
@@ -87,7 +87,7 @@ async def _resolve_notification_category(job_uuid: str, row: dict, category_id: 
     unlocked below, which always calls this first).
 
     In the standard (non-guarded) runtime this is a no-op that returns
-    the category unchanged. The composition root (app.composition.compose)
+    the category unchanged. The composition root (app.wiring.composition.compose)
     binds this slot to the real guard-aware resolver
     (app.notification_guard.integration.NotificationGuardIntegration.
     resolve_category) exactly like the notifier and router slots -- see
@@ -405,7 +405,7 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
             # project in its own durable pending queue until it is
             # explicitly marked seen, which only happens after
             # process_job() returns successfully (see
-            # app.source_worker.SourceWorker.run()). A project stuck
+            # app.wiring.source_worker.SourceWorker.run()). A project stuck
             # here as Pending/LLM Error therefore gets re-submitted to
             # process_job() on *every* FreeHub poll (every
             # freehub_poll_interval, e.g. 60s) -- entirely independent
@@ -567,7 +567,7 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
         # no-op guard below skips the rewrite; fail_closed raises
         # UrlShorteningError, deliberately NOT caught here, so the source
         # worker leaves the job un-seen and it resumes from this durable row
-        # on the next poll instead of being lost (see app.source_worker.
+        # on the next poll instead of being lost (see app.wiring.source_worker.
         # SourceWorker.run).
         shortened = await url_shortener.shorten(job_id, job["url"])
         if shortened and shortened != job["url"]:

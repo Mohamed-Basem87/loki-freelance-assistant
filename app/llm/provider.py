@@ -22,7 +22,7 @@ from abc import ABC, abstractmethod
 class LLMProvider(ABC):
 
     #: Short, stable identifier -- used both as the "provider" value
-    #: recorded on the job row (see app.job_processor) and as the
+    #: recorded on the job row (see app.services.job_processor) and as the
     #: candidate-id namespace prefix in app.llm.rate_limit_tracker
     #: (e.g. "gemini-key1", "groq-model-...").
     id: str

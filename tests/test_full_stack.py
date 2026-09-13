@@ -52,7 +52,7 @@ def test_full_stack_profile_structure():
 
 def test_full_stack_cannot_be_direct_match():
     """Full stack cannot be selected by deterministic classification (no keywords)."""
-    from app.classification import classify_and_select
+    from app.core.classification import classify_and_select
     
     # Even with full-stack related text, no deterministic match should occur
     result = classify_and_select(

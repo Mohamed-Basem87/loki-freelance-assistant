@@ -5,13 +5,14 @@ The same registry supports both the composition root and the legacy
 assembled; otherwise the registry resolves the default JSON backend singleton.
 """
 import os
+from app.services.state import state
+from app.adapters.state.json import JsonStateStore
 
 def build(state_backend=None):
     key = os.getenv("STATE_BACKEND", "json").strip().lower()
     if key == "json":
         if state_backend is None:
-            from app.state import state
             state_backend = state
-        from app.adapters.state.json import JsonStateStore
+        
         return JsonStateStore(state_backend)
     raise KeyError(f"Unknown STATE_BACKEND: {key}")

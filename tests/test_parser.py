@@ -1,5 +1,5 @@
 """
-app.parser tests. No app.config dependency, so this runs fully offline
+app.services.parser tests. No app.core.config dependency, so this runs fully offline
 regardless of credentials -- same as test_keyword_filter.py.
 
 The previous version of this file only pprint()'d one Nafezly example
@@ -9,7 +9,7 @@ example (as a real assertion) and adds the generic/Mostaql fallback
 path and a couple of edge cases the parser is supposed to handle.
 """
 
-from app.parser import parse_job
+from app.services.parser import parse_job
 
 
 def test_nafezly_style_message_extracts_structured_fields():
@@ -47,10 +47,10 @@ def test_nafezly_detection_is_case_and_source_independent():
     """
     The Nafezly-specific parsing path is dispatched purely on whether
     "nafezly" (case-insensitively) appears anywhere in the `source`
-    string -- see app.parser.parse_job's `source_name = (source or
+    string -- see app.services.parser.parse_job's `source_name = (source or
     "").lower()` check. This is a real, load-bearing use of the
     channel/source string (not just display metadata), which is why
-    app.message_processor must keep passing the channel title into
+    app.services.message_processor must keep passing the channel title into
     parse_job() even after the job-identity fix (see
     test_pipeline.py's title-change identity test).
     """

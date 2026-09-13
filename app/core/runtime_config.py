@@ -233,10 +233,10 @@ RUNTIME = RuntimePolicy(
     # and are awaited directly on a worker's event-loop task -- Telethon
     # RPC calls (get_dialogs/get_entity/get_messages/iter_messages/
     # start/disconnect) and the LLM provider calls run via
-    # asyncio.to_thread (app.job_processor, app.notification_guard.guard).
+    # asyncio.to_thread (app.services.job_processor, app.notification_guard.guard).
     # Unlike a hung *synchronous* call, a hung genuinely-async await or a
     # stuck background thread never blocks the event loop, so
-    # app.heartbeat.heartbeat_loop keeps ticking on schedule and the
+    # app.core.heartbeat.heartbeat_loop keeps ticking on schedule and the
     # container's healthcheck reports healthy even though that one
     # worker task is permanently stuck (audit finding: hung-worker
     # detection gap). This gives every such call a real ceiling so it
@@ -252,7 +252,7 @@ RUNTIME = RuntimePolicy(
     database_file_path=_resolve_path(_env("DATABASE_FILE_PATH", str(BASE_DIR / "loki_freelance_bot.db"))),
     # Resolved the same way as state_file_path/database_file_path
     # above and for the same reason (audit finding P2-6 /
-    # configuration consistency): app/healthcheck.py runs as a
+    # configuration consistency): app/core/healthcheck.py runs as a
     # separate subprocess and previously read HEARTBEAT_FILE_PATH
     # (and DATABASE_FILE_PATH/STATE_FILE_PATH) directly from the
     # environment with its own hardcoded absolute defaults, bypassing
@@ -273,7 +273,7 @@ RUNTIME = RuntimePolicy(
     notification_backoff_cap_seconds=_int("NOTIFICATION_BACKOFF_CAP_SECONDS", _r["notification_backoff_cap_seconds"]),
     user_bot_poll_interval=_float("USER_BOT_POLL_INTERVAL", _r["user_bot_poll_interval"]),
     freehub_base_url=_env("FREEHUB_BASE_URL", _CONFIG["freehub"]["base_url"]).rstrip("/"),
-    # Internal URL-shortener service (see app/url_shortener.py). Domain and
+    # Internal URL-shortener service (see app/core/url_shortener.py). Domain and
     # endpoint are deliberately separate env vars per the deployment
     # contract; failure_mode toggles what happens on a transport-level
     # failure (fail_open keeps the original URL, fail_closed drops the job
@@ -334,7 +334,7 @@ if RUNTIME.heartbeat_max_age_seconds < RUNTIME.heartbeat_interval_seconds:
 # Every outbound call the app frames with no HTTP layer of its own
 # (Telethon RPCs, the FreeHub/LLM sync SDK calls that run via
 # asyncio.to_thread) is bounded by EXTERNAL_CALL_TIMEOUT_SECONDS (see
-# app.timeouts). HTTP_TIMEOUT_SECONDS is the SDK/HTTP-layer deadline
+# app.core.timeouts). HTTP_TIMEOUT_SECONDS is the SDK/HTTP-layer deadline
 # those same calls observe while doing real network I/O. An
 # external-call deadline BELOW the HTTP/SDK deadline would be the
 # weaker of the two bounds on exactly the calls that need the longer
@@ -385,12 +385,12 @@ if RUNTIME.notification_backoff_cap_seconds < RUNTIME.notification_backoff_base_
 # never make importing this module fail), domain/endpoint have no
 # sensible default -- and this module is imported transitively by a
 # large part of the app/test graph (see tests/conftest.py's own
-# docstring on why app.config defers its required-credential checks to
+# docstring on why app.core.config defers its required-credential checks to
 # lazy getter functions instead of raising at import time). Requiring
-# them here would make importing app.runtime_config itself fail for
+# them here would make importing app.core.runtime_config itself fail for
 # any caller that hasn't set them yet, which is exactly the ordering
-# problem app.config's lazy pattern exists to avoid. The composition
-# root (app.composition.compose) is the actual point that needs a
+# problem app.core.config's lazy pattern exists to avoid. The composition
+# root (app.wiring.composition.compose) is the actual point that needs a
 # working shortener and validates them there instead, the same way it
 # calls get_api_id()/get_freehub_user_id() lazily rather than importing
 # already-validated module-level constants.

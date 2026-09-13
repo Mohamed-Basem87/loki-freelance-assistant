@@ -34,7 +34,7 @@ from pathlib import Path
 
 import pytest
 
-from app.logger import (
+from app.services.logger import (
     JOB_HEADERS,
     _normalize_legacy_notification_state,
     logger,
@@ -183,7 +183,7 @@ def test_migration_rolls_back_atomically_on_error(legacy_db, monkeypatch):
         return _normalize_legacy_notification_state(raw)
 
     monkeypatch.setattr(
-        "app.logger._normalize_legacy_notification_state", boom
+        "app.services.logger._normalize_legacy_notification_state", boom
     )
 
     with pytest.raises(RuntimeError):
@@ -214,7 +214,7 @@ def test_legacy_sent_row_is_never_resent_by_real_notifier(legacy_db):
     """The whole point: a legacy 'Telegram: Sent' row must be skipped by
     the per-sink send gate after migration, so the real NotificationService
     never delivers a duplicate."""
-    from app.notifier import NotificationService
+    from app.services.notifier import NotificationService
 
     _insert_job_with_status(legacy_db, "sent", "Telegram: Sent")
     legacy_db._migrate_legacy_notification_states()
@@ -231,7 +231,7 @@ def test_legacy_sent_row_is_never_resent_by_real_notifier(legacy_db):
 def test_legacy_failed_row_is_retried_by_real_notifier(legacy_db):
     """A legacy 'Telegram: Failed' row becomes the retryable per-sink
     state and is actually re-attempted (not skipped, not lost)."""
-    from app.notifier import NotificationService
+    from app.services.notifier import NotificationService
 
     _insert_job_with_status(legacy_db, "failed", "Telegram: Failed")
     legacy_db._migrate_legacy_notification_states()
@@ -248,8 +248,8 @@ def test_legacy_failed_row_is_retried_by_real_notifier(legacy_db):
 def test_legacy_suppressed_is_terminal_and_not_swept(legacy_db, monkeypatch):
     """A legacy 'Telegram: Suppressed' row migrates to the terminal
     'Suppressed' rollup, so the retry sweep leaves it alone."""
-    import app.job_processor as job_processor
-    from app.job_processor import retry_incomplete_notifications
+    import app.services.job_processor as job_processor
+    from app.services.job_processor import retry_incomplete_notifications
 
     _insert_job_with_status(legacy_db, "suppressed", "Telegram: Suppressed")
     legacy_db._migrate_legacy_notification_states()
@@ -273,14 +273,14 @@ def test_migrated_sent_row_rolls_to_complete_on_next_sweep(legacy_db, monkeypatc
     """Once a legacy 'Telegram: Sent' is migrated, a retry sweep that
     re-runs the (idempotent) notifier finds it already sent and rolls the
     job to 'Complete' -- without ever calling the sink."""
-    import app.job_processor as job_processor
-    from app.job_processor import retry_incomplete_notifications
+    import app.services.job_processor as job_processor
+    from app.services.job_processor import retry_incomplete_notifications
 
     _insert_job_with_status(legacy_db, "sent", "Telegram: Sent")
     legacy_db._migrate_legacy_notification_states()
 
     sink = _RecordingSink()
-    from app.notifier import NotificationService
+    from app.services.notifier import NotificationService
     real_service = NotificationService(sinks=(sink,), repository=legacy_db)
     monkeypatch.setattr(job_processor, "send_notification", real_service.send)
 

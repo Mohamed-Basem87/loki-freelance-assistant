@@ -2,8 +2,8 @@ import asyncio
 import pathlib
 import tempfile
 
-from app.logger import logger
-from app.routing import queue_for_category
+from app.services.logger import logger
+from app.core.routing import queue_for_category
 
 
 def test_user_routing_is_single_category_and_idempotent():

@@ -12,7 +12,7 @@ import asyncio
 
 import pytest
 
-from app.notifier import NotificationService
+from app.services.notifier import NotificationService
 
 
 class _AlwaysSucceedsSink:

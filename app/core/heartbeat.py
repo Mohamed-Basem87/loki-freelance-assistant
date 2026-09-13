@@ -1,6 +1,6 @@
 """Lightweight worker/runtime heartbeat.
 
-app/healthcheck.py runs as a separate, short-lived subprocess (that is
+app/core/healthcheck.py runs as a separate, short-lived subprocess (that is
 how Docker HEALTHCHECK works), so it cannot inspect the running
 application's event loop directly. Before this module existed, the
 only signal it had was "is the SQLite file readable and structurally
@@ -44,7 +44,7 @@ import threading
 import time
 from pathlib import Path
 
-from app.runtime_config import RUNTIME
+from app.core.runtime_config import RUNTIME
 
 # Resolved once, consistently with every other configured path in the
 # process (see runtime_config.RuntimePolicy.heartbeat_file_path and its

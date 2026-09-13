@@ -8,7 +8,7 @@ import asyncio
 import pytest
 
 from app.adapters.sources.freehub import FreeHubApiClient, FreeHubJobSource
-from app.source_worker import SourceWorker
+from app.wiring.source_worker import SourceWorker
 
 
 def _project(uid="p1"):
@@ -141,7 +141,7 @@ def _run_worker_until_idle_loop(worker, monkeypatch):
     (test_healthcheck) read via write_heartbeat()."""
     import types
 
-    from app import source_worker as source_worker_module
+    from app.wiring import source_worker as source_worker_module
 
     monkeypatch.setattr(
         source_worker_module,
@@ -167,7 +167,7 @@ def test_worker_does_not_log_or_mark_classification_pending(monkeypatch):
     job seen (mark_seen would falsely retire a still-pending job)."""
     import types
 
-    from app.job_processor import ClassificationPendingError
+    from app.services.job_processor import ClassificationPendingError
 
     calls = {"process": 0, "mark": 0}
     errors = []
@@ -245,8 +245,8 @@ def test_source_worker_beats_liveness_during_long_processing(monkeypatch):
     active processing, so the healthcheck's staleness window (3 *
     heartbeat_interval) is never exceeded by legitimate work."""
     import types
-    from app import source_worker as sw_module
-    from app.heartbeat import WorkerLiveness, STATE_ALIVE
+    from app.wiring import source_worker as sw_module
+    from app.core.heartbeat import WorkerLiveness, STATE_ALIVE
 
     # Use a fresh, isolated liveness registry for this test.
     reg = WorkerLiveness()

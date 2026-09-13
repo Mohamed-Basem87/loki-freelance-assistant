@@ -1,5 +1,5 @@
 """
-app.state.StateManager tests. No app.config dependency (state.py only
+app.services.state.StateManager tests. No app.core.config dependency (state.py only
 imports asyncio/json/os/pathlib/concurrent.futures), so this runs
 fully offline regardless of credentials, same as test_keyword_filter.py.
 
@@ -22,14 +22,14 @@ import json
 
 import pytest
 
-import app.state as state_module
-from app.state import StateCorruptionError, StateManager
+import app.services.state as state_module
+from app.services.state import StateCorruptionError, StateManager
 
 
 @pytest.fixture()
 def isolated_state_file(tmp_path, monkeypatch):
     """
-    Point app.state.STATE_FILE at a throwaway path for the duration of
+    Point app.services.state.STATE_FILE at a throwaway path for the duration of
     a test, instead of the real database/state.json.
     """
     fake_state_file = tmp_path / "state.json"
@@ -146,7 +146,7 @@ def test_many_concurrent_async_writes_never_corrupt_the_file(isolated_state_file
     FreeHub can both call the async setters around the same time under
     asyncio.gather. Firing a burst of concurrent async writes must
     never produce a torn/invalid state.json -- the dedicated
-    single-worker executor (see app.state._EXECUTOR) is what
+    single-worker executor (see app.services.state._EXECUTOR) is what
     guarantees this by serializing every write onto one thread.
     """
     manager = StateManager()

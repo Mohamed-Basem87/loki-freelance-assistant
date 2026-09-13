@@ -1,8 +1,8 @@
 """
 End-to-end pipeline tests: Telegram event -> parse -> classify -> log.
 
-Importing app.message_processor pulls in the full app.job_processor ->
-app.notifier/app.channel_notifier -> app.telegram_bot -> app.config
+Importing app.services.message_processor pulls in the full app.services.job_processor ->
+app.services.notifier -> app.adapters.notifications -> app.core.config
 chain, so (like test_llm_manager.py etc.) this relies on
 tests/conftest.py's environment defaults to import without a real
 .env. All fixtures below are deliberately built from text that the
@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from app.logger import logger
-from app.message_processor import process_message
+from app.services.logger import logger
+from app.services.message_processor import process_message
 
 
 from app.categories.data_analysis.profile import PROFILE
@@ -69,7 +69,7 @@ def isolated_workbook():
     database file for the duration of a test, instead of the real
     loki_freelance_bot.db -- and restore/close it afterwards.
     Every test in this file that touches the pipeline needs this,
-    since app.job_processor logs through the module-level `logger`
+    since app.services.job_processor logs through the module-level `logger`
     singleton.
     """
     tmp_dir = tempfile.mkdtemp(prefix="freelance_assistant_test_")
@@ -168,7 +168,7 @@ def test_reason_collapse_is_preserved_through_the_pipeline(isolated_workbook):
     "Below Gemini Threshold" for any matched=True reject) and pass
     against the fixed version.
 
-    Testing app.filters.keyword_filter() alone is not enough here --
+    Testing app.core.filters.keyword_filter() alone is not enough here --
     the bug lived specifically at the job_processor.py boundary where
     the classifier's own `reason` was discarded, so this asserts on
     the actual logged Jobs-sheet row, the same place the audit's
@@ -179,7 +179,7 @@ def test_reason_collapse_is_preserved_through_the_pipeline(isolated_workbook):
     # Sanity check the fixture actually exercises the bug's precondition
     # (matched=True, decision=reject, via the fallthrough branch --
     # not hard_reject/notify_directly/needs_gemini).
-    from app.filters import keyword_filter
+    from app.core.filters import keyword_filter
 
     classifier_result = keyword_filter(
         INSUFFICIENT_SIGNAL_TEXT, title=INSUFFICIENT_SIGNAL_TEXT,
@@ -200,7 +200,7 @@ def test_reason_collapse_is_preserved_through_the_pipeline(isolated_workbook):
     # "Decision" holds the classifier's raw decision string and is
     # written once by create_job(); "Final Decision" holds the
     # human-readable Accepted/Rejected label job_processor.py computes
-    # and writes via the later update_job() call -- see app/logger.py's
+    # and writes via the later update_job() call -- see app/services/logger.py's
     # COLUMN_MAP. "Decision Reason" is written by create_job() first
     # (the classifier's raw `reason`) and then OVERWRITTEN by that same
     # update_job() call -- this is exactly where the reason-collapse bug
@@ -227,7 +227,7 @@ def test_url_is_shortened_after_row_creation_and_row_is_updated(isolated_workboo
     first ordering is what makes the feature crash-safe (a process death
     between the create and the shorten leaves the job intact with the long
     URL instead of silently losing it)."""
-    from app import job_processor
+    from app.services import job_processor
 
     calls = []
 
@@ -264,7 +264,7 @@ def test_repeated_job_id_shortening_updates_the_row_without_error(
     path again. The row is created from job_uuid dedup (identity_source +
     job_id) BEFORE the shortener is consulted, and shorten() must never
     raise for this case; the job proceeds normally."""
-    from app import job_processor
+    from app.services import job_processor
 
     class _UpsertingShortener:
         async def shorten(self, job_id, url):
@@ -295,14 +295,14 @@ def test_fail_closed_shortener_error_is_reported_failed_but_keeps_the_row(
     """A genuine (non-duplicate) shortener failure in fail_closed mode
     still raises UrlShorteningError so the source worker skips
     mark_seen()/watermark advancement and retries the job (see
-    app/source_worker.py). But because the durable row is created FIRST,
+    app/wiring/source_worker.py). But because the durable row is created FIRST,
     that retry is now crash-safe: it resumes the existing row (which keeps
     the original URL) instead of re-shortening the same URL into a
     permanent duplicate-drop. process_message() catches the error, logs it,
-    and reports failure via its return value (see app/message_processor.py).
+    and reports failure via its return value (see app/services/message_processor.py).
     The job row must still exist."""
-    from app import job_processor
-    from app.url_shortener import UrlShorteningError
+    from app.services import job_processor
+    from app.core.url_shortener import UrlShorteningError
 
     class _FailClosedShortener:
         async def shorten(self, job_id, url):

@@ -13,8 +13,8 @@ import asyncio
 
 import pytest
 
-from app import heartbeat
-from app.heartbeat import WorkerLiveness, STATE_ALIVE, STATE_RUNNING, sleep_with_beats
+from app.core import heartbeat
+from app.core.heartbeat import WorkerLiveness, STATE_ALIVE, STATE_RUNNING, sleep_with_beats
 
 
 @pytest.fixture()
@@ -50,7 +50,7 @@ def test_maximum_beat_gap_stays_within_cadence_during_idle(isolated_liveness):
         await real_sleep(seconds)
 
     async def run():
-        import app.heartbeat as hb
+        import app.core.heartbeat as hb
         orig = hb.asyncio.sleep
         hb.asyncio.sleep = spy_sleep
         try:
@@ -97,7 +97,7 @@ def test_classification_retry_loop_beats_during_idle(monkeypatch, isolated_liven
     async def fake_log_error(*a, **k):
         return None
 
-    import app.job_processor as jp
+    import app.services.job_processor as jp
     monkeypatch.setattr(jp, "retry_incomplete_classifications", fake_retry)
     # Short interval + tiny cadence so the test sleeps minimally.
     monkeypatch.setattr(jp, "sleep_with_beats", _patched_sleep_with_beats(reg))
@@ -122,7 +122,7 @@ def test_notification_retry_loop_beats_during_idle(monkeypatch, isolated_livenes
     async def fake_log_error(*a, **k):
         return None
 
-    import app.job_processor as jp
+    import app.services.job_processor as jp
     monkeypatch.setattr(jp, "retry_incomplete_notifications", fake_retry)
     monkeypatch.setattr(jp, "sleep_with_beats", _patched_sleep_with_beats(reg))
 
@@ -144,7 +144,7 @@ def test_user_notification_worker_beats_during_idle(monkeypatch, isolated_livene
     async def fake_log_error(*a, **k):
         return None
 
-    import app.user_bot as ub
+    import app.services.user_bot as ub
     monkeypatch.setattr(ub, "logger", type("L", (), {
         "claim_pending_user_notifications": staticmethod(fake_claim),
         "log_error": staticmethod(fake_log_error),

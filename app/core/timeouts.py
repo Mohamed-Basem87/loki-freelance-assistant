@@ -1,7 +1,7 @@
 """Bound external calls that have no timeout of their own and are
 awaited directly on a worker's event-loop task.
 
-Audit finding (hung-worker detection gap): app.heartbeat.heartbeat_loop
+Audit finding (hung-worker detection gap): app.core.heartbeat.heartbeat_loop
 only proves the event loop itself is still turning. A genuinely async
 await that never resolves (a Telethon RPC call stalled on the network)
 or a stuck background thread behind ``asyncio.to_thread`` (an LLM
@@ -22,7 +22,7 @@ happens once a failure is observed.
 """
 import asyncio
 
-from app.runtime_config import RUNTIME
+from app.core.runtime_config import RUNTIME
 
 
 async def call_with_timeout(awaitable, *, label, timeout=None):

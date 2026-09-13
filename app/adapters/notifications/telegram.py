@@ -21,7 +21,7 @@ class TelegramNotificationSink(NotificationSink):
         if callable(chat_id):
             return chat_id()
         if chat_id is None:
-            from app.config import get_bot_chat_id
+            from app.core.config import get_bot_chat_id
             return get_bot_chat_id()
         return chat_id
     async def send(self, rendered=None, **payload):

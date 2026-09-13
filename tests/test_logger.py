@@ -16,7 +16,7 @@ recognizable row.
 import sqlite3
 import uuid
 
-from app.logger import (
+from app.services.logger import (
     JOB_HEADERS,
     GEMINI_HEADERS,
     NOTIFICATION_HEADERS,
@@ -452,7 +452,7 @@ def test_update_job_rejects_unknown_field_name(tmp_path):
     instead of silently ignoring it and dropping the intended write --
     the "fail loudly" remediation for a typo silently corrupting state."""
     import pytest
-    from app.logger import COLUMN_MAP
+    from app.services.logger import COLUMN_MAP
 
     db = tmp_path / "update_loud.db"
     job_uuid = str(uuid.uuid4())
@@ -604,7 +604,7 @@ def test_user_uniqueness_migration_dedups_and_adds_index(tmp_path):
 
 
 def test_shutdown_leaves_connection_open_when_executor_is_poisoned(tmp_path, monkeypatch):
-    import app.logger as logger_module
+    import app.services.logger as logger_module
     from concurrent.futures import ThreadPoolExecutor
 
     monkeypatch.setattr(
@@ -637,7 +637,7 @@ def test_shutdown_leaves_connection_open_when_executor_is_poisoned(tmp_path, mon
 
 
 def test_shutdown_closes_connection_on_the_healthy_path(tmp_path, monkeypatch):
-    import app.logger as logger_module
+    import app.services.logger as logger_module
     from concurrent.futures import ThreadPoolExecutor
 
     monkeypatch.setattr(

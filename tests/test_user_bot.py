@@ -14,8 +14,8 @@ from telegram import (
     User,
 )
 
-from app.logger import logger
-from app.user_bot import _send_one, MAX_ATTEMPTS, my_chat_member_update, stop_command
+from app.services.logger import logger
+from app.services.user_bot import _send_one, MAX_ATTEMPTS, my_chat_member_update, stop_command
 
 
 def _isolated_db():

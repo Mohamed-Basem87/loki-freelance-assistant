@@ -12,7 +12,7 @@ readable" signal:
      parses.
   2. Process health         -- the container's process table is
      observable at all (a minimal, cheap sanity check).
-  3. Worker/runtime health  -- app.heartbeat.heartbeat_loop, a
+  3. Worker/runtime health  -- app.core.heartbeat.heartbeat_loop, a
      registered worker in the running application, has written a
      fresh heartbeat recently; every critical worker recorded in
      that snapshot reports an acceptable state (alive, or reconnecting
@@ -49,7 +49,7 @@ import sys
 import time
 from pathlib import Path
 
-from app.runtime_config import RUNTIME
+from app.core.runtime_config import RUNTIME
 
 # A worker reporting "reconnecting" (bounded exponential backoff, e.g.
 # the Telegram worker) is temporarily degraded, not dead: do NOT mark the
@@ -79,7 +79,7 @@ _ADAPTER_LIVENESS_IDS = {
     "app.adapters.sources.telegram:TelegramChannelJobSource": "telegram",
 }
 
-# Any job-source adapter under this module is backed by app.scraper_scheduler
+# Any job-source adapter under this module is backed by app.wiring.scraper_scheduler
 # (a subprocess that refreshes a JSON snapshot on its own cadence) rather
 # than a live network poller. The poller worker (e.g. "linkedin"/"wuzzuf")
 # only proves the snapshot is being *read*; it says nothing about whether
@@ -91,7 +91,7 @@ _ADAPTER_LIVENESS_IDS = {
 _SCRAPER_ADAPTER_MODULE_PREFIX = "app.adapters.sources.scraper_file:"
 _SCRAPER_SCHEDULER_WORKER_ID = "scraper_scheduler"
 
-# Persistence workers (app.logger.DBLogger, app.state.StateManager) report
+# Persistence workers (app.services.logger.DBLogger, app.services.state.StateManager) report
 # their own liveness key only when they have actually run at least once,
 # and only ever move it to "dead" -- once quarantined after a timed-out
 # operation, every later call re-raises before it could beat "alive"
@@ -125,11 +125,11 @@ def expected_critical_workers(enabled_workers=None, job_sources=None):
 
     Both ``enabled_workers`` and ``job_sources`` are injectable (tests),
     defaulting to the real runtime configuration. This mirrors the
-    selection in app.workers.default_registry (/ enabled_source_ids):
+    selection in app.wiring.workers.default_registry (/ enabled_source_ids):
     a job source only runs when it is both ``enabled`` and present in
     ENABLED_WORKERS, so the healthcheck requires exactly that same set.
     """
-    import app.runtime_config as _rc
+    import app.core.runtime_config as _rc
 
     enabled_workers = (
         set(enabled_workers)
@@ -344,7 +344,7 @@ def check_worker_runtime_health(
 
     # 1.5. A quarantined persistence worker (DB or state) must fail health
     #    immediately and unconditionally, regardless of critical_workers.
-    #    See app.logger.DBLogger.run / app.state.StateManager.run: once
+    #    See app.services.logger.DBLogger.run / app.services.state.StateManager.run: once
     #    either backend is quarantined after a timed-out operation, every
     #    future call fails closed until process restart, and the app can
     #    no longer persist anything -- but the separate, out-of-process
@@ -374,7 +374,7 @@ def check_worker_runtime_health(
     #    check proves the worker itself is alive.
     #
     #    The per-worker check only runs when the snapshot actually carries
-    #    worker data (the JSON format written by app.heartbeat.WorkerLiveness).
+    #    worker data (the JSON format written by app.core.heartbeat.WorkerLiveness).
     #    A legacy plain-float heartbeat carries no per-worker information, so
     #    it can only attest to aggregate freshness (backward compatibility:
     #    an old-format heartbeat must not spuriously fail on "missing" workers

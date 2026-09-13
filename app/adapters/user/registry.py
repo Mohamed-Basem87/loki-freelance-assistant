@@ -16,7 +16,7 @@ def build(surface_id=None, *, application_factory=None, channel_registrar=None):
         if application_factory is None:
             raise ValueError(
                 "The telegram command surface requires an application_factory "
-                "(the composition root wires app.user_bot.create_user_bot_application)"
+                "(the composition root wires app.services.user_bot.create_user_bot_application)"
             )
         return _FACTORIES[key](application_factory(), channel_registrar=channel_registrar)
     factory=_FACTORIES.get(key)

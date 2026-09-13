@@ -9,6 +9,7 @@ themselves.
 import importlib
 import inspect
 import os
+from app.services.logger import logger as _db
 
 _FACTORIES = {}
 
@@ -35,7 +36,6 @@ def _resolve_backend(factory):
     composition layer instead of inside the adapter module."""
     if "db" not in set(inspect.signature(factory).parameters):
         return {}
-    from app.logger import logger as _db
     return {"db": _db}
 
 def build():
