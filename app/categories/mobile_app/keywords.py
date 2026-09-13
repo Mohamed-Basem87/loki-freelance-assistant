@@ -129,7 +129,7 @@ POSITIVE_KEYWORDS = {
             # 3 rejected including genuine build 11283 PWA app.
             "تطبيق لتعليم": 7,
             "تطبيق تعليمي": 7,
-        },
+            },
         "supporting": {
             "app development": 4,
             "app developer": 4,
@@ -272,6 +272,18 @@ NEGATIVE_KEYWORDS = {
             "app store upload": 8,
             "upload process": 6,
             "upload specialist": 6,
+            # App Store Connect / Google Play Console publishing ops
+            # (2026-09-13 run 2). rowid 19031 'App Store & Play Submission'
+            # delivered notify_directly: .ipa/.apk already built, accounts
+            # active -- pure listing/privacy/age-rating/certification/
+            # reviewer-question work. 'app store submission' couldn't match
+            # 'App Store & Play Submission' (interleaved '&'). Surgical
+            # console names + standalone submission phrases route to
+            # arbitration; the mobile guard still approves build+release jobs.
+            "app store connect": 8,
+            "google play console": 8,
+            "store submission": 8,
+            "play submission": 8,
         },
         "supporting": {},
     },
@@ -713,6 +725,16 @@ HARD_REJECT_KEYWORDS = {
     "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
     "blackjack", "satta matka", "spin and win", "spin win", "lucky jet",
     "sportsbook", "sports betting", "slot machine",
+    # Dating/online-matchmaking apps and platforms are out of scope
+    # (policy block, 2026-09-13): same as gambling -- ALWAYS reject.
+    # Undoes run-2 dating-app positive cores (rows 18963/19070/18937).
+    # Corpus sweep (latest-1000): 'dating app'/'online dating' hit exactly
+    # 18963 + 19070; Arabic 'موقع تعارف' hits 18937 ('dating' bare also
+    # matches 19087 'history dating back to 2002' -- innocent, kept OUT).
+    "dating app", "dating apps", "online dating", "dating site",
+    "dating website", "dating platform", "dating service",
+    "matchmaking app", "matchmaking platform",
+    "موقع تعارف", "تطبيق تعارف",
     # lottery/lotto added 2026-08-28 run 20: full-corpus sweep found 1
     # historical ACCEPTED 'Automated Lottery' backend job (rowid 8863);
     # unambiguous gambling, 0 window / 0 corpus innocent collateral.
@@ -743,7 +765,13 @@ HARD_REJECT_KEYWORDS = {
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",
     # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
     "wechat",
-    "lead generation",
+    # 'lead generation' REMOVED from HARD_REJECT (2026-09-13 run 2): run-1
+    # edit3 removed it from backend but mobile_app/ai_ml still hard-rejected.
+    # rowid 19032 'Factory Office Automation Bots' (ERP/backend automation
+    # build) died Hard-Reject on this phrase -- genuine build scope with a
+    # marketing sub-task. Backend/marketing negative cores already route
+    # pure marketing and build+marketing hybrids to arbitration;
+    # 'digital marketing' below was already de-listed on the same principle.
     # 'digital marketing' NOT hard-rejected (2026-08-28 audit): same
     # enumeration-misfire pattern as data entry/illustrator
     # (freelancer:40676186). Marketing negative core still rejects pure

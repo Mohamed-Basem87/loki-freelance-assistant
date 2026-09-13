@@ -54,6 +54,18 @@ Reject when the primary deliverable is instead:
 - Education or tutoring
 - Another non-game deliverable
 
+TESTING/QA IS A TESTING SERVICE EVEN INSIDE THE GAME LIFECYCLE
+(2026-09-13 run 2): if the client's deliverable is a written feedback report,
+test-report, or playtest report (e.g. "play through my game and give me
+candid feedback on difficulty, pacing, prose" for which the client pays for
+the report itself), the primary deliverable is a TESTING/FEEDBACK SERVICE --
+reject it regardless of which stage of the game lifecycle the testing sits
+in, even though "playtesting is part of game development" is conceptually
+true. The dispositive question is: what is the paid deliverable? A built
+game/mechanic/asset = accept; a written evaluation/report of someone else's
+game = reject. This corrects rowid 19154 'Interactive Horror Novel Playtest'
+(run 2), which was wrongly delivered on the lifecycle argument.
+
 Do not let secondary game-related features make a primarily
 non-game project acceptable.
 

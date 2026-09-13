@@ -264,11 +264,30 @@ POSITIVE_KEYWORDS = {
             # phrase only, not bare منصة (collateral).
             "منصة ويب": 7,
             "منصت ويب": 7,
+            # Arabic 'electronic platform' (2026-09-13 run 2): mirrors
+            # frontend منصة إلكترونية so rowid 19145 'بناء منصة إلكترونية
+            # خاصة لمكتب تصميم داخلي' (services + portfolio + contract
+            # e-signing + payments) produces two direct matches ->
+            # needs_gemini -> full_stack arbitration (was ZERO coverage ->
+            # silent reject).
+            "منصة إلكترونية": 7,
+            "منصه الكترونيه": 7,
+            "منصة الكترونية": 7,
             # Arabic 'web app' (2026-09-13 run 1): mirrors frontend تطبيق ويب
             # so sibling pair 18596/18600 'تطبيق ويب لإدارة الاشتراكات
             # الشهرية لمطعم' produces two direct matches -> needs_gemini ->
             # full_stack instead of a lone frontend notify.
             "تطبيق ويب": 6,
+            # Arabic website login/auth bug-fix (2026-09-13 run 2): rowid
+            # 19093/19096 'صيانة على موقع الإلكتروني السابق' (Jazaline site:
+            # employee login data reported wrong) rejected insufficient_signal
+            # -- the described problem is a functional login/auth bug fix in
+            # an existing site, NOT an employment/ops task despite the صيانة
+            # (maintenance) framing. Backend login-auth routing: mirrors
+            # frontend so a web 'login issue' job produces a match here.
+            "صيانة على موقع": 6,
+            "بيانات الدخول": 6,
+            "مشكلة في الدخول": 6,
             # Arabic 'meetings site' (2026-09-13 run 1): mirrors frontend
             # موقع اجتماعات so 18918/18922 (event/meetings platform builds)
             # produce ambiguity -> full_stack arbitration (was ZERO coverage
@@ -326,6 +345,56 @@ POSITIVE_KEYWORDS = {
         "supporting": {},
     },
 
+    # G-Suite / Google Form / Apps Script automation builds (2026-09-13 run 2):
+    # rowid 19167 'Automate Google Form Survey' + sibling 19240 'Build Google
+    # Survey From Spreadsheet' (spreadsheet data -> multi-choice Google Form
+    # via Apps Script/Forms API, linked response sheet) rejected
+    # insufficient_signal -- scripted form/sheet automation is backend
+    # integration work, consistent with the Make.com/Zapier family.
+    "gsuite_automation": {
+        "core": {
+            "google form": 7,
+            "google forms": 7,
+            "apps script": 8,
+            "google apps script": 8,
+            "forms api": 7,
+            "google sheet": 6,
+            "google sheets": 6,
+            "spreadsheet to form": 6,
+            "survey from spreadsheet": 6,
+        },
+        "supporting": {},
+    },
+
+    # Affiliate/campaign tracking platform builds (2026-09-13 run 2): rowid
+    # 19115 'Affiliate/Vendor Campaign Tracker MVP' (admin dashboard for
+    # clients/campaigns/vendors, tracking links, conversions, postbacks,
+    # revenue/profit) rejected core_negative_no_core_positive -- the
+    # "performance marketing business" the software *serves* fired the
+    # marketing negative while ZERO positive cores fired. The deliverable is
+    # the tracking platform itself, not marketing services. Same class and
+    # fix pattern as run-1 18638 'لوحة تحكم SaaS'. 'marketing' negative kept
+    # for pure-marketing; build vocabulary now routes this SaaS to arbitration.
+    "campaign_tracking": {
+        "core": {
+            "campaign tracker": 7,
+            "campaign tracking": 7,
+            "tracking platform": 7,
+            "affiliate tracking": 7,
+            "affiliate platform": 7,
+            "performance marketing platform": 8,
+            "tracking links": 7,
+            "s2s postback": 8,
+            "postback": 7,
+            "conversion tracking": 7,
+            "vendor tracking": 7,
+            "affiliate management": 6,
+            "affiliate link": 6,
+            "affiliate program": 6,
+        },
+        "supporting": {},
+    },
+
     # Data-pipeline/feed engineering. API pull -> transform (CSV) ->
     # publish as a live feed/ticker. 2026-09-04 run 34 fn_llm:
     # freelancer:40690663 'Real-time Data Integration for Webpage' only
@@ -369,6 +438,23 @@ POSITIVE_KEYWORDS = {
             "zapier": 7,
             "rpa": 6,
             "rpa automation": 7,
+            # Business/factory-office automation-bot builds (2026-09-13 run 2):
+            # rowid 19032 'Factory Office Automation Bots' (ERP database/task/
+            # production/sales/stock/accounting automation) was hard-rejected on
+            # 'lead generation' (removed from mobile_app/ai_ml HR, run 1 edit3
+            # only removed it from backend). The task is backend integration/
+            # automation scripting; 'automation bot(s)' plus the enterprise
+            # negative 'erp' route it to arbitration.
+            "automation bot": 7,
+            "automation bots": 7,
+            "business automation": 7,
+            # NOTE: no bare 'erp system'/'erp software' positives here.
+            # 2026-09-13 run 2 early collateral check: 19129 'Accounting
+            # Manager' (employment reject) flips to arbitration because the
+            # description's passing 'ERP system utilization' fires the
+            # positive. 19032 routes to arbitration via 'automation bots'
+            # alone (job describes building office automation bots), with
+            # enterprise negative 'erp' providing the mixed signal.
         },
         "supporting": {},
     },
@@ -738,6 +824,15 @@ HARD_REJECT_KEYWORDS = {
     "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
     "blackjack", "satta matka", "spin and win", "spin win", "lucky jet",
     "sportsbook", "sports betting", "slot machine",
+    # Dating/online-matchmaking apps and platforms are out of scope
+    # (policy block, 2026-09-13): same as gambling -- ALWAYS reject.
+    # Corpus sweep (latest-1000): phrase hits only dating jobs; bare
+    # 'dating' also matches 19087 'history dating back to 2002' (innocent,
+    # kept OUT); bare 'matchmaking' kept OUT (game_dev positive).
+    "dating app", "dating apps", "online dating", "dating site",
+    "dating website", "dating platform", "dating service",
+    "matchmaking app", "matchmaking platform",
+    "موقع تعارف", "تطبيق تعارف",
     # lottery/lotto added 2026-08-28 run 20: full-corpus sweep found 1
     # historical ACCEPTED 'Automated Lottery' backend job (rowid 8863);
     # unambiguous gambling, 0 window / 0 corpus innocent collateral.

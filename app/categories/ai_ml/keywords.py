@@ -140,6 +140,25 @@ POSITIVE_KEYWORDS = {
             "opencv": 7,
             "pillow": 6,
             "image augmentation": 6,
+            # UAV/drone/autonomous-vehicle computer-vision builds (2026-09-13
+            # run 2): rowids 18966 'AI UAV Detection & Tracking' (ArduPilot
+            # quadcopter with real-time drone detection + object tracking +
+            # MAVLink integration + autonomous navigation on Raspberry Pi 5)
+            # rejected No-Matching-Keywords -- URL classifies it as computer
+            # vision but none of the CV core phrases appear in the title/body;
+            # these specific phrases are the gap.
+            "uav": 7,
+            "drone detection": 7,
+            "object tracking": 7,
+            "mavlink": 7,
+            "ardupilot": 7,
+            "raspberry pi 5": 6,
+            "ai hat": 6,
+            "autonomous navigation": 7,
+            "situational awareness": 6,
+            "telemetry logging": 6,
+            "failsafe": 5,
+            "sitl": 5,
         },
         "supporting": {
             "cnn": 4,
@@ -149,6 +168,7 @@ POSITIVE_KEYWORDS = {
             "bounding box": 3,
             "iou": 3,
             "map": 3,
+            "drone": 4,
         },
     },
 
@@ -620,11 +640,25 @@ HARD_REJECT_KEYWORDS = {
     "خدمات smm",
     "letter writing", "request letter",
     # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
-    "lead generation",
+    # 'lead generation' REMOVED from HARD_REJECT (2026-09-13 run 2): run-1
+    # edit3 removed it from backend but mobile_app/ai_ml still hard-rejected.
+    # rowid 19032 'Factory Office Automation Bots' (ERP/backend automation
+    # build) died Hard-Reject on this phrase -- genuine build scope with a
+    # marketing sub-task. Backend/marketing negative cores already route
+    # pure marketing and build+marketing hybrids to arbitration.
     "digital marketing",
     "task creator",
     # Gambling/real-money gaming products are out of scope (policy block).
     "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
+    # Dating/online-matchmaking apps and platforms are out of scope
+    # (policy block, 2026-09-13): same as gambling -- ALWAYS reject.
+    # Corpus sweep (latest-1000): phrase hits only dating jobs; bare
+    # 'dating' also matches 19087 'history dating back to 2002' (innocent,
+    # kept OUT); bare 'matchmaking' kept OUT (game_dev positive).
+    "dating app", "dating apps", "online dating", "dating site",
+    "dating website", "dating platform", "dating service",
+    "matchmaking app", "matchmaking platform",
+    "موقع تعارف", "تطبيق تعارف",
     "blackjack", "sportsbook", "sports betting", "slot machine",
     # lottery/lotto added 2026-08-28 run 20: full-corpus sweep found 1
     # historical ACCEPTED 'Automated Lottery' backend job (rowid 8863);

@@ -61,6 +61,13 @@ REJECT when the PRIMARY DELIVERABLE is:
   positive keywords, including moderation, detection, filtering, or
   analytics tooling for gambling and any job materially related to
   gambling.
+- Dating/online-matchmaking apps, sites, or platforms (2026-09-13
+  policy override: same treatment as gambling). ALWAYS REJECT -- do not
+  notify for any dating-app or matchmaking-platform deliverable,
+  regardless of any positive keywords, including moderation, detection,
+  filtering, or analytics tooling for dating and any job materially
+  related to dating. (Game matchmaking systems within a game remain in
+  scope -- this covers dating/matchmaking PLATFORMS only.)
 - Adult/sexually-explicit deliverables: porn/paysite/adult websites or
   platforms (including adult video-distribution sites), escort or
   adult-service platforms, sexually-explicit games (including NSFW

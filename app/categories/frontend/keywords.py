@@ -173,6 +173,17 @@ POSITIVE_KEYWORDS = {
             # Recovers the Arabic singular website-build class
             # (انشاء موقع / انشاء موقع الكتروني).
             "انشاء موقع": 7,
+            # Arabic 'edit/modify a store' core (2026-09-13 run 2): rowid
+            # 19130/19133 'تعديل على متجر سلة بإزالة رابط' (remove a custom
+            # footer link from a Salla store theme -- custom theme-code edit,
+            # not a settings toggle) rejected No-Matching-Keywords. задача
+            # is a real (if tiny) frontend code edit. Bare 'تعديل' stays
+            # out; edits that are store-SETTING/content-level (إضافة منتج)
+            # keep rejecting via insufficient signal.
+            "تعديل متجر": 6,
+            "تعديل على متجر": 6,
+            "إزالة رابط": 5,
+            "ازالة رابط": 5,
             # Arabic "make a website" build verb (2026-08-31 run 27):
             # user-flagged nafezly:54287 'مطلوب عمل موقع Portfolio' + 11
             # sibling site-build FNs (bakery/books/jewelry/landing/company)
@@ -244,6 +255,26 @@ POSITIVE_KEYWORDS = {
             "website design": 6,
             "website build": 6,
             "website redesign": 7,
+            # Explicit English build verbs (2026-09-13 run 2): rowid 19051
+            # 'Sport-Specific Sole-Changing Shoe Website' (build a product
+            # marketing website) rejected No-Matching-Keywords -- 'website'
+            # alone and 'create a website' were both uncovered. These are
+            # unambiguous build-intent phrases.
+            "create a website": 6,
+            "creating a website": 6,
+            "build a website": 7,
+            "building a website": 7,
+            "make a website": 6,
+            # Indonesian info-platform build (2026-09-13 run 2): rowid 18999
+            # 'Proyek Informasi 10jt' (custom info-platform build: content
+            # structure, tagging, search, responsive UI, first functional
+            # version + install docs) rejected No-Matching-Keywords -- an
+            # Indonesian-language vocabulary gap. Build-intent Indonesian
+            # phrases.
+            "platform digital": 6,
+            "membuat platform": 6,
+            "implementasi versi pertama": 6,
+            "dokumentasi instalasi": 4,
             "landing page": 6,
             # Page-build class (2026-09-04 run 34): adding styled
             # standalone pages to an existing site. freelancer:40690409
@@ -297,6 +328,15 @@ POSITIVE_KEYWORDS = {
             # 'منصة ويب' phrase, NOT bare منصة (high collateral).
             "منصة ويب": 8,
             "منصت ويب": 8,
+            # Arabic 'electronic platform' (2026-09-13 run 2): rowid 19145
+            # 'بناء منصة إلكترونية خاصة لمكتب تصميم داخلي' (interior-design
+            # office platform: services, portfolio, contract e-signing,
+            # payments) rejected No-Matching-Keywords -- منصة ويب can't match
+            # منصة إلكترونية. Same CORE-in-frontend-and-backend pattern:
+            # two direct matches -> needs_gemini -> full_stack arbitration.
+            "منصة إلكترونية": 8,
+            "منصه الكترونيه": 8,
+            "منصة الكترونية": 8,
             # Arabic 'web app' (2026-09-13 run 1): sibling pair 18596/18600
             # 'تطبيق ويب لإدارة الاشتراكات الشهرية لمطعم' (subscription
             # SaaS web app) only reached mobile_app supporting (8 < 12) and
@@ -721,6 +761,15 @@ HARD_REJECT_KEYWORDS = {
     "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
     "blackjack", "satta matka", "spin and win", "spin win", "lucky jet",
     "sportsbook", "sports betting", "slot machine",
+    # Dating/online-matchmaking apps and platforms are out of scope
+    # (policy block, 2026-09-13): same as gambling -- ALWAYS reject.
+    # Corpus sweep (latest-1000): phrase hits only dating jobs; bare
+    # 'dating' also matches 19087 'history dating back to 2002' (innocent,
+    # kept OUT); bare 'matchmaking' kept OUT (game_dev positive).
+    "dating app", "dating apps", "online dating", "dating site",
+    "dating website", "dating platform", "dating service",
+    "matchmaking app", "matchmaking platform",
+    "موقع تعارف", "تطبيق تعارف",
     # lottery/lotto added 2026-08-28 run 20: full-corpus sweep found 1
     # historical ACCEPTED 'Automated Lottery' backend job (rowid 8863);
     # unambiguous gambling, 0 window / 0 corpus innocent collateral.

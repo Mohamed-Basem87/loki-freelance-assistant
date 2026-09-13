@@ -41,6 +41,8 @@ service in any of these areas:
 Reject when the primary deliverable is instead:
 - Gambling-related work (casino, sports betting, odds engines,
   betting bots, prediction tools, affiliates) -- always reject
+- Dating/online-matchmaking apps, sites, or platforms (2026-09-13
+  policy override, same treatment as gambling) -- always reject
 - Adult/NSFW content or services -- always reject
 - Manual data entry, transcription, or copy-paste work
 - Admin / virtual-assistant / form-filling clerical work
@@ -164,14 +166,17 @@ candidate, regardless of any positive signals):
   or real-money games, betting bots, betting-signal/prediction tools,
   odds/live-odds engines, betting exchanges, binary-options platforms, or
   gambling affiliate sites.
+- Any dating/online-matchmaking app, site, or platform deliverable
+  (2026-09-13 policy override -- same treatment as gambling). Game
+  matchmaking systems inside a game remain in scope.
 - Any adult/sexually-explicit deliverable: porn/paysite/adult websites or
   platforms, escort or adult-service platforms, sexually-explicit games
   (including NSFW visual novels), or AI/automation pipelines producing
   explicit imagery or video.
 Judge by the posting's actual primary purpose, not by word presence.
-Moderation, detection, filtering, or analysis tooling for gambling or
-adult content is itself in scope of the ban and is always rejected.
-No exceptions.
+Moderation, detection, filtering, or analysis tooling for gambling,
+dating, or adult content is itself in scope of the ban
+and is always rejected. No exceptions.
 
 A hiring/employment/ongoing post that seeks an in-scope role (data
 analyst, web/app/backend/game/AI/full-stack developer) OR a concrete build

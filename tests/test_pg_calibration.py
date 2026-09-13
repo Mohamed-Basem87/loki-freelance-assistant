@@ -10,6 +10,9 @@ semantic nuances that keep legitimate builds accepted:
 - gambling and adult/NSFW content are hard global rejections regardless
   of positive keywords (arbitration answers "none"; the guard answers
   "do_not_notify");
+- dating / online-matchmaking apps, sites, or platforms share gambling's
+  treatment (2026-09-13 policy override): hard global rejection on every
+  layer, with game matchmaking systems inside a game remaining in scope;
 - rejection is judged by the posting's actual primary purpose, not by
   word presence;
 - moderation/detection/filtering/analysis tooling for gambling or adult
@@ -64,7 +67,7 @@ def _real_candidates():
     return candidates
 
 
-PROHIBITION_MARKERS = ("GAMBLING", "ADULT/NSFW")
+PROHIBITION_MARKERS = ("GAMBLING", "ADULT/NSFW", "DATING/MATCHMAKING")
 NUANCE_MARKERS = ("primary purpose", "presence/absence")
 
 
@@ -117,11 +120,12 @@ def test_groq_compact_stays_lean_for_tokens_per_minute_cap():
     # policies (Groq rejects oversized requests before inference).
     assert "Only accept projects that are genuinely centered on" not in prompt
     # Budget guard: HEAD compact prompt was ~4.9K chars; the PG/staffing/
-    # language additions pushed it to ~6.9K. Keep the whole request
-    # (system + truncated user text + framing) under ~11K chars so the
-    # fallback stays inside the provider's small request budget.
-    assert len(prompt) < 7500
-    assert len(prompt) + 3500 + 500 < 11000
+    # language additions pushed it to ~6.9K; the dating block (2026-09-13
+    # policy override) added ~90 chars. Keep the whole request (system +
+    # truncated user text + framing) under ~11K chars so the fallback
+    # stays inside the provider's small request budget.
+    assert len(prompt) < 7600
+    assert len(prompt) + 3500 + 500 < 11200
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +136,7 @@ def test_arbitration_user_prompt_carries_pg_and_untrusted_framing():
     prompt = build_arbitration_prompt("Build a website", _real_candidates())
     low = prompt.lower()
     assert "gambling" in low
+    assert "dating/online-matchmaking" in low
     assert "adult/sexually-explicit" in low
     assert "Moderation, detection" in prompt
     assert "always rejected" in prompt
@@ -153,6 +158,7 @@ def test_every_guard_prompt_has_gambling_and_adult_blocks(cid):
     prompt = importlib.import_module(module).SYSTEM_PROMPT
     low = prompt.lower()
     assert "gambling" in low, f"{cid}: missing gambling block"
+    assert "dating/online-matchmaking" in low, f"{cid}: missing dating block"
     assert "sexually-explicit" in low, f"{cid}: missing adult block"
     assert "paysite" in low, f"{cid}: missing adult keyword coverage"
     assert "ALWAYS REJECT" in prompt, f"{cid}: missing hard-reject phrasing"
@@ -169,6 +175,7 @@ def test_combined_guard_prompt_carries_pg_rules():
     combined = _build_combined_system_prompt(BACKEND, FULL_STACK, "backend")
     low = combined.lower()
     assert "gambling" in low
+    assert "dating/online-matchmaking" in low
     assert "sexually-explicit" in low
     assert "notify" in combined and "do_not_notify" in combined
     assert combined.index("OPTION A: \"backend\"") < combined.index("=== YOUR TASK ===")
@@ -182,6 +189,16 @@ def test_combined_guard_prompt_carries_pg_rules():
 def test_hard_reject_keywords_reject_nsfw(cid):
     profile = get_category(cid)
     assert "nsfw" in profile.hard_reject_keywords, f"{cid}: nsfw must be a hard reject"
+
+
+@pytest.mark.parametrize("cid", ["frontend", "backend", "mobile_app", "data_analysis", "game_dev", "ai_ml"])
+def test_hard_reject_keywords_reject_dating_apps(cid):
+    profile = get_category(cid)
+    assert "dating app" in profile.hard_reject_keywords, f"{cid}: dating apps must be a hard reject"
+    assert "online dating" in profile.hard_reject_keywords, f"{cid}: online dating must be a hard reject"
+    # Bare 'matchmaking' is a legit game_dev positive -- never collaterally
+    # hard-rejected. Only the app/platform phrases are policy rejects.
+    assert "matchmaking" not in profile.hard_reject_keywords
 
 
 # ---------------------------------------------------------------------------
