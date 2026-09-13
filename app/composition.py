@@ -129,7 +129,6 @@ def compose():
         domain=RUNTIME.url_shortener_domain,
         endpoint=RUNTIME.url_shortener_endpoint,
         failure_mode=RUNTIME.url_shortener_failure_mode,
-        duplicate_status=RUNTIME.url_shortener_duplicate_status,
     )
 
     # Build every enabled job source's collaborators here and register a

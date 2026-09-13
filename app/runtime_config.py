@@ -85,7 +85,6 @@ class RuntimePolicy:
     url_shortener_domain: str
     url_shortener_endpoint: str
     url_shortener_failure_mode: str
-    url_shortener_duplicate_status: int
 
 
 @dataclass(frozen=True)
@@ -278,13 +277,12 @@ RUNTIME = RuntimePolicy(
     # endpoint are deliberately separate env vars per the deployment
     # contract; failure_mode toggles what happens on a transport-level
     # failure (fail_open keeps the original URL, fail_closed drops the job
-    # for the source's own next-poll retry); duplicate_status is the HTTP
-    # status the service uses to report "this URL was already shortened
-    # before" -- always treated as a stop, independent of failure_mode.
+    # for the source's own next-poll retry). The shortener is an idempotent
+    # upsert keyed by jobId, so there is no separate "already shortened"
+    # status to configure.
     url_shortener_domain=_env("URL_SHORTENER_DOMAIN").rstrip("/"),
     url_shortener_endpoint=_env("URL_SHORTENER_ENDPOINT"),
     url_shortener_failure_mode=_env("URL_SHORTENER_FAILURE_MODE", "fail_open").lower(),
-    url_shortener_duplicate_status=_int("URL_SHORTENER_DUPLICATE_STATUS", 409),
 )
 
 RECOVERY = RecoveryPolicy(
@@ -400,11 +398,6 @@ if RUNTIME.url_shortener_failure_mode not in {"fail_open", "fail_closed"}:
     raise ValueError(
         "URL_SHORTENER_FAILURE_MODE must be 'fail_open' or 'fail_closed'; "
         f"got {RUNTIME.url_shortener_failure_mode!r}"
-    )
-if not (100 <= RUNTIME.url_shortener_duplicate_status <= 599):
-    raise ValueError(
-        "URL_SHORTENER_DUPLICATE_STATUS must be a valid HTTP status code; "
-        f"got {RUNTIME.url_shortener_duplicate_status!r}"
     )
 
 _known_workers = {"telegram", "freehub", "classification_retry", "notification_retry", "user_notifications", "linkedin", "wuzzuf"}

@@ -232,7 +232,7 @@ def test_url_is_shortened_after_row_creation_and_row_is_updated(isolated_workboo
     calls = []
 
     class _FakeShortener:
-        async def shorten(self, url):
+        async def shorten(self, job_id, url):
             calls.append(url)
             job = log.get_last_job()
             assert job is not None, (
@@ -256,21 +256,21 @@ def test_url_is_shortened_after_row_creation_and_row_is_updated(isolated_workboo
     assert job["URL"] == "http://short.test/abc"
 
 
-def test_duplicate_url_signal_no_longer_drops_the_job(isolated_workbook, monkeypatch):
-    """A 'already shortened' signal from the shortener is no longer
-    treated as a duplicate job. The row is created from job_uuid dedup
-    (identity_source + job_id) BEFORE the shortener is consulted, so a
-    duplicate-status response just leaves the row holding its original
-    long URL and the job proceeds normally -- it must not be silently
-    dropped, and nothing may escape to the caller."""
+def test_repeated_job_id_shortening_updates_the_row_without_error(
+    isolated_workbook, monkeypatch
+):
+    """The shortener upserts by jobId -- shortening a jobId that was
+    already shortened before is not an error, it just returns the same
+    path again. The row is created from job_uuid dedup (identity_source +
+    job_id) BEFORE the shortener is consulted, and shorten() must never
+    raise for this case; the job proceeds normally."""
     from app import job_processor
-    from app.url_shortener import UrlAlreadyExistsError
 
-    class _DuplicateShortener:
-        async def shorten(self, url):
-            raise UrlAlreadyExistsError(url)
+    class _UpsertingShortener:
+        async def shorten(self, job_id, url):
+            return "http://short.test/existing"
 
-    monkeypatch.setattr(job_processor, "url_shortener", _DuplicateShortener())
+    monkeypatch.setattr(job_processor, "url_shortener", _UpsertingShortener())
 
     log = isolated_workbook
     jobs_before = log.count_jobs()
@@ -279,13 +279,13 @@ def test_duplicate_url_signal_no_longer_drops_the_job(isolated_workbook, monkeyp
     asyncio.run(process_message(event))  # must not raise
 
     assert log.count_jobs() == jobs_before + 1, (
-        "A duplicate-URL signal from the shortener must not drop the job: "
-        "its row was already created from job_uuid dedup and must survive."
+        "Re-shortening an already-known jobId must not drop the job: its "
+        "row was already created from job_uuid dedup and must survive."
     )
     job = log.get_last_job()
-    assert job["URL"] == "https://example.com/project/4242", (
-        "The row must keep its original URL when the shortener reports "
-        "the URL as already shortened."
+    assert job["URL"] == "http://short.test/existing", (
+        "The row must be updated with the (idempotently) returned "
+        "shortened URL, exactly like a first-time shorten."
     )
 
 
@@ -305,7 +305,7 @@ def test_fail_closed_shortener_error_is_reported_failed_but_keeps_the_row(
     from app.url_shortener import UrlShorteningError
 
     class _FailClosedShortener:
-        async def shorten(self, url):
+        async def shorten(self, job_id, url):
             raise UrlShorteningError("upstream unavailable")
 
     monkeypatch.setattr(job_processor, "url_shortener", _FailClosedShortener())

@@ -11,7 +11,6 @@ from app.dependencies import logger, state, dedup, notifier, router, resolver, u
 from app.heartbeat import STATE_RUNNING, sleep_with_beats
 from app.runtime_config import RUNTIME
 from app.timeouts import call_with_timeout
-from app.url_shortener import UrlAlreadyExistsError
 
 
 class ClassificationPendingError(RuntimeError):
@@ -558,32 +557,22 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
             return
 
         # Best-effort URL shortening, now that the row is durably committed.
-        # Because job_uuid already proved this is a genuinely new job, the
-        # shortener's "already shortened" signal (UrlAlreadyExistsError) is
-        # NOT a reason to drop the job anymore -- it just means the upstream
-        # store already has this URL, so the row keeps its original URL (the
-        # same fallback fail_open would produce). A crash between the create
-        # and this update is likewise harmless: the job survives with the
-        # long URL.
+        # job_id is passed through unchanged as the shortener's own jobId
+        # key -- the shortener upserts on it, so this call never needs to
+        # check for prior existence itself. A crash between the create and
+        # this update is harmless: the job survives with the long URL.
         #
-        # Any other failure follows URL_SHORTENER_FAILURE_MODE inside
+        # Failure follows URL_SHORTENER_FAILURE_MODE inside
         # url_shortener.shorten(): fail_open returns the original URL and the
         # no-op guard below skips the rewrite; fail_closed raises
         # UrlShorteningError, deliberately NOT caught here, so the source
         # worker leaves the job un-seen and it resumes from this durable row
         # on the next poll instead of being lost (see app.source_worker.
         # SourceWorker.run).
-        try:
-            shortened = await url_shortener.shorten(job["url"])
-        except UrlAlreadyExistsError:
-            print(
-                f"[URL] Job {job_id!r} uses a URL already shortened "
-                "upstream -- keeping the original URL."
-            )
-        else:
-            if shortened and shortened != job["url"]:
-                await logger.update_job(job_uuid, url=shortened, save=True)
-                job["url"] = shortened
+        shortened = await url_shortener.shorten(job_id, job["url"])
+        if shortened and shortened != job["url"]:
+            await logger.update_job(job_uuid, url=shortened, save=True)
+            job["url"] = shortened
 
     # Claim the canonical project ID after the durable job row has
     # been created. The claim itself is atomic inside StateManager's
