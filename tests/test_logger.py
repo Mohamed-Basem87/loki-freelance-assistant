@@ -73,6 +73,7 @@ def _create_legacy_db(path):
         "Dashboard in Excel\nBuild a dashboard",
         "Acme",
         "https://example.com/jobs/1001",
+        "",  # Short URL: legacy rows predate the column.
         "accept",
         "core_positive_clean",
         "data_analysis",
@@ -216,7 +217,7 @@ def test_initialize_is_idempotent_on_current_schema(tmp_path):
     values = [
         "2026-08-02T09:00:00", job_uuid, "freelancer:2002", "freelancer", "Freelancer",
         "SQL Dashboard", "Build it", "raw", "SQL Dashboard\nBuild it",
-        "", "", "accept", "core_positive_clean", "data_analysis", "",
+        "", "", "", "accept", "core_positive_clean", "data_analysis", "",
         "1", "0", "1", "4", "0", "1", "0",
         "Power BI(3/data_analysis)", "Excel(2/data_analysis)", "", "",
         "0", "", "1", "0", "", "Sent", "Accepted", "", "", "", "9.0",
@@ -320,7 +321,7 @@ def test_log_gemini_persists_provider(tmp_path):
     values = [
         "2026-08-03T09:00:00", job_uuid, "freelancer:3003", "freelancer", "Freelancer",
         "Orphaned Row", "Should survive", "raw", "Orphaned Row\nShould survive",
-        "", "", "accept", "core_positive_clean", "data_analysis", "",
+        "", "", "", "accept", "core_positive_clean", "data_analysis", "",
         "1", "0", "1", "4", "0", "1", "0",
         "Power BI(3/data_analysis)", "Excel(2/data_analysis)", "", "",
         "0", "", "1", "0", "", "Sent", "Accepted", "", "", "", "9.0",

@@ -370,7 +370,7 @@ async def _send_one(notification):
         await logger.update_user_notification(notification_id, "Failed", attempts, "Job record not found", next_attempt)
         return
 
-    rendered = user_renderer.render_user(job, category_id)
+    rendered = user_renderer.render_user(job, category_id, telegram_user_id)
     message = rendered["text"]
 
     reply_markup = None

@@ -96,6 +96,13 @@ JOB_HEADERS = [
     "Company",
     "URL",
 
+    # The per-user short link (see app.job_processor.process_job): the
+    # channel/post "URL" above stays the original, unshortened link
+    # forever. This column is optional and only set on a successful
+    # shorten; the per-user DM button uses it when present, otherwise it
+    # falls back to the original "URL".
+    "Short URL",
+
     "Decision",
     "Decision Reason",
 
@@ -158,6 +165,7 @@ COLUMN_MAP = {
 
     "company": "Company",
     "url": "URL",
+    "short_url": "Short URL",
 
     "decision": "Decision",
     "decision_reason": "Decision Reason",
@@ -1016,6 +1024,8 @@ class DBLogger:
 
             company,
             url,
+
+            "",  # Short URL: unset at creation time; see app.job_processor.
 
             filter_result.get("decision", ""),
             filter_result.get("reason", ""),

@@ -116,7 +116,7 @@ def _bind_dependency_slots():
         (an instance attribute shadows this bound value, same pattern
         used for the other proxies)."""
 
-        async def shorten(self, url):
+        async def shorten(self, job_id, url):
             return url
 
     configure(

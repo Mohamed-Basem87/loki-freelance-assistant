@@ -64,7 +64,7 @@ def _stub_deps(monkeypatch, *, raises=Forbidden("blocked")):
 
     monkeypatch.setattr(user_bot, "logger", _Logger())
     monkeypatch.setattr(
-        user_bot, "user_renderer", type("R", (), {"render_user": lambda self, job, cat: {"text": "T", "button_url": None}})()
+        user_bot, "user_renderer", type("R", (), {"render_user": lambda self, job, cat, user_id: {"text": "T", "button_url": None}})()
     )
     monkeypatch.setattr(
         user_bot, "user_messaging", type("M", (), {"notify_user": staticmethod(notify_user)})()
