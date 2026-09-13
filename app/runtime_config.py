@@ -82,6 +82,10 @@ class RuntimePolicy:
     notification_backoff_cap_seconds: int
     user_bot_poll_interval: float
     freehub_base_url: str
+    url_shortener_domain: str
+    url_shortener_endpoint: str
+    url_shortener_failure_mode: str
+    url_shortener_duplicate_status: int
 
 
 @dataclass(frozen=True)
@@ -270,6 +274,17 @@ RUNTIME = RuntimePolicy(
     notification_backoff_cap_seconds=_int("NOTIFICATION_BACKOFF_CAP_SECONDS", _r["notification_backoff_cap_seconds"]),
     user_bot_poll_interval=_float("USER_BOT_POLL_INTERVAL", _r["user_bot_poll_interval"]),
     freehub_base_url=_env("FREEHUB_BASE_URL", _CONFIG["freehub"]["base_url"]).rstrip("/"),
+    # Internal URL-shortener service (see app/url_shortener.py). Domain and
+    # endpoint are deliberately separate env vars per the deployment
+    # contract; failure_mode toggles what happens on a transport-level
+    # failure (fail_open keeps the original URL, fail_closed drops the job
+    # for the source's own next-poll retry); duplicate_status is the HTTP
+    # status the service uses to report "this URL was already shortened
+    # before" -- always treated as a stop, independent of failure_mode.
+    url_shortener_domain=_env("URL_SHORTENER_DOMAIN").rstrip("/"),
+    url_shortener_endpoint=_env("URL_SHORTENER_ENDPOINT"),
+    url_shortener_failure_mode=_env("URL_SHORTENER_FAILURE_MODE", "fail_open").lower(),
+    url_shortener_duplicate_status=_int("URL_SHORTENER_DUPLICATE_STATUS", 409),
 )
 
 RECOVERY = RecoveryPolicy(
@@ -365,6 +380,31 @@ _warn_if_freehub_endpoint_is_plaintext(RUNTIME.freehub_base_url)
 if RUNTIME.notification_backoff_cap_seconds < RUNTIME.notification_backoff_base_seconds:
     raise ValueError(
         "notification_backoff_cap_seconds must be >= notification_backoff_base_seconds"
+    )
+
+# URL_SHORTENER_DOMAIN/ENDPOINT are deliberately NOT validated here.
+# Unlike the fields below (which always have a safe default and can
+# never make importing this module fail), domain/endpoint have no
+# sensible default -- and this module is imported transitively by a
+# large part of the app/test graph (see tests/conftest.py's own
+# docstring on why app.config defers its required-credential checks to
+# lazy getter functions instead of raising at import time). Requiring
+# them here would make importing app.runtime_config itself fail for
+# any caller that hasn't set them yet, which is exactly the ordering
+# problem app.config's lazy pattern exists to avoid. The composition
+# root (app.composition.compose) is the actual point that needs a
+# working shortener and validates them there instead, the same way it
+# calls get_api_id()/get_freehub_user_id() lazily rather than importing
+# already-validated module-level constants.
+if RUNTIME.url_shortener_failure_mode not in {"fail_open", "fail_closed"}:
+    raise ValueError(
+        "URL_SHORTENER_FAILURE_MODE must be 'fail_open' or 'fail_closed'; "
+        f"got {RUNTIME.url_shortener_failure_mode!r}"
+    )
+if not (100 <= RUNTIME.url_shortener_duplicate_status <= 599):
+    raise ValueError(
+        "URL_SHORTENER_DUPLICATE_STATUS must be a valid HTTP status code; "
+        f"got {RUNTIME.url_shortener_duplicate_status!r}"
     )
 
 _known_workers = {"telegram", "freehub", "classification_retry", "notification_retry", "user_notifications", "linkedin", "wuzzuf"}

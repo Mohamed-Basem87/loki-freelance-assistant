@@ -72,6 +72,8 @@ _TEST_ENV_DEFAULTS = {
     "BOT_CHAT_ID": "10000000",
     "TARGET_CHANNEL_IDS": "-1000000000000",
     "FREEHUB_USER_ID": "test-freehub-user-not-a-real-id",
+    "URL_SHORTENER_DOMAIN": "http://test-shortener.invalid",
+    "URL_SHORTENER_ENDPOINT": "/shorten",
 }
 
 for _name, _value in _TEST_ENV_DEFAULTS.items():
@@ -106,6 +108,17 @@ def _bind_dependency_slots():
     async def _noop_resolver(job_uuid, row, category_id):
         return category_id
 
+    class _NoopUrlShortener:
+        """Pass-through stand-in for the real UrlShortenerService (see
+        app.url_shortener). Tests that specifically exercise shortening
+        behavior bind their own fake via app.dependencies.configure()
+        or by monkeypatching app.dependencies.url_shortener directly
+        (an instance attribute shadows this bound value, same pattern
+        used for the other proxies)."""
+
+        async def shorten(self, url):
+            return url
+
     configure(
         persistence=db,
         state_store=store,
@@ -114,6 +127,7 @@ def _bind_dependency_slots():
         routing=queue_for_category,
         parser_registry=get_parser_registry(),
         notification_resolver=_noop_resolver,
+        url_shortener_service=_NoopUrlShortener(),
     )
     yield
 

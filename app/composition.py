@@ -20,6 +20,7 @@ from app.parser import get_parser_registry
 from app.routing import queue_for_category
 from app.notification_guard.guard import NotificationGuard
 from app.notification_guard.integration import NotificationGuardIntegration, GuardedNotificationService
+from app.url_shortener import UrlShortenerService
 from app.runtime_config import RUNTIME, RECOVERY, BASE_DIR
 
 
@@ -113,6 +114,23 @@ def compose():
 
     # Build shared HTTP transport for FreeHub sources (one connection pool).
     http_transport = build_http_transport()
+
+    # URL shortener: reuses the same shared HTTP transport/connection pool
+    # (see app.url_shortener) rather than opening a second one.
+    # Required-at-composition-time, not required-at-import-time -- see the
+    # comment above RUNTIME.url_shortener_failure_mode's validation in
+    # app/runtime_config.py for why domain/endpoint aren't validated there.
+    if not RUNTIME.url_shortener_domain:
+        raise RuntimeError("Missing required environment variable: URL_SHORTENER_DOMAIN")
+    if not RUNTIME.url_shortener_endpoint:
+        raise RuntimeError("Missing required environment variable: URL_SHORTENER_ENDPOINT")
+    url_shortener_service = UrlShortenerService(
+        transport=http_transport,
+        domain=RUNTIME.url_shortener_domain,
+        endpoint=RUNTIME.url_shortener_endpoint,
+        failure_mode=RUNTIME.url_shortener_failure_mode,
+        duplicate_status=RUNTIME.url_shortener_duplicate_status,
+    )
 
     # Build every enabled job source's collaborators here and register a
     # per-source factory (a closure over those collaborators) with the source
@@ -297,6 +315,7 @@ def compose():
         notification_resolver=guard_integration.resolve_category,
         user_messaging_service=user_messaging,
         user_renderer_service=user_renderer,
+        url_shortener_service=url_shortener_service,
     )
 
     def _shutdown_db():
