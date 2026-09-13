@@ -264,6 +264,44 @@ POSITIVE_KEYWORDS = {
             # phrase only, not bare منصة (collateral).
             "منصة ويب": 7,
             "منصت ويب": 7,
+            # Arabic 'web app' (2026-09-13 run 1): mirrors frontend تطبيق ويب
+            # so sibling pair 18596/18600 'تطبيق ويب لإدارة الاشتراكات
+            # الشهرية لمطعم' produces two direct matches -> needs_gemini ->
+            # full_stack instead of a lone frontend notify.
+            "تطبيق ويب": 6,
+            # Arabic 'meetings site' (2026-09-13 run 1): mirrors frontend
+            # موقع اجتماعات so 18918/18922 (event/meetings platform builds)
+            # produce ambiguity -> full_stack arbitration (was ZERO coverage
+            # -> silent reject).
+            "موقع اجتماعات": 7,
+        },
+        "supporting": {},
+    },
+
+    # Payment-gateway integration builds (2026-09-13 run 1). 18720/18725
+    # 'ربط بوابة دفع وتفعيل الضمان لمنصة وساطة' (escrow-platform payment
+    # gateway wiring) had zero vocabulary -> insufficient_signal reject.
+    # Also lifts 18638/18640 'لوحة تحكم SaaS' store builds to arbitration:
+    # 'تكامل بوابة دفع' body hit + saas core negative -> needs_gemini.
+    # 'بوابة دفع'/'ربط بوابة' are surgical payment-integration phrases;
+    # title hits route directly to backend. ('متجر إلكتروني' deliberately
+    # NOT a backend core: sales-log cleanup gigs 18736/18740/18777/18779
+    # 'تنظيف سجل مبيعات ضخم لمتجر إلكتروني' would title-notify wrongly.)
+    "payment_gateways": {
+        "core": {
+            "بوابة دفع": 7,
+            "ربط بوابة": 8,
+        },
+        "supporting": {},
+    },
+
+    # Company-registry/API integration builds (2026-09-13 run 1). 18702
+    # 'UK Companies House Integration Specialist' (filing/company-data API
+    # integration) had only supporting python/.net (sum 7 < 12) -> reject.
+    # Narrow UK-specific phrase, low collision risk.
+    "company_registry": {
+        "core": {
+            "companies house": 7,
         },
         "supporting": {},
     },
@@ -730,7 +768,12 @@ HARD_REJECT_KEYWORDS = {
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",
     # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
     "video player",
-    "lead generation",
+    # 'lead generation' REMOVED from hard reject (2026-09-13 run 1):
+    # 18789 'AI-Driven Law Firm CRM Automation' (Docker/RPA/deployment
+    # CRM build) was hard-rejected on one marketing mention -> fn_det.
+    # The marketing negative-core 'lead generation' (8) stays, so genuine
+    # builds reach mixed_core_signals -> needs_gemini -> arbitration,
+    # while pure lead-gen/marketing gigs still reject there.
     "google ads",
     "facebook ads",
     "task creator",
