@@ -216,18 +216,45 @@ def test_reason_collapse_is_preserved_through_the_pipeline(isolated_workbook):
     )
 
 
-REJECT_TEXT_WITH_URL = REJECT_TEXT + " https://example.com/project/4242"
+# Accepted (notify_directly) fixture: identical text to the one used
+# across test_notification_guard_retry_integration.py /
+# test_telegram_recovery.py -- a clean data_analysis direct match, so
+# no Gemini/Groq is ever needed -- plus a URL so the shortener has
+# something to shorten. This is what the shortener tests below use:
+# shortening now runs only for ACCEPTED jobs, so the old REJECT-based
+# fixtures can no longer exercise it. The accepted path invokes the
+# notification workflow, which each test neutralizes by monkeypatching
+# app.job_processor.send_notification (the same pattern
+# test_telegram_recovery.py uses) so no real Telegram message is sent.
+#
+# NOTE: each test must use its OWN unique URL, because cross-source
+# project dedup (StateManager, shared across the whole test session)
+# claims the project extracted from the URL once and rejects every
+# later job that references it. The URL also carries the project_id
+# used by the dedup claim, so a unique URL per test keeps each job on
+# the accepted track instead of being skipped as a duplicate.
+def _accept_text_with_url(url: str) -> str:
+    return (
+        "Power BI Dashboard Needed\n\n"
+        "Need a Power BI dashboard built from sales data.\n\n"
+        + url
+    )
+
+
+ACCEPT_URL_FIRST = "https://example.com/project/shortener-700001"
+ACCEPT_URL_REPEAT = "https://example.com/project/shortener-700002"
+ACCEPT_URL_FAIL = "https://example.com/project/shortener-700003"
 
 
 def test_url_is_shortened_after_row_creation_and_row_is_updated(isolated_workbook, monkeypatch):
-    """The row is created FIRST with the ORIGINAL long URL; shortening is
-    a best-effort follow-up that populates the separate "Short URL" column
-    without touching "URL". The shortener must be called with the original
-    url (not something already mutated), and when shorten() runs the row
-    must already exist -- that durable-row-first ordering is what makes the
-    feature crash-safe (a process death between the create and the shorten
-    leaves the job intact with the original URL instead of silently losing
-    it)."""
+    """Only ACCEPTED jobs are shortened. The row is created FIRST with the
+    ORIGINAL long URL; shortening runs after the job is accepted and
+    populates the separate "Short URL" column without touching "URL". The
+    shortener must be called with the original url (not something already
+    mutated), and when shorten() runs the row must already exist -- that
+    durable-row-first ordering is what makes the feature crash-safe (a
+    process death between the create and the shorten leaves the job intact
+    with the original URL instead of silently losing it)."""
     from app.services import job_processor
 
     calls = []
@@ -245,16 +272,25 @@ def test_url_is_shortened_after_row_creation_and_row_is_updated(isolated_workboo
             )
             return "http://short.test/abc"
 
+    class _FakeNotifier:
+        async def send(self, **kwargs):
+            return True
+
     monkeypatch.setattr(job_processor, "url_shortener", _FakeShortener())
+    monkeypatch.setattr(job_processor, "notifier", _FakeNotifier())
 
     log = isolated_workbook
-    event = FakeEvent(700001, -100444, "Shortener Test", REJECT_TEXT_WITH_URL)
+    event = FakeEvent(700001, -100444, "Shortener Test", _accept_text_with_url(ACCEPT_URL_FIRST))
     asyncio.run(process_message(event))
 
-    assert calls == ["https://example.com/project/4242"]
+    assert calls == [ACCEPT_URL_FIRST]
 
     job = log.get_last_job()
-    assert job["URL"] == "https://example.com/project/4242", (
+    assert job["Final Decision"] == "Accepted", (
+        "the accepted fixture must actually be accepted -- otherwise the "
+        "shortener is being exercised on a non-notifying job"
+    )
+    assert job["URL"] == ACCEPT_URL_FIRST, (
         "the job's 'URL' column must keep the original link -- the short "
         "link belongs in the separate 'Short URL' column"
     )
@@ -275,12 +311,17 @@ def test_repeated_job_id_shortening_updates_the_row_without_error(
         async def shorten(self, job_id, url):
             return "http://short.test/existing"
 
+    class _FakeNotifier:
+        async def send(self, **kwargs):
+            return True
+
     monkeypatch.setattr(job_processor, "url_shortener", _UpsertingShortener())
+    monkeypatch.setattr(job_processor, "notifier", _FakeNotifier())
 
     log = isolated_workbook
     jobs_before = log.count_jobs()
 
-    event = FakeEvent(700002, -100444, "Shortener Test", REJECT_TEXT_WITH_URL)
+    event = FakeEvent(700002, -100444, "Shortener Test", _accept_text_with_url(ACCEPT_URL_REPEAT))
     asyncio.run(process_message(event))  # must not raise
 
     assert log.count_jobs() == jobs_before + 1, (
@@ -292,7 +333,7 @@ def test_repeated_job_id_shortening_updates_the_row_without_error(
         "The row must be updated with the (idempotently) returned "
         "shortened URL, exactly like a first-time shorten."
     )
-    assert job["URL"] == "https://example.com/project/4242", (
+    assert job["URL"] == ACCEPT_URL_REPEAT, (
         "the job's 'URL' column must keep the original link even when a "
         "re-shorten returns the same path again"
     )
@@ -309,7 +350,11 @@ def test_fail_closed_shortener_error_is_reported_failed_but_keeps_the_row(
     the original URL) instead of re-shortening the same URL into a
     permanent duplicate-drop. process_message() catches the error, logs it,
     and reports failure via its return value (see app/services/message_processor.py).
-    The job row must still exist."""
+    The job row must still exist.
+
+    Only an ACCEPTED job reaches the shortener under the new
+    "shorten accepted jobs only" rule, so this uses the accepted
+    fixture too."""
     from app.services import job_processor
     from app.core.url_shortener import UrlShorteningError
 
@@ -322,7 +367,7 @@ def test_fail_closed_shortener_error_is_reported_failed_but_keeps_the_row(
     log = isolated_workbook
     jobs_before = log.count_jobs()
 
-    event = FakeEvent(700003, -100444, "Shortener Test", REJECT_TEXT_WITH_URL)
+    event = FakeEvent(700003, -100444, "Shortener Test", _accept_text_with_url(ACCEPT_URL_FAIL))
     succeeded = asyncio.run(process_message(event))
 
     assert succeeded is False, (
@@ -334,4 +379,4 @@ def test_fail_closed_shortener_error_is_reported_failed_but_keeps_the_row(
         "retry must resume it, never lose it."
     )
     job = log.get_last_job()
-    assert job["URL"] == "https://example.com/project/4242"
+    assert job["URL"] == ACCEPT_URL_FAIL
