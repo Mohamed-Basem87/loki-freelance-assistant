@@ -8,7 +8,7 @@ wuzzuf). The whole LinkedIn/Wuzzuf pipeline stays inside the container.
 
 Why a subprocess and not an import:
 
-  * scraper/scraper.py drives scrapling/curl_cffi/playwright machinery
+  * scraper/scraper.py drives scrapling/curl_cffi machinery
     and calls asyncio.run() itself. Running it as a separate process keeps
     its network/browser work and its event loop entirely out of the app's
     own loop and DBLogger thread, and a hung/rogue scrape kills only the

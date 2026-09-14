@@ -18,8 +18,8 @@ Two things are covered here:
    has no `run()` method -- so every real FreeHub dedup call
    (get_seen/set_seen/get_pending/set_pending) raised AttributeError
    the moment it was exercised through the actual composition root.
-   This test drives app.adapters.state.dedup_registry.build() the same
-   way app.wiring.composition.compose() does, to prove dedup and state share
+   This test constructs StateDedupStore/JsonStateStore the same way
+   app.wiring.composition.compose() does, to prove dedup and state share
    the one serialized backend and dedup is actually usable.
 """
 import asyncio
@@ -50,20 +50,19 @@ def test_json_state_store_no_longer_implements_the_sync_freehub_seen_bypass():
 
 
 def test_build_dedup_as_used_by_composition_shares_the_serialized_backend():
-    """Drives app.adapters.state.dedup_registry.build() the same way
-    app.wiring.composition.compose() does after the fix (no state_backend
-    kwarg), and confirms a get_seen/set_seen round-trip actually works
+    """Constructs StateDedupStore the same way app.wiring.composition.compose()
+    does (wired to the raw StateManager singleton, not the JsonStateStore
+    port facade), and confirms a get_seen/set_seen round-trip actually works
     end to end -- this would raise AttributeError before the fix,
     since the dedup adapter was wired to the JsonStateStore port facade
     (no `.run()`) instead of the raw serialized StateManager backend.
     """
     from app.services.state import state as raw_state_manager
-    from app.adapters.state.registry import build as build_state
-    from app.adapters.state.dedup_registry import build as build_dedup
+    from app.adapters.state.json import JsonStateStore
     from app.adapters.state.dedup import StateDedupStore
 
-    state_store = build_state()
-    dedup = build_dedup()
+    state_store = JsonStateStore(raw_state_manager)
+    dedup = StateDedupStore(raw_state_manager)
 
     assert isinstance(dedup, StateDedupStore)
     # dedup must be wired to the same raw, serialized backend that

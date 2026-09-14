@@ -3,7 +3,10 @@ import os
 import time
 from collections import deque
 from pathlib import Path
-
+from app.core.config import FREEHUB_BASE_URL, get_freehub_user_id
+from app.core.runtime_config import RUNTIME
+from app.adapters.http.aiohttp import AioHttpTransport
+from app.adapters.sources.freehub import FreeHubApiClient
 from app.core.config import (
     FREEHUB_BASE_URL,
     FREEHUB_USER_ID,
@@ -140,16 +143,13 @@ async def fetch_projects(session, source: str, page: int = 1, *, client=None):
     config-derived collaborators so it stays a thin delegator into the
     canonical FreeHubApiClient."""
     if client is None:
-        from app.core.config import FREEHUB_BASE_URL, get_freehub_user_id
-        from app.core.runtime_config import RUNTIME
-        from app.adapters.http.registry import build as _build_transport
-        from app.adapters.sources.freehub import FreeHubApiClient
+
         client = FreeHubApiClient(
             base_url=FREEHUB_BASE_URL,
             user_id=get_freehub_user_id(),
             timeout=RUNTIME.http_timeout_seconds,
             page_size=RUNTIME.freehub_page_size,
-            transport=_build_transport(timeout=RUNTIME.http_timeout_seconds),
+            transport=AioHttpTransport(timeout=RUNTIME.http_timeout_seconds),
         )
     return await client.fetch_projects(source, page=page)
 
