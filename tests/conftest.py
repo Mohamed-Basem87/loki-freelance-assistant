@@ -90,8 +90,8 @@ def _bind_dependency_slots():
     app.wiring.dependencies). Production binds every slot through
     app.wiring.composition.compose() before any worker starts. The test session
     mirrors that contract by binding the same canonical module facades
-    up front: app.adapters.repositories.registry's SQLiteRepository over
-    the shared DBLogger singleton, app.adapters.state.registry's
+    up front: app.adapters.repositories.sqlite's SQLiteRepository over
+    the shared DBLogger singleton, app.adapters.state.json's
     JsonStateStore over the shared StateManager singleton, the default
     notification service,
     routing, parser registry, and the standard no-op notification
@@ -99,15 +99,17 @@ def _bind_dependency_slots():
     tests/test_telegram_recovery.py) still work because an instance
     attribute shadows the bound value, exactly as before.
     """
-    from app.adapters.repositories.registry import build as build_repository
-    from app.adapters.state.registry import build as build_state_store
+    from app.adapters.repositories.sqlite import SQLiteRepository
+    from app.services.logger import logger as _db_logger
+    from app.adapters.state.json import JsonStateStore
+    from app.services.state import state as _state_manager
     from app.wiring.dependencies import configure
     from app.services.notifier import get_notification_service
     from app.services.parser import get_parser_registry
     from app.core.routing import queue_for_category
 
-    db = build_repository()
-    store = build_state_store()
+    db = SQLiteRepository(_db_logger)
+    store = JsonStateStore(_state_manager)
 
     async def _noop_resolver(job_uuid, row, category_id):
         return category_id

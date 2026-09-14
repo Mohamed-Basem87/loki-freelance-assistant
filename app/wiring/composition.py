@@ -9,11 +9,14 @@ import os
 import sys
 from functools import partial
 
-from app.adapters.repositories.registry import build as build_repository
-from app.adapters.state.registry import build as build_state
-from app.adapters.state.dedup_registry import build as build_dedup
-from app.adapters.notifications.registry import build as build_sinks
-from app.adapters.http.registry import build as build_http_transport
+from app.adapters.repositories.sqlite import SQLiteRepository
+from app.services.logger import logger as _db_logger
+from app.adapters.state.json import JsonStateStore
+from app.adapters.state.dedup import StateDedupStore
+from app.services.state import state as _state_manager
+from app.adapters.notifications.telegram import TelegramNotificationSink
+from app.adapters.notifications.renderer import TelegramMessageRenderer
+from app.adapters.http.aiohttp import AioHttpTransport
 from app.wiring.dependencies import configure
 from app.services.notifier import NotificationService
 from app.services.parser import get_parser_registry
@@ -43,10 +46,10 @@ from app.core.config import (
     get_freehub_user_id,
     SESSION_NAME,
 )
-from app.adapters.transports.registry import build as build_transport
+from app.adapters.transports.telegram_bot import TelegramBotTransport
 from app.core.config import get_bot_chat_id, get_bot_token
 from telegram import Bot
-from app.adapters.user.registry import build as build_user_surface, build_messaging
+from app.adapters.user.telegram import TelegramCommandSurface, TelegramUserMessaging
 from app.services.user_bot import create_user_bot_application, register_configured_channel
 from app.adapters.user.renderer import TelegramUserMessageRenderer
 
@@ -121,17 +124,17 @@ class Runtime:
 
 
 def compose():
-    repository = build_repository()
-    state = build_state()
+    repository = SQLiteRepository(_db_logger)
+    state = JsonStateStore(_state_manager)
     # NOTE: dedup deliberately resolves its own raw backend rather than
     # receiving `state` here. `state` is the StateStore *port* facade
     # (JsonStateStore), which only exposes the port's async surface; it
     # has no `.run()` executor method. StateDedupStore expects the raw
     # serialized backend (the same `app.services.state.state` StateManager
-    # singleton `build_state()` itself wraps) so its `get_seen`/
+    # singleton `state` itself wraps) so its `get_seen`/
     # `set_seen`/etc. calls stay routed through that one serialized
     # executor instead of raising AttributeError on first use.
-    dedup = build_dedup()
+    dedup = StateDedupStore(_state_manager)
     parser_registry = get_parser_registry()
 
     if RUNTIME.rejection_reason_category_id and RUNTIME.rejection_reason_category_id not in {p.id for p in enabled_categories()}:
@@ -140,7 +143,7 @@ def compose():
         )
 
     # Build shared HTTP transport for FreeHub sources (one connection pool).
-    http_transport = build_http_transport()
+    http_transport = AioHttpTransport()
 
     # URL shortener: reuses the same shared HTTP transport/connection pool
     # (see app.core.url_shortener) rather than opening a second one.
@@ -166,14 +169,55 @@ def compose():
     
 
 
-    freehub_client = FreeHubApiClient(
-        base_url=FREEHUB_BASE_URL,
-        user_id=get_freehub_user_id(),
-        timeout=RUNTIME.http_timeout_seconds,
-        page_size=RUNTIME.freehub_page_size,
-        transport=http_transport,
-    )
 
+    def _freehub_factory(**overrides):
+        client = overrides.pop("http_client", None) or FreeHubApiClient(
+            base_url=FREEHUB_BASE_URL,
+            user_id=get_freehub_user_id(),
+            timeout=RUNTIME.http_timeout_seconds,
+            page_size=RUNTIME.freehub_page_size,
+            transport=http_transport,
+        )
+        return FreeHubJobSource(
+            poller=lambda: freehub_logic.poll_once(client=client),
+            marker=lambda job: freehub_logic.mark_project_seen(job),
+            http_client=client,
+        )
+
+    def _telegram_channels_factory(**overrides):
+        return TelegramChannelJobSource(
+            client=overrides.pop("client", None),
+            channels=tuple(overrides.pop("channels", None) or TARGET_CHANNELS),
+            parser=overrides.pop("parser", None) or parser_registry,
+            state_store=overrides.pop("state_store", None) or state,
+            api_id=overrides.pop("api_id", get_api_id()),
+            api_hash=overrides.pop("api_hash", get_api_hash()),
+            phone_number=overrides.pop("phone_number", get_phone_number()),
+            session_name=overrides.pop("session_name", SESSION_NAME),
+            batch_limit=overrides.pop("batch_limit", None),
+            max_recovery_messages=overrides.pop(
+                "max_recovery_messages", RECOVERY.telegram_max_messages
+            ),
+            recovery_retry_base_seconds=overrides.pop(
+                "recovery_retry_base_seconds",
+                RECOVERY.telegram_retry_base_seconds,
+            ),
+            recovery_retry_cap_seconds=overrides.pop(
+                "recovery_retry_cap_seconds", RECOVERY.telegram_retry_cap_seconds
+            ),
+        )
+
+    def _scraper_file_factory(source_class, **overrides):
+        file_path = overrides.pop("file_path", None)
+        if not file_path:
+            file_path = str(BASE_DIR / "jobs_results.json")
+        elif not os.path.isabs(file_path):
+            file_path = str(BASE_DIR / file_path)
+        client = overrides.pop("client", None) or ScraperFileClient(
+            file_path=file_path,
+            platform=source_class.platform,
+        )
+        return source_class(client=client)
 
     for _cfg in JOB_SOURCES:
         if not _cfg.enabled:
@@ -228,11 +272,14 @@ def compose():
     guard = NotificationGuard(repository=repository)
     guard_integration = NotificationGuardIntegration(guard, repository=repository)
     # Inject the shared bot so the transport doesn't create its own.
-    notification_transport = build_transport(bot=shared_notification_bot)
+    notification_transport = TelegramBotTransport(bot=shared_notification_bot)
     notifications = NotificationService(
-        sinks=build_sinks(
-            transports={"telegram": notification_transport},
-            chat_id=lambda: get_bot_chat_id(),
+        sinks=(
+            TelegramNotificationSink(
+                renderer=TelegramMessageRenderer(),
+                transport=notification_transport,
+                chat_id=lambda: get_bot_chat_id(),
+            ),
         ),
         repository=repository,
     )
@@ -246,14 +293,14 @@ def compose():
 
     # Build user-facing Telegram surface.
 
-    user_bot = build_user_surface(
-        application_factory=create_user_bot_application,
+    user_bot = TelegramCommandSurface(
+        create_user_bot_application(),
         channel_registrar=register_configured_channel,
     )
     # Use the SAME shared bot for user messaging (outbound DMs to users).
     # The user_bot's Application has its own Bot for inbound polling;
     # this shared bot is only for outbound notifications.
-    user_messaging = build_messaging(shared_notification_bot)
+    user_messaging = TelegramUserMessaging(shared_notification_bot)
 
     user_renderer = TelegramUserMessageRenderer()
 
@@ -305,55 +352,11 @@ def compose():
         telegram_source=telegram_source,
     )
 
-    def _adapter_type(adapter_path):
-        module_name, sep, attr = adapter_path.partition(":")
-        if not sep:
-            raise ValueError(
-                f"Invalid source adapter path: {adapter_path!r}; "
-                "expected module:Class"
-            )
-        return getattr(_importlib.import_module(module_name), attr)
-
-
-def _freehub_factory(**overrides):
-    client = overrides.pop("http_client", None) or freehub_client
-    return FreeHubJobSource(
-        poller=lambda: freehub_logic.poll_once(client=client),
-        marker=lambda job: freehub_logic.mark_project_seen(job),
-        http_client=client,
-    )
-
-def _telegram_channels_factory(**overrides):
-    return TelegramChannelJobSource(
-        client=overrides.pop("client", None),
-        channels=tuple(overrides.pop("channels", None) or TARGET_CHANNELS),
-        parser=overrides.pop("parser", None) or parser_registry,
-        state_store=overrides.pop("state_store", None) or state,
-        api_id=overrides.pop("api_id", get_api_id()),
-        api_hash=overrides.pop("api_hash", get_api_hash()),
-        phone_number=overrides.pop("phone_number", get_phone_number()),
-        session_name=overrides.pop("session_name", SESSION_NAME),
-        batch_limit=overrides.pop("batch_limit", None),
-        max_recovery_messages=overrides.pop(
-            "max_recovery_messages", RECOVERY.telegram_max_messages
-        ),
-        recovery_retry_base_seconds=overrides.pop(
-            "recovery_retry_base_seconds",
-            RECOVERY.telegram_retry_base_seconds,
-        ),
-        recovery_retry_cap_seconds=overrides.pop(
-            "recovery_retry_cap_seconds", RECOVERY.telegram_retry_cap_seconds
-        ),
-    )
-
-def _scraper_file_factory(source_class, **overrides):
-    file_path = overrides.pop("file_path", None)
-    if not file_path:
-        file_path = str(BASE_DIR / "jobs_results.json")
-    elif not os.path.isabs(file_path):
-        file_path = str(BASE_DIR / file_path)
-    client = overrides.pop("client", None) or ScraperFileClient(
-        file_path=file_path,
-        platform=source_class.platform,
-    )
-    return source_class(client=client)
+def _adapter_type(adapter_path):
+    module_name, sep, attr = adapter_path.partition(":")
+    if not sep:
+        raise ValueError(
+            f"Invalid source adapter path: {adapter_path!r}; "
+            "expected module:Class"
+        )
+    return getattr(_importlib.import_module(module_name), attr)

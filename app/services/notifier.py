@@ -1,7 +1,11 @@
 """Notification application service with broadcast semantics."""
 import inspect
 
-from app.adapters.notifications.registry import build as build_sinks
+def _default_sinks():
+    from app.adapters.notifications.telegram import TelegramNotificationSink
+    from app.adapters.notifications.renderer import TelegramMessageRenderer
+
+    return (TelegramNotificationSink(renderer=TelegramMessageRenderer()),)
 
 
 class NotificationService:
@@ -13,7 +17,7 @@ class NotificationService:
     """
 
     def __init__(self, sinks=None, repository=None):
-        self.sinks = tuple(sinks if sinks is not None else build_sinks())
+        self.sinks = tuple(sinks if sinks is not None else _default_sinks())
         self.repository = repository
 
     async def send(self, **payload):

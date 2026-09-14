@@ -3,13 +3,13 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from app.ports import NotificationSink
 from app.adapters.notifications.renderer import TelegramMessageRenderer
-from app.adapters.transports.registry import build as build_transport
+from app.adapters.transports.telegram_bot import TelegramBotTransport
 
 class TelegramNotificationSink(NotificationSink):
     id = "telegram"
     def __init__(self, renderer=None, transport=None, chat_id=None):
         self.renderer = renderer or TelegramMessageRenderer()
-        self.transport = transport or build_transport()
+        self.transport = transport or TelegramBotTransport()
         # Narrow injected configuration. A concrete chat id is used
         # verbatim; a zero-arg callable defers credential resolution to
         # first send (the historical lazy behavior the composition root
