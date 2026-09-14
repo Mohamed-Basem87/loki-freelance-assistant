@@ -1,5 +1,5 @@
 from html import escape
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from app.core.config import source_display_name
 from app.core.runtime_config import RUNTIME
@@ -69,6 +69,25 @@ def safe_button_url(url: str) -> str:
         return ""
 
     return cleaned
+
+
+def with_user_id(url: str, user_id) -> str:
+    """
+    Append the receiving Telegram user's id to a per-user short link as a
+    query parameter, so the shortener's landing page can recognize which
+    subscriber clicked the button.
+
+    Only ever called on URLs the caller already knows are genuine short
+    links (owned by the shortener), so no domain-prefix check is needed
+    here. An empty URL is returned unchanged.
+    """
+    if not url:
+        return url
+    parsed = urlparse(url)
+    query = f"userId={user_id}"
+    if parsed.query:
+        query = f"{parsed.query}&{query}"
+    return urlunparse(parsed._replace(query=query))
 
 
 def _safe_html_truncate(html: str, limit: int) -> str:

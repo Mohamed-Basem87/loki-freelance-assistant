@@ -54,7 +54,7 @@ class MessageRenderer(ABC):
 
 class UserMessageRenderer(ABC):
     @abstractmethod
-    def render_user(self, job_row: dict[str, Any], category_id: str) -> dict[str, Any]: raise NotImplementedError
+    def render_user(self, job_row: dict[str, Any], category_id: str, telegram_user_id: int) -> dict[str, Any]: raise NotImplementedError
 
 class NotificationSink(ABC):
     id: str

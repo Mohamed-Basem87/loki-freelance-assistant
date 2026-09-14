@@ -537,8 +537,9 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
         # successful shorten() and the create, the next poll would re-shorten
         # the same URL, receive the duplicate signal, and silently drop a
         # genuinely new job with no row ever written. Creating the row first
-        # means a crash can never orphan a job -- the long URL is already
-        # durable, and shortening only enriches the stored URL afterwards.
+        # means a crash can never orphan a job -- the original URL is already
+        # durable, and shortening only populates the separate "Short URL"
+        # column afterwards, never touching "URL" itself.
         # project_id was already extracted from the *original* URL above, so
         # cross-source dedup is unaffected either way.
         created = await logger.create_job_if_absent(legacy_job_uuid=legacy_job_uuid, job_uuid=job_uuid, job_id=job_id, source=job["source"], identity_source=identity_source, title=job["title"], description=job["description"], raw_message=job["raw_text"], filter_text=filter_text, company=job.get("company", ""), url=job["url"], filter_result=result, filter_time_ms=filter_time, save=False)
@@ -557,22 +558,28 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
             return
 
         # Best-effort URL shortening, now that the row is durably committed.
-        # job_id is passed through unchanged as the shortener's own jobId
+        # job_uuid, not the source-local job_id (which is only unique within
+        # its own source), is passed through as the shortener's own jobId
         # key -- the shortener upserts on it, so this call never needs to
         # check for prior existence itself. A crash between the create and
-        # this update is harmless: the job survives with the long URL.
+        # this update is harmless: the job survives with the original URL.
+        #
+        # The shortened link is written to its own "Short URL" column, never
+        # to "URL": job["url"] stays the original link, so the channel and
+        # notification path (sourced from row["URL"]) is unaffected, and only
+        # the per-user DM renderer consumes the short link (see
+        # app.adapters.user.renderer).
         #
         # Failure follows URL_SHORTENER_FAILURE_MODE inside
         # url_shortener.shorten(): fail_open returns the original URL and the
-        # no-op guard below skips the rewrite; fail_closed raises
+        # no-op guard below skips the write; fail_closed raises
         # UrlShorteningError, deliberately NOT caught here, so the source
         # worker leaves the job un-seen and it resumes from this durable row
         # on the next poll instead of being lost (see app.wiring.source_worker.
         # SourceWorker.run).
-        shortened = await url_shortener.shorten(job_id, job["url"])
+        shortened = await url_shortener.shorten(job_uuid, job["url"])
         if shortened and shortened != job["url"]:
-            await logger.update_job(job_uuid, url=shortened, save=True)
-            job["url"] = shortened
+            await logger.update_job(job_uuid, short_url=shortened, save=True)
 
     # Claim the canonical project ID after the durable job row has
     # been created. The claim itself is atomic inside StateManager's

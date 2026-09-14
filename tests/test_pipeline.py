@@ -221,12 +221,13 @@ REJECT_TEXT_WITH_URL = REJECT_TEXT + " https://example.com/project/4242"
 
 def test_url_is_shortened_after_row_creation_and_row_is_updated(isolated_workbook, monkeypatch):
     """The row is created FIRST with the ORIGINAL long URL; shortening is
-    a best-effort follow-up that rewrites the stored URL. The shortener
-    must be called with the original url (not something already mutated),
-    and when shorten() runs the row must already exist -- that durable-row-
-    first ordering is what makes the feature crash-safe (a process death
-    between the create and the shorten leaves the job intact with the long
-    URL instead of silently losing it)."""
+    a best-effort follow-up that populates the separate "Short URL" column
+    without touching "URL". The shortener must be called with the original
+    url (not something already mutated), and when shorten() runs the row
+    must already exist -- that durable-row-first ordering is what makes the
+    feature crash-safe (a process death between the create and the shorten
+    leaves the job intact with the original URL instead of silently losing
+    it)."""
     from app.services import job_processor
 
     calls = []
@@ -253,7 +254,11 @@ def test_url_is_shortened_after_row_creation_and_row_is_updated(isolated_workboo
     assert calls == ["https://example.com/project/4242"]
 
     job = log.get_last_job()
-    assert job["URL"] == "http://short.test/abc"
+    assert job["URL"] == "https://example.com/project/4242", (
+        "the job's 'URL' column must keep the original link -- the short "
+        "link belongs in the separate 'Short URL' column"
+    )
+    assert job["Short URL"] == "http://short.test/abc"
 
 
 def test_repeated_job_id_shortening_updates_the_row_without_error(
@@ -283,9 +288,13 @@ def test_repeated_job_id_shortening_updates_the_row_without_error(
         "row was already created from job_uuid dedup and must survive."
     )
     job = log.get_last_job()
-    assert job["URL"] == "http://short.test/existing", (
+    assert job["Short URL"] == "http://short.test/existing", (
         "The row must be updated with the (idempotently) returned "
         "shortened URL, exactly like a first-time shorten."
+    )
+    assert job["URL"] == "https://example.com/project/4242", (
+        "the job's 'URL' column must keep the original link even when a "
+        "re-shorten returns the same path again"
     )
 
 
