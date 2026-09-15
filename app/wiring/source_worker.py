@@ -2,7 +2,7 @@
 import asyncio
 import inspect
 from app.ports import Worker
-from app.core.heartbeat import liveness, STATE_ALIVE
+from app.infra.heartbeat import liveness, STATE_ALIVE
 
 # Sub-window cadence for liveness beats during idle sleeps AND during
 # long-running job processing. The healthcheck flags a critical "alive"

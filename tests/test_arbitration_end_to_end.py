@@ -137,7 +137,7 @@ def test_manager_arbitration_reaches_real_gemini_wrapper_from_a_fresh_process(mo
     monkeypatch.setattr(gemini, "CLIENTS", [fake_client])
 
     # Explicit system_prompt bypasses build_category_arbitration_system_prompt's
-    # need to import each candidate's real app.categories.<id>.llm_prompt
+    # need to import each candidate's real app.domain.categories.<id>.llm_prompt
     # module, keeping this test focused on the provider-initialization
     # bug rather than category registry wiring.
     result = manager.arbitrate_category(TEXT, _CANDIDATES, system_prompt="system prompt")

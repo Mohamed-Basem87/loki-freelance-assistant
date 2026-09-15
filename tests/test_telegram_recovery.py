@@ -1,7 +1,5 @@
 import asyncio
-import tempfile
 from collections import defaultdict
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -426,88 +424,6 @@ def test_live_message_after_recovery_failure_does_not_advance_past_failed_messag
         "live message 106 must not advance past the failed recovery "
         "point"
     )
-
-
-def test_recovery_and_live_seeing_the_same_message_is_processed_once(
-    monkeypatch,
-):
-    """
-    The opposite overlap: recovery's snapshot AND the live handler
-    both see the same message (e.g. it arrived just before recovery
-    took its snapshot, so it's in both). The existing SQLite job_uuid
-    dedup in app.services.job_processor.process_job must make the second
-    observation a harmless no-op: the job is processed at most once,
-    the watermark ends up correct, and no duplicate notification is
-    sent.
-
-    This exercises the real app.services.message_processor.process_message ->
-    app.services.job_processor.process_job path (not a fake), since that's
-    where the actual dedup guarantee lives.
-    """
-    from app.services.job_processor import _make_job_uuid
-    from app.services.message_processor import process_message
-
-    tmp_dir = tempfile.mkdtemp(prefix="freelance_assistant_test_")
-
-    from app.services.logger import logger
-
-    original_log_path = logger.path
-    logger.path = Path(tmp_dir) / "test_logs.db"
-    logger.initialize()
-
-    private_sends = {"count": 0}
-
-    async def fake_private(**kwargs):
-        private_sends["count"] += 1
-        return True
-
-    monkeypatch.setattr("app.services.job_processor.send_notification", fake_private)
-
-    class FakeChat:
-        title = "Race Channel"
-
-    class FakeEvent:
-        buttons = []
-
-        def __init__(self, event_id, chat_id, text):
-            self.id = event_id
-            self.chat_id = chat_id
-            self.chat = FakeChat()
-            self.raw_text = text
-
-    # notify_directly text so this actually exercises the notification
-    # path, not just the "Rejected, nothing to dedup" path.
-    text = "Power BI Dashboard Needed\n\nNeed a Power BI dashboard built from sales data."
-
-    try:
-        # Recovery "sees" message X first (a plain Message-shaped
-        # object, exactly like _recover_channel iterates over).
-        recovered = FakeEvent(777, -1020, text)
-        recovery_ok = asyncio.run(process_message(recovered))
-
-        # The live handler independently sees the *same* message X
-        # (same chat_id + message id) shortly after.
-        live = FakeEvent(777, -1020, text)
-        live_ok = asyncio.run(process_message(live))
-
-        assert recovery_ok is True
-        assert live_ok is True
-
-        job_uuid = _make_job_uuid("-1020", "777")
-        row = logger.get_job(job_uuid)
-
-        assert row is not None
-        assert logger.count_jobs() == 1, (
-            "the same message seen by recovery and the live handler "
-            "must be logged as exactly one job"
-        )
-        assert row["Notification Status"] == "Complete"
-        assert private_sends["count"] == 1, (
-            "no duplicate private notification for the same message"
-        )
-    finally:
-        logger.close()
-        logger.path = original_log_path
 
 
 def test_start_registers_live_handler_before_recovery(monkeypatch):

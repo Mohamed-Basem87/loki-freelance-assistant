@@ -1,5 +1,5 @@
-from app.categories.registry import enabled_categories, deterministic_categories
-from app.core.classification import classify_and_select, select_category
+from app.domain.categories.registry import enabled_categories, deterministic_categories
+from app.domain.classification import classify_and_select, select_category
 
 
 def test_registry_has_data_analysis():
@@ -41,8 +41,8 @@ def test_ambiguous_category_selection_does_not_pick_a_category():
 
 
 def test_multiple_direct_matches_require_arbitration(monkeypatch):
-    from app.core import classification
-    from app.categories.data_analysis.profile import CategoryProfile
+    from app.domain import classification
+    from app.domain.categories.data_analysis.profile import CategoryProfile
 
     class FakeProfile:
         id = "web_development"
@@ -52,7 +52,7 @@ def test_multiple_direct_matches_require_arbitration(monkeypatch):
         positive_keywords = {"web": {"core": {"react": 10}, "supporting": {}}}
         negative_keywords = {"web": {"core": {}, "supporting": {}}}
         hard_reject_keywords = set()
-        guard_prompt_module = "app.categories.data_analysis.guard_prompt"
+        guard_prompt_module = "app.domain.categories.data_analysis.guard_prompt"
         supporting_positive_min_for_gemini = 12
         supporting_negative_downgrade_threshold = 14
         min_supporting_positive_for_lone_core = 5
@@ -79,7 +79,7 @@ def test_multiple_direct_matches_require_arbitration(monkeypatch):
 
 
 def test_huge_description_is_bounded_before_classification():
-    from app.core.classification import MAX_CLASSIFY_TEXT_CHARS
+    from app.domain.classification import MAX_CLASSIFY_TEXT_CHARS
     word = "Power BI dashboard and Excel data analysis "
     huge = word * (MAX_CLASSIFY_TEXT_CHARS // len(word) * 3 + 10)
     result = classify_and_select(huge, title="Power BI Dashboard")
@@ -89,7 +89,7 @@ def test_huge_description_is_bounded_before_classification():
 
 
 def test_classify_and_select_is_bounded_with_runtime_limits():
-    from app.core.classification import MAX_CLASSIFY_TEXT_CHARS
+    from app.domain.classification import MAX_CLASSIFY_TEXT_CHARS
     word = "Power BI dashboard and Excel data analysis "
     huge = word * (MAX_CLASSIFY_TEXT_CHARS // len(word) + 40)
 
@@ -107,5 +107,5 @@ def test_multiple_ambiguous_candidates_are_all_exposed_for_one_arbitration():
         "data_analysis": {"category_id": "data_analysis", "result": {"decision": "needs_gemini"}},
         "web_development": {"category_id": "web_development", "result": {"decision": "needs_gemini"}},
     }
-    from app.core.classification import select_category
+    from app.domain.classification import select_category
     assert select_category(results) is None

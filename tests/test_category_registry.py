@@ -3,13 +3,13 @@
 def test_category_discovery_propagates_broken_dependency(monkeypatch):
     import importlib
     import pkgutil
-    from app.categories import registry
+    from app.domain.categories import registry
     registry._discover_profiles.cache_clear()
     monkeypatch.setattr(pkgutil, "iter_modules", lambda path: [type("M", (), {"name": "broken"})()])
 
     real_import = importlib.import_module
     def fake_import(name):
-        if name == "app.categories.broken.profile":
+        if name == "app.domain.categories.broken.profile":
             raise ModuleNotFoundError("missing dependency", name="third_party_dependency")
         return real_import(name)
     monkeypatch.setattr(registry.importlib, "import_module", fake_import)
@@ -22,7 +22,7 @@ def test_category_discovery_fails_on_duplicate_category_id(monkeypatch):
     """If two category modules declare the same category ID, discovery must fail fast."""
     import importlib
     import pkgutil
-    from app.categories import registry
+    from app.domain.categories import registry
 
     registry._discover_profiles.cache_clear()
 
@@ -46,11 +46,11 @@ def test_category_discovery_fails_on_duplicate_category_id(monkeypatch):
     real_import = importlib.import_module
 
     def fake_import(name):
-        if name == "app.categories.dup1.profile":
+        if name == "app.domain.categories.dup1.profile":
             return FakeModule1()
-        if name == "app.categories.dup2.profile":
+        if name == "app.domain.categories.dup2.profile":
             return FakeModule2()
-        if name == "app.categories":
+        if name == "app.domain.categories":
             # Return a fake package for the categories package
             class FakePackage:
                 __path__ = []

@@ -79,7 +79,7 @@ Do not include markdown. Only output JSON.
 # Groq's on-demand tier rejects whole requests above a small
 # tokens-per-minute budget before inference runs, so an untruncated
 # posting can make every fallback attempt fail regardless of model.
-from app.core.runtime_config import RUNTIME
+from app.infra.runtime_config import RUNTIME
 
 COMPACT_ARBITRATION_MAX_TEXT_CHARS = RUNTIME.llm_compact_arbitration_chars
 
@@ -245,7 +245,7 @@ def parse_arbitration_response(raw: str, allowed_category_ids: set[str]) -> dict
     # they are intentionally absent from deterministic candidates. Keep the
     # allowlist derived from the registry so adding another arbitration-only
     # category cannot require another parser hardcode.
-    from app.categories.registry import arbitration_only_categories
+    from app.domain.categories.registry import arbitration_only_categories
 
     arbitration_only_ids = {profile.id for profile in arbitration_only_categories()}
     valid_selections = allowed_category_ids | {"none"} | arbitration_only_ids

@@ -1,9 +1,9 @@
 """Worker registry. The composition root supplies runtime-owned surfaces."""
 import asyncio
-from app.core.runtime_config import JOB_SOURCES, RUNTIME
+from app.infra.runtime_config import JOB_SOURCES, RUNTIME
 from app.adapters.sources.registry import build as build_source
 from app.wiring.source_worker import SourceWorker
-from app.core.heartbeat import liveness, STATE_ALIVE, STATE_SHUTDOWN, STATE_DEAD
+from app.infra.heartbeat import liveness, STATE_ALIVE, STATE_SHUTDOWN, STATE_DEAD
 
 
 class WorkerRegistry:
@@ -146,7 +146,7 @@ def default_registry(runtime=None):
         registry.register("telegram", worker.run)
         if hasattr(source, "aclose"):
             registry.register_shutdown(source.aclose)
-    from app.core.heartbeat import heartbeat_loop
+    from app.infra.heartbeat import heartbeat_loop
     registry.register("heartbeat", heartbeat_loop)
 
     # Generalized duplicate-registration guard (audit finding), extending
@@ -218,11 +218,4 @@ def default_registry(runtime=None):
     if "notification_retry" in enabled:
         from app.services.job_processor import notification_retry_loop
         registry.register("notification_retry", lambda: notification_retry_loop(RUNTIME.notification_retry_interval))
-    if "user_notifications" in enabled:
-        from app.services.user_bot import user_notification_worker
-        if runtime is not None:
-            registry.register("user_notifications_polling", lambda: runtime.user_bot.run())
-            registry.register("user_notifications", user_notification_worker)
-        else:
-            registry.register("user_notifications", user_notification_worker)
     return registry

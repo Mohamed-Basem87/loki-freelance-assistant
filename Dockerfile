@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 FROM python:3.11-slim AS runtime
 
 LABEL org.opencontainers.image.title="Loki Freelance Assistant"
-LABEL org.opencontainers.image.description="Freelance job monitor: Telegram + FreeHub ingestion, keyword classifier, Gemini/Groq review, SQLite audit log, Telegram notifications."
+LABEL org.opencontainers.image.description="Freelance job monitor: Telegram + FreeHub ingestion, keyword classifier, Gemini/Groq review, Postgres audit log, Redis stream publish to a separate notification service."
 LABEL org.opencontainers.image.source="https://github.com/Mohamed-Basem87/loki-freelance-assistant"
 
 ENV PYTHONUNBUFFERED=1 \
@@ -36,9 +36,9 @@ COPY --from=builder /install /usr/local
 
 COPY . /app
 
-# Runtime data dirs: Telethon session, SQLite audit log, dedup state.
-# The audit-log DB file itself is bind-mounted from the host (see
-# docker-compose.yml) and is never baked into the image.
+# Runtime data dirs: Telethon session, JSON dedup/read-state. The
+# audit log itself lives in Postgres (DATABASE_URL), not on this
+# filesystem -- see docker-compose.yml for the postgres service.
 RUN mkdir -p /app/sessions /app/database \
     && useradd --create-home --uid 1000 loki \
     && chown -R loki:loki /app
@@ -52,11 +52,11 @@ VOLUME ["/app/sessions", "/app/database"]
 # The deploy workflow (docker.yml) gates on .State.Health.Status ==
 # "healthy", and the host-side compose file is a stale manual copy that
 # does not declare a healthcheck. Bake it into the image so every
-# container has one regardless of how it was brought up. app.core.healthcheck
-# verifies DB/state integrity plus per-worker heartbeat liveness.
+# container has one regardless of how it was brought up. app.infra.healthcheck
+# verifies Postgres/Redis reachability plus per-worker heartbeat liveness.
 # Interval/retries are tuned so a fresh container reaches "healthy"
 # well inside the deploy gate's 60s polling window.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["python", "-m", "app.core.healthcheck"]
+    CMD ["python", "-m", "app.infra.healthcheck"]
 
 CMD ["python", "run_guarded.py"]

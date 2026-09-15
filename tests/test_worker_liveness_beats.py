@@ -13,8 +13,8 @@ import asyncio
 
 import pytest
 
-from app.core import heartbeat
-from app.core.heartbeat import WorkerLiveness, STATE_ALIVE, STATE_RUNNING, sleep_with_beats
+from app.infra import heartbeat
+from app.infra.heartbeat import WorkerLiveness, STATE_ALIVE, STATE_RUNNING, sleep_with_beats
 
 
 @pytest.fixture()
@@ -50,7 +50,7 @@ def test_maximum_beat_gap_stays_within_cadence_during_idle(isolated_liveness):
         await real_sleep(seconds)
 
     async def run():
-        import app.core.heartbeat as hb
+        import app.infra.heartbeat as hb
         orig = hb.asyncio.sleep
         hb.asyncio.sleep = spy_sleep
         try:
@@ -133,30 +133,6 @@ def test_notification_retry_loop_beats_during_idle(monkeypatch, isolated_livenes
     asyncio.run(run())
     assert calls["n"] >= 1
     assert reg.state("notification_retry")["state"] == STATE_ALIVE
-
-
-def test_user_notification_worker_beats_during_idle(monkeypatch, isolated_liveness):
-    reg = isolated_liveness
-
-    async def fake_claim(limit):
-        return []
-
-    async def fake_log_error(*a, **k):
-        return None
-
-    import app.services.user_bot as ub
-    monkeypatch.setattr(ub, "logger", type("L", (), {
-        "claim_pending_user_notifications": staticmethod(fake_claim),
-        "log_error": staticmethod(fake_log_error),
-    })())
-    monkeypatch.setattr(ub, "sleep_with_beats", _patched_sleep_with_beats(reg))
-
-    async def run():
-        task = asyncio.create_task(ub.user_notification_worker())
-        await _run_briefly(task, reg, "user_notifications")
-
-    asyncio.run(run())
-    assert reg.state("user_notifications")["state"] == STATE_ALIVE
 
 
 def _patched_sleep_with_beats(reg):

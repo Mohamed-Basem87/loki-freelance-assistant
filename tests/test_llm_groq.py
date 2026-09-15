@@ -10,8 +10,8 @@ import os
 
 import pytest
 
-from app.core.filters import keyword_filter
-from app.categories.data_analysis.profile import PROFILE
+from app.domain.filters import keyword_filter
+from app.domain.categories.data_analysis.profile import PROFILE
 from app.llm import groq
 from app.llm.utils import GENERIC_SYSTEM_PROMPT
 

@@ -31,7 +31,7 @@ import re
 import threading
 import time
 
-from app.core.runtime_config import RUNTIME
+from app.infra.runtime_config import RUNTIME
 
 
 _lock = threading.Lock()

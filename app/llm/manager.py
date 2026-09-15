@@ -23,7 +23,7 @@ def groq_arbitrate(text, candidates, system_prompt=None, deadline=None):
     from app.llm.groq import evaluate_category_arbitration
     return evaluate_category_arbitration(text, candidates, system_prompt, deadline=deadline)
 from app.llm.utils import GENERIC_SYSTEM_PROMPT, truncate_job_text
-from app.core.runtime_config import LLM_PROVIDERS
+from app.infra.runtime_config import LLM_PROVIDERS
 
 
 # Single shared preamble for both arbitration providers (Gemini full-depth
@@ -101,7 +101,7 @@ def build_category_arbitration_system_prompt(candidates: list[dict]) -> str:
     for candidate in candidates:
         category_id = candidate["id"]
         module = importlib.import_module(
-            f"app.categories.{category_id}.llm_prompt"
+            f"app.domain.categories.{category_id}.llm_prompt"
         )
         system_prompt = getattr(module, "SYSTEM_PROMPT", "").strip()
         if not system_prompt:
@@ -259,10 +259,10 @@ def _arbitration_providers():
 # The chain (which providers to try, in what order) is deliberately NOT
 # frozen into module state at import time. It is resolved lazily on first
 # use and cached, so it never depends on the import ordering of
-# app.core.runtime_config relative to this module (the risk that motivated
+# app.infra.runtime_config relative to this module (the risk that motivated
 # "resolve provider config explicitly" -- config read before it had been
 # fully loaded would have silently produced an empty or stale chain).
-# Because app.core.runtime_config is itself resolved from environment/config
+# Because app.infra.runtime_config is itself resolved from environment/config
 # once at startup, a process restart is sufficient to apply a changed
 # provider/enabled set: each process resolves its chain fresh on first
 # call.

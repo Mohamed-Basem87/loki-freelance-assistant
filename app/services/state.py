@@ -5,8 +5,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from app.core.runtime_config import RUNTIME
-from app.core.heartbeat import liveness, STATE_ALIVE, STATE_DEAD
+from app.infra.runtime_config import RUNTIME
+from app.infra.heartbeat import liveness, STATE_ALIVE, STATE_DEAD
 
 
 STATE_FILE = Path(RUNTIME.state_file_path)

@@ -1,14 +1,14 @@
 """
 Classifier regression suite.
 
-This file intentionally imports ONLY app.core.filters (and, transitively,
-app.core.normalize) -- none of which touch app.core.config -- so
+This file intentionally imports ONLY app.domain.filters (and, transitively,
+app.domain.normalize) -- none of which touch app.infra.config -- so
 it can be collected and run with a bare `pytest`, with no .env file
 and no Telegram/Gemini/Groq/FreeHub credentials of any kind. A
 previous version of this file additionally imported
 app.llm.gemini.evaluate_job (unused by this file's own test cases,
 apparently a leftover from before the file was split), which
-transitively imports app.core.config and made the single most important
+transitively imports app.infra.config and made the single most important
 regression suite in the repository impossible to even collect without
 a full production .env. See tests/test_llm_gemini.py for the
 (properly isolated, mocked) tests that actually exercise the Gemini
@@ -17,8 +17,8 @@ call path.
 
 import pytest
 
-from app.core.filters import keyword_filter
-from app.categories.data_analysis.profile import PROFILE as DATA_ANALYSIS_PROFILE
+from app.domain.filters import keyword_filter
+from app.domain.categories.data_analysis.profile import PROFILE as DATA_ANALYSIS_PROFILE
 
 
 # ------------------------------------------------------------------
@@ -1125,8 +1125,8 @@ def test_classifier_regression_cases(case):
 
 
 def test_arabic_attached_clitic_matches_canonical_keyword():
-    from app.categories.data_analysis.profile import PROFILE
-    from app.core.filters import keyword_filter
+    from app.domain.categories.data_analysis.profile import PROFILE
+    from app.domain.filters import keyword_filter
     result = keyword_filter("والبيانات وتحليل البيانات", profile=PROFILE)
     assert result["matched"] is True
 
@@ -1136,9 +1136,9 @@ def test_compiled_profile_is_cached_and_not_recompiled_per_call(monkeypatch):
     once per keyword_filter() call -- classify_and_select() re-runs the
     filter for every enabled profile on every job, so recompiling per call
     is wasted work on the hot path."""
-    import app.core.filters as filters
+    import app.domain.filters as filters
 
-    from app.categories.data_analysis.profile import PROFILE as P
+    from app.domain.categories.data_analysis.profile import PROFILE as P
 
     filters.clear_keyword_profile_cache()
     real_flatten = filters._flatten

@@ -246,7 +246,7 @@ def test_source_worker_beats_liveness_during_long_processing(monkeypatch):
     heartbeat_interval) is never exceeded by legitimate work."""
     import types
     from app.wiring import source_worker as sw_module
-    from app.core.heartbeat import WorkerLiveness, STATE_ALIVE
+    from app.infra.heartbeat import WorkerLiveness, STATE_ALIVE
 
     # Use a fresh, isolated liveness registry for this test.
     reg = WorkerLiveness()

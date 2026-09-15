@@ -48,38 +48,6 @@ class HttpTransport(ABC):
         (e.g. AioHttpTransport) overrides this."""
         return None
 
-class MessageRenderer(ABC):
-    @abstractmethod
-    def render(self, payload: dict[str, Any]) -> dict[str, Any]: raise NotImplementedError
-
-class UserMessageRenderer(ABC):
-    @abstractmethod
-    def render_user(self, job_row: dict[str, Any], category_id: str, telegram_user_id: int) -> dict[str, Any]: raise NotImplementedError
-
-class NotificationSink(ABC):
-    id: str
-    @abstractmethod
-    async def send(self, rendered: dict[str, Any] | None = None, **kwargs: Any) -> bool: raise NotImplementedError
-
-
-class NotificationTransport(ABC):
-    """Transport-neutral outbound message API used by notification sinks."""
-    @abstractmethod
-    async def send_message(self, **kwargs: Any) -> Any: raise NotImplementedError
-
-class UserMessaging(ABC):
-    @abstractmethod
-    async def notify_user(self, user_id: int, rendered: dict[str, Any], **kwargs: Any) -> bool: raise NotImplementedError
-
-class CommandSurface(ABC):
-    @abstractmethod
-    async def start(self) -> None: raise NotImplementedError
-    @abstractmethod
-    async def stop(self) -> None: raise NotImplementedError
-    @abstractmethod
-    def application(self) -> Any: raise NotImplementedError
-    async def register_channel(self) -> None: return None
-
 class StateStore(ABC):
     @abstractmethod
     def load(self): raise NotImplementedError
@@ -122,18 +90,23 @@ class JobRepository(ABC):
     contract.
     """
 
+    # Trimmed for the ingest/classify/guard node: notification delivery,
+    # subscriber fan-out, the delivery-retry loop, AND all user/
+    # subscription-profile management moved out. Fan-out/delivery moved
+    # to a separate service that consumes this node's Redis stream (see
+    # JobStreamPublisher below); user profile management (Telegram
+    # command surface, categories/sources preferences, /start /stop)
+    # moved to a separate Node.js service that owns the users/
+    # subscription_events/user_notifications tables directly. This node
+    # only reads/writes `jobs`, `categories` (the job-category catalog --
+    # jobs."Category ID" has a FK to it), `notification_guard`, and the
+    # append-only `gemini`/`errors` logs.
     _METHODS = (
         "initialize", "save", "get_job", "create_job_if_absent", "update_job",
-        "has_job", "log_job", "log_error", "log_notification", "log_gemini",
+        "has_job", "log_error", "log_gemini",
         "log_notification_guard", "get_latest_guard_decision", "get_latest_guard_decision_with_category",
         "get_incomplete_notification_jobs", "get_incomplete_classification_jobs",
-        "claim_pending_classification", "queue_user_notifications",
-        "ensure_user", "record_subscription_event", "get_user_sources",
-        "get_user_categories", "set_user_source", "set_user_category",
-        "ensure_channel_destination", "get_destination",
-        "reset_sending_user_notifications", "update_user_notification",
-        "cancel_pending_user_notifications",
-        "set_destination_active", "claim_pending_user_notifications",
+        "claim_pending_classification",
     )
 
     # Every operation exposed to application code is declared here. The
@@ -145,9 +118,7 @@ class JobRepository(ABC):
     def create_job_if_absent(self, **kwargs): raise NotImplementedError
     def update_job(self, job_uuid, **kwargs): raise NotImplementedError
     def has_job(self, job_uuid): raise NotImplementedError
-    def log_job(self, *args, **kwargs): raise NotImplementedError
     def log_error(self, *args, **kwargs): raise NotImplementedError
-    def log_notification(self, *args, **kwargs): raise NotImplementedError
     def log_gemini(self, *args, **kwargs): raise NotImplementedError
     def log_notification_guard(self, *args, **kwargs): raise NotImplementedError
     def get_latest_guard_decision(self, job_uuid): raise NotImplementedError
@@ -155,27 +126,23 @@ class JobRepository(ABC):
     def get_incomplete_notification_jobs(self): raise NotImplementedError
     def get_incomplete_classification_jobs(self): raise NotImplementedError
     def claim_pending_classification(self, job_uuid, lease_until): raise NotImplementedError
-    def queue_user_notifications(self, job_uuid, category_id, source="", save=True): raise NotImplementedError
-    def ensure_user(self, *args, **kwargs): raise NotImplementedError
-    def record_subscription_event(self, *args, **kwargs): raise NotImplementedError
-    def get_user_sources(self, user_id): raise NotImplementedError
-    def get_user_categories(self, user_id): raise NotImplementedError
-    def set_user_source(self, *args, **kwargs): raise NotImplementedError
-    def set_user_category(self, *args, **kwargs): raise NotImplementedError
-    def ensure_channel_destination(self, *args, **kwargs): raise NotImplementedError
-    def get_destination(self, *args, **kwargs): raise NotImplementedError
-    def reset_sending_user_notifications(self, save=True): raise NotImplementedError
-    def cancel_pending_user_notifications(self, telegram_user_id, save=True): raise NotImplementedError
-    def update_user_notification(self, notification_id, status, **kwargs): raise NotImplementedError
-    def set_destination_active(self, *args, **kwargs): raise NotImplementedError
-    def claim_pending_user_notifications(self, limit=20): raise NotImplementedError
 
-    # NOTE: The SQLite backend runs in autocommit mode (isolation_level=None).
-    # The `save` parameter on many methods is retained for API compatibility
-    # but has NO effect on transaction boundaries -- each statement is
-    # committed immediately. True atomic batching is only available via
-    # `create_job_if_absent` which wraps its check-and-insert in an
-    # explicit BEGIN IMMEDIATE/COMMIT block.
+    # NOTE: The Postgres backend commits each call immediately (one
+    # engine.begin() block per method). The `save` parameter on many
+    # methods is retained for API compatibility but has NO effect on
+    # transaction boundaries. True atomic batching is only available via
+    # `create_job_if_absent`, which wraps its check-and-insert in a single
+    # explicit transaction.
+
+
+class JobStreamPublisher(ABC):
+    """Publishes a guard-approved job to the downstream notification
+    pipeline (a separate service). This node's responsibility ends at a
+    successful publish; fan-out and delivery are owned entirely by the
+    consumer on the other end of the stream."""
+
+    @abstractmethod
+    async def publish(self, job_row: dict) -> None: raise NotImplementedError
 
 
 

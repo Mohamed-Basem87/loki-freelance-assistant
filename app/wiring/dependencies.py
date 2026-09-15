@@ -35,8 +35,8 @@ class DependencyProxy:
 from app.ports import JobRepository, StateStore, DedupStore
 # Legacy persistence handle exposed under the "logger" name: before the
 # JobRepository port existed, DB logging WAS the repository surface, and
-# several not-yet-constructor-injected modules (job_processor, user_bot,
-# message_processor, routing) still call arbitrary repository methods through
+# several not-yet-constructor-injected modules (job_processor,
+# message_processor) still call arbitrary repository methods through
 # this proxy. The allow-list therefore deliberately carries the full
 # JobRepository method set -- it cannot shrink to the log_* methods without
 # migrating those modules to constructor injection first. Compatibility shim
@@ -44,25 +44,26 @@ from app.ports import JobRepository, StateStore, DedupStore
 logger = DependencyProxy("logger", allowed=set(JobRepository._METHODS))
 state = DependencyProxy("state", allowed={name for cls in (StateStore, DedupStore) for name in cls.__dict__ if not name.startswith("_")})
 dedup = DependencyProxy("dedup", allowed={name for name in DedupStore.__dict__ if not name.startswith("_")})
-notifier = DependencyProxy("notifier", allowed={"send"})
-router = DependencyProxy("router", allowed=None)
 parser = DependencyProxy("parser", allowed={"parse", "resolve", "register"})
 resolver = DependencyProxy("resolver", allowed=None)
-user_messaging = DependencyProxy("user_messaging", allowed={"notify_user"})
-user_renderer = DependencyProxy("user_renderer", allowed={"render_user"})
+# guard_allow: NotificationGuardIntegration.allow -- the guard's
+# notify/do-not-notify decision, called once per job right before
+# stream_publisher.publish(). stream_publisher: publishes a
+# guard-approved job for the separate notification/delivery service to
+# consume (see app.ports.JobStreamPublisher).
+guard_allow = DependencyProxy("guard_allow", allowed=None)
+stream_publisher = DependencyProxy("stream_publisher", allowed={"publish"})
 url_shortener = DependencyProxy("url_shortener", allowed={"shorten"})
 
-def configure(*, persistence=None, state_store=None, dedup_store=None, notification_service=None, routing=None, parser_registry=None, notification_resolver=None, user_messaging_service=None, user_renderer_service=None, url_shortener_service=None):
+def configure(*, persistence=None, state_store=None, dedup_store=None, parser_registry=None, notification_resolver=None, guard_allow_fn=None, stream_publisher_service=None, url_shortener_service=None):
     """Bind real instances into the proxy slots. Called once by the
     composition root. All proxies must be bound before any worker
     starts."""
     if persistence is not None: logger.bind(persistence)
     if state_store is not None: state.bind(state_store)
     if dedup_store is not None: dedup.bind(dedup_store)
-    if notification_service is not None: notifier.bind(notification_service)
-    if routing is not None: router.bind(routing)
     if parser_registry is not None: parser.bind(parser_registry)
     if notification_resolver is not None: resolver.bind(notification_resolver)
-    if user_messaging_service is not None: user_messaging.bind(user_messaging_service)
-    if user_renderer_service is not None: user_renderer.bind(user_renderer_service)
+    if guard_allow_fn is not None: guard_allow.bind(guard_allow_fn)
+    if stream_publisher_service is not None: stream_publisher.bind(stream_publisher_service)
     if url_shortener_service is not None: url_shortener.bind(url_shortener_service)

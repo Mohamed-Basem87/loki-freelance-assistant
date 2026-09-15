@@ -2,7 +2,7 @@
 app.llm.manager tests.
 
 Importing this module transitively imports app.llm.gemini and
-app.llm.groq, which transitively import app.core.config -- so this file
+app.llm.groq, which transitively import app.infra.config -- so this file
 relies on tests/conftest.py's environment defaults to import cleanly
 without a real .env (see conftest.py's module docstring). It does NOT
 make any real Gemini/Groq API call: app.llm.manager.gemini_evaluate
@@ -15,8 +15,8 @@ used to be).
 
 import pytest
 
-from app.core.filters import keyword_filter
-from app.categories.data_analysis.profile import PROFILE
+from app.domain.filters import keyword_filter
+from app.domain.categories.data_analysis.profile import PROFILE
 from app.llm import manager
 
 

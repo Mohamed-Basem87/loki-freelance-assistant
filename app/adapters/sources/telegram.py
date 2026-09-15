@@ -14,7 +14,7 @@ This module is the single home for every Telegram ingestion path:
   constructs with all collaborators injected.
 
 Configuration contract: this module has NO application/config-global
-dependencies. It never imports ``app.core.config`` or ``app.core.runtime_config``:
+dependencies. It never imports ``app.infra.config`` or ``app.infra.runtime_config``:
 every Telegram credential, channel set, and recovery option is injected by
 the composition root (app.wiring.composition.compose) and flows down through
 ``TelegramChannelJobSource`` / ``TelegramChannelWorker``.
@@ -71,8 +71,8 @@ from telethon import TelegramClient, events, errors as _errors
 from app.wiring.dependencies import logger, state
 from app.services.message_processor import process_message
 from app.ports import JobSource
-from app.core.timeouts import call_with_timeout, iter_with_timeout
-from app.core.heartbeat import (
+from app.infra.timeouts import call_with_timeout, iter_with_timeout
+from app.infra.heartbeat import (
     liveness,
     STATE_ALIVE,
     STATE_RECONNECTING,

@@ -4,13 +4,13 @@ import time
 import uuid
 import weakref
 
-from app.categories.registry import get_category, arbitration_only_categories
-from app.core.classification import classify_and_select
+from app.domain.categories.registry import get_category, arbitration_only_categories
+from app.domain.classification import classify_and_select
 from app.llm.manager import arbitrate_category
-from app.wiring.dependencies import logger, state, dedup, notifier, router, resolver, url_shortener
-from app.core.heartbeat import STATE_RUNNING, sleep_with_beats
-from app.core.runtime_config import RUNTIME
-from app.core.timeouts import call_with_timeout
+from app.wiring.dependencies import logger, state, dedup, stream_publisher, resolver, guard_allow, url_shortener
+from app.infra.heartbeat import STATE_RUNNING, sleep_with_beats
+from app.infra.runtime_config import RUNTIME
+from app.infra.timeouts import call_with_timeout
 
 
 class ClassificationPendingError(RuntimeError):
@@ -26,14 +26,6 @@ class ClassificationPendingError(RuntimeError):
 # forever, while still being long enough that the FreeHub re-discovery
 # path and classification_retry_loop cannot both win the same claim.
 CLASSIFICATION_CLAIM_LEASE_SECONDS = 120
-
-
-async def send_notification(**payload):
-    return await notifier.send(**payload)
-
-
-async def queue_for_category(job_uuid, category_id, source=""):
-    return await router(job_uuid, category_id, source)
 
 
 # Deterministic namespace for deriving job_uuid from (source, job_id).
@@ -90,74 +82,76 @@ async def _resolve_notification_category(job_uuid: str, row: dict, category_id: 
     the category unchanged. The composition root (app.wiring.composition.compose)
     binds this slot to the real guard-aware resolver
     (app.notification_guard.integration.NotificationGuardIntegration.
-    resolve_category) exactly like the notifier and router slots -- see
-    send_notification()/queue_for_category() below. The deterministic
-    tiering system and arbitration path never call this and are
-    unaffected either way.
+    resolve_category). The deterministic tiering system and arbitration
+    path never call this and are unaffected either way.
     """
     return await resolver(job_uuid, row, category_id)
 
 
-def _notification_payload_from_row(job_uuid: str, row: dict) -> dict:
-    categories = row.get("Categories") or ""
-    if isinstance(categories, str):
-        categories = [item.strip() for item in categories.split(",") if item.strip()]
-
+def _guard_payload_from_row(job_uuid: str, row: dict) -> dict:
     return {
         "job_uuid": job_uuid,
+        "source": row.get("Source") or "",
         "title": row.get("Title") or "",
         "description": row.get("Description") or "",
-        "source": row.get("Source") or "",
         "decision": row.get("Final Decision") or "Accepted",
-        "reason": row.get("Decision Reason") or "",
-        "url": row.get("URL") or "",
-        # Budget was not historically stored in the Jobs sheet. A
-        # retry after restart therefore omits it rather than inventing
-        # a value; the notification remains otherwise identical.
-        "budget": "",
-        "categories": categories,
         "category_id": row.get("Category ID") or "",
-        "core_hit_count": row.get("Core Positive Hit Count") or 0,
-        "supporting_weight": row.get("Supporting Positive Weight") or 0,
-        "ai_used": str(row.get("Needs Gemini") or "").strip().lower()
-        in ("1", "true", "yes", "y"),
     }
 
 
-async def _was_suppressed_by_guard(job_uuid: str) -> bool:
-    """
-    True only when the most recent Notification Guard evaluation for
-    this job was a genuine content-based rejection ("do_not_notify"),
-    as opposed to a provider error or the guard never having run.
+async def _publish_and_mark_complete(job_uuid: str, row: dict):
+    """Single choke point through which an approved job actually leaves
+    this service: confirm it in Postgres, only then hand it to Redis.
 
-    This is what stops the periodic retry sweep (P1-1) from
-    compounding with the guard's fail-closed behavior (P1-2) into
-    endlessly re-asking Groq about a job it already genuinely
-    rejected, while still letting a transient provider outage keep
-    being retried like any other failed send.
+    The row is already durable in Postgres by the time this runs (every
+    field on it was committed via create_job_if_absent/update_job
+    earlier in process_job) -- this function's job is purely the
+    publish-then-mark-complete ordering, used identically whether the
+    job got here via guard approval or the LLM-arbitration bypass below.
+
+    Publish happens BEFORE the "Complete" write. If publish raises,
+    "Notification Status" stays at "Pending" (untouched), so the next
+    get_incomplete_notification_jobs() sweep pass republishes it -- this
+    is what makes a crash between the Postgres commit and the XADD
+    self-heal instead of silently dropping the job from the downstream
+    pipeline.
     """
-    decision = await logger.get_latest_guard_decision(job_uuid)
-    return decision == "do_not_notify"
+    await stream_publisher.publish(row)
+    await logger.update_job(job_uuid, notification_status="Complete", save=True)
 
 
 async def _resume_pending_notifications_unlocked(job_uuid: str, row: dict):
-    """Resume the owner's private notification workflow.
+    """Resolve whether this job should reach the downstream notification
+    service and, if so, publish it.
 
-    Category subscribers, including the configured public DA channel, are
-    delivered independently by the durable user_notification queue. This
-    keeps the owner's private inbox unchanged: every accepted job still
-    goes directly to BOT_CHAT_ID.
+    Fan-out (who gets notified) and delivery (actually sending) both
+    moved to a separate service that consumes the Redis stream
+    JobStreamPublisher publishes to -- this node's responsibility ends
+    at a durable "Complete"/"Suppressed" write.
     """
     status = row.get("Notification Status") or ""
     if status in ("Complete", "Suppressed"):
         return
 
-    # Resolve the category to actually deliver under *before* either
-    # notification leg runs, so the owner's private message and the
-    # subscriber fan-out can never disagree about it. A no-op in the
-    # standard runtime (see _resolve_notification_category); the
-    # guarded runtime may durably reclassify a clean keyword-direct
-    # match to "full_stack" here.
+    # A job the LLM arbitrated already had its content directly
+    # reviewed -- the guard exists to catch what the deterministic
+    # keyword tiers missed, not to re-litigate a call the LLM already
+    # made. Skip category resolution and the guard entirely for these:
+    # straight to Postgres-confirmed + Redis-published, no guard lookup
+    # or provider call in between. (This must key off
+    # "Category Selection Method" == "llm", not "Needs Gemini" -- the
+    # latter reflects one category's own deterministic tier verdict,
+    # which can be False even when arbitration genuinely ran, e.g. two
+    # clean "notify_directly" categories that still needed arbitration
+    # to pick between them.)
+    if (row.get("Category Selection Method") or "") == "llm":
+        await _publish_and_mark_complete(job_uuid, row)
+        return
+
+    # Resolve the category to actually publish under *before* the guard
+    # allow-check, so a durable reclassification (e.g. to "full_stack")
+    # is reflected in both the guard decision and the published row. A
+    # no-op in the standard runtime (see _resolve_notification_category).
     category_id = row.get("Category ID") or ""
     if category_id:
         resolved_category_id = await _resolve_notification_category(
@@ -168,60 +162,14 @@ async def _resume_pending_notifications_unlocked(job_uuid: str, row: dict):
             row["Category ID"] = resolved_category_id
             category_id = resolved_category_id
 
-    payload = _notification_payload_from_row(job_uuid, row)
+    payload = _guard_payload_from_row(job_uuid, row)
+    allowed = await guard_allow(payload)
 
-    # Re-queue the category subscription fan-out on every recovery pass.
-    # user_notifications has a UNIQUE (Job UUID, User ID) constraint, so
-    # this is idempotent and closes the crash window between durable job
-    # state and subscriber queue creation.
-    if category_id:
-        await queue_for_category(
-            job_uuid,
-            category_id,
-            row.get("Source") or "",
-        )
+    if not allowed:
+        await logger.update_job(job_uuid, notification_status="Suppressed", save=True)
+        return
 
-    # send_notification() (NotificationService.send(), or the guard-
-    # wrapped equivalent) is the single authoritative writer of
-    # "Notification Status" while the private notification is
-    # unresolved: each configured sink's own success/failure is
-    # persisted in a per-sink encoded state (e.g.
-    # "Sink:telegram=Sent"), and any sink already durably marked Sent
-    # is skipped rather than resent. It is always safe to call again
-    # here -- on the very first attempt, on a resumed pass after a
-    # crash, and on every retry-sweep pass -- because of that
-    # per-sink idempotency.
-    #
-    # job_processor previously kept a second, differently-formatted
-    # "Telegram: Sent/Failed" status on this same column and rewrote
-    # it after every call from a snapshot of the row taken *before*
-    # send_notification() ran. That stale-snapshot rewrite clobbered
-    # whatever per-sink state send_notification() had just persisted
-    # (the two formats don't even parse as each other's entries), so a
-    # later retry pass could see neither format's success marker and
-    # resend to a sink that had already succeeded (audit finding:
-    # notification state consistency -- a successful sink must never
-    # be resent just because another sink is still failing).
-    # job_processor no longer writes any interim state to this column;
-    # it only ever writes the terminal "Complete"/"Suppressed" rollup,
-    # once, after every sink has resolved.
-    sent_direct = await send_notification(**payload)
-    suppressed = False if sent_direct else await _was_suppressed_by_guard(job_uuid)
-
-    await logger.log_notification(
-        job_uuid,
-        "Telegram",
-        "Sent" if sent_direct else ("Suppressed" if suppressed else "Failed"),
-        save=False,
-    )
-
-    if sent_direct or suppressed:
-        final_status = "Suppressed" if suppressed else "Complete"
-        await logger.update_job(job_uuid, notification_status=final_status, save=True)
-    # Otherwise leave "Notification Status" exactly as
-    # send_notification() itself just persisted -- the per-sink state
-    # for whichever sink(s) are still unresolved -- so the next retry
-    # only re-attempts those, not sinks that already succeeded.
+    await _publish_and_mark_complete(job_uuid, row)
 
 
 async def _resume_pending_notifications(job_uuid: str, row: dict):

@@ -4,14 +4,14 @@ import json
 
 import pytest
 
-from app.categories.registry import enabled_categories, get_category
-from app.categories.full_stack.keywords import (
+from app.domain.categories.registry import enabled_categories, get_category
+from app.domain.categories.full_stack.keywords import (
     POSITIVE_KEYWORDS,
     NEGATIVE_KEYWORDS,
     HARD_REJECT_KEYWORDS,
     NOISE_KEYWORDS,
 )
-from app.categories.full_stack.profile import PROFILE as FULL_STACK_PROFILE
+from app.domain.categories.full_stack.profile import PROFILE as FULL_STACK_PROFILE
 from app.llm.utils import parse_arbitration_response, build_arbitration_prompt
 from app.llm.manager import (
     build_category_arbitration_system_prompt,
@@ -44,7 +44,7 @@ def test_full_stack_profile_structure():
     assert FULL_STACK_PROFILE.name == "Full Stack Development"
     assert FULL_STACK_PROFILE.description
     assert FULL_STACK_PROFILE.arbitration_context
-    assert FULL_STACK_PROFILE.guard_prompt_module == "app.categories.full_stack.guard_prompt"
+    assert FULL_STACK_PROFILE.guard_prompt_module == "app.domain.categories.full_stack.guard_prompt"
     assert FULL_STACK_PROFILE.positive_keywords == {}
     assert FULL_STACK_PROFILE.negative_keywords == {}
     assert FULL_STACK_PROFILE.hard_reject_keywords == set()
@@ -52,7 +52,7 @@ def test_full_stack_profile_structure():
 
 def test_full_stack_cannot_be_direct_match():
     """Full stack cannot be selected by deterministic classification (no keywords)."""
-    from app.core.classification import classify_and_select
+    from app.domain.classification import classify_and_select
     
     # Even with full-stack related text, no deterministic match should occur
     result = classify_and_select(
@@ -136,7 +136,7 @@ def test_groq_compact_arbitration_prompt_includes_full_stack():
 
 def test_full_stack_llm_prompt_exists():
     """Full stack has an LLM arbitration prompt."""
-    from app.categories.full_stack.llm_prompt import SYSTEM_PROMPT
+    from app.domain.categories.full_stack.llm_prompt import SYSTEM_PROMPT
     assert SYSTEM_PROMPT
     assert "Full Stack Development" in SYSTEM_PROMPT
     assert "PRIMARY DELIVERABLE" in SYSTEM_PROMPT
@@ -146,7 +146,7 @@ def test_full_stack_llm_prompt_exists():
 
 def test_full_stack_guard_prompt_exists():
     """Full stack has a notification guard prompt."""
-    from app.categories.full_stack.guard_prompt import SYSTEM_PROMPT
+    from app.domain.categories.full_stack.guard_prompt import SYSTEM_PROMPT
     assert SYSTEM_PROMPT
     assert "Full Stack" in SYSTEM_PROMPT
     assert "notify" in SYSTEM_PROMPT
@@ -155,7 +155,7 @@ def test_full_stack_guard_prompt_exists():
 
 def test_full_stack_keywords_do_not_collide_with_noise():
     """Full stack noise keywords don't collide with scored keywords (vacuously true)."""
-    from app.categories.full_stack.keywords import _all_scored_keywords
+    from app.domain.categories.full_stack.keywords import _all_scored_keywords
     scored = set(_all_scored_keywords())
     assert scored == set()  # No scored keywords at all
     assert NOISE_KEYWORDS.intersection(scored) == set()

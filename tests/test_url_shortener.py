@@ -1,4 +1,4 @@
-"""Unit tests for app.core.url_shortener.UrlShortenerService.
+"""Unit tests for app.infra.url_shortener.UrlShortenerService.
 
 The service depends only on the HttpTransport port contract (see
 app.ports.HttpTransport / app.adapters.http.aiohttp.AioHttpTransport):
@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-from app.core.url_shortener import (
+from app.infra.url_shortener import (
     UrlShorteningError,
     UrlShortenerService,
 )

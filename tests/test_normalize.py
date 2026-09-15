@@ -1,4 +1,4 @@
-from app.core.normalize import normalize
+from app.domain.normalize import normalize
 
 
 def test_normalize_inserts_space_between_latin_and_arabic_scripts():
@@ -18,8 +18,8 @@ def test_normalize_handles_mixed_script_in_longer_text():
 
 
 def test_mixed_script_boundary_allows_keyword_match():
-    from app.core.filters import keyword_filter
-    from app.categories.data_analysis.profile import PROFILE
+    from app.domain.filters import keyword_filter
+    from app.domain.categories.data_analysis.profile import PROFILE
 
     result = keyword_filter("PowerBIلوحة", profile=PROFILE)
 

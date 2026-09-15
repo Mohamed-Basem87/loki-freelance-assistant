@@ -10,12 +10,12 @@ from app.notification_guard.config import (
     GUARD_ESTIMATED_TOKENS_PER_CHAR,
     GUARD_MIN_TEXT_CHARS,
 )
-from app.core.runtime_config import RUNTIME
+from app.infra.runtime_config import RUNTIME
 GroqNotificationGuard = None  # legacy monkeypatch seam; resolved lazily
 from app.notification_guard import registry as provider_registry
 from app.notification_guard.logger import log_guard_decision
-from app.categories.registry import get_category, arbitration_only_categories
-from app.core.timeouts import call_with_timeout
+from app.domain.categories.registry import get_category, arbitration_only_categories
+from app.infra.timeouts import call_with_timeout
 
 
 
@@ -91,7 +91,7 @@ def _bound_guard_input(title: str, description: str, system_prompt: str = ""):
     text to the headroom left after the (large) combined system prompt,
     title, and framing overhead are paid from MAX_GUARD_TOTAL_TOKENS --
     the max that fits, rather than a fixed conservative value. Keeps the
-    head of the text, matching app.core.classification._bounded_input.
+    head of the text, matching app.domain.classification._bounded_input.
     """
     rate = GUARD_ESTIMATED_TOKENS_PER_CHAR
     title_len = len(title or "")

@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 
 
 # The notification guard is intentionally independently importable.
-# It may be initialized before app.core.config is imported, so it must
-# load the project's .env itself rather than relying on app.core.config's
+# It may be initialized before app.infra.config is imported, so it must
+# load the project's .env itself rather than relying on app.infra.config's
 # import-time load_dotenv() side effect.
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent

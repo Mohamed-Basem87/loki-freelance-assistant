@@ -6,7 +6,7 @@ app/core/config.py validates a full set of required production credentials
 FreeHub user id) eagerly at import time, and raises RuntimeError if
 any of them is missing. That's the right behavior for the *running
 bot* -- fail fast rather than start up half-configured -- but most of
-this project's own module graph transitively imports app.core.config just
+this project's own module graph transitively imports app.infra.config just
 by importing app.services.job_processor, app.services.notifier, app.services.user_bot, etc.,
 which meant a large chunk of the test suite (anything touching the
 pipeline/LLM/notification layers, not just the classifier itself)
@@ -18,7 +18,7 @@ make any required production variable optional at runtime -- the
 real app still refuses to start without real credentials. It only
 ensures that, for the *test process*, every required variable has
 *some* syntactically valid value before any test module gets a chance
-to import app.core.config:
+to import app.infra.config:
 
   - If a real .env is present (e.g. a developer's local checkout),
     its values are loaded first and take priority, so tests can still
@@ -27,7 +27,7 @@ to import app.core.config:
     tests/test_llm_manager.py for the opt-in "live" tests).
   - Anything still missing after that gets a clearly-fake placeholder
     (never a value that could be mistaken for a real secret), purely
-    so importing app.core.config succeeds. These placeholders are never
+    so importing app.infra.config succeeds. These placeholders are never
     used to make real API/Telegram calls anywhere in the default
     (offline) test suite -- provider calls are mocked (see
     tests/test_llm_gemini.py etc.), and nothing in this test suite
@@ -35,8 +35,8 @@ to import app.core.config:
     message.
 
 The classifier's own tests (tests/test_keyword_filter.py) do not
-depend on this at all -- app.core.filters/app.core.normalize have
-no app.core.config dependency, so they run fully isolated regardless of
+depend on this at all -- app.domain.filters/app.domain.normalize have
+no app.infra.config dependency, so they run fully isolated regardless of
 anything in this file. This fixture only unblocks the *other* test
 files that genuinely need the rest of the app's object graph to
 construct (e.g. app.services.notifier needs BOT_CHAT_ID to exist, even just to
@@ -88,35 +88,46 @@ def _bind_dependency_slots():
     code may never lazily construct adapter instances (that was the old
     "lazy fallback factory" design the composition root removed -- see
     app.wiring.dependencies). Production binds every slot through
-    app.wiring.composition.compose() before any worker starts. The test session
-    mirrors that contract by binding the same canonical module facades
-    up front: app.adapters.repositories.sqlite's SQLiteRepository over
-    the shared DBLogger singleton, app.adapters.state.json's
-    JsonStateStore over the shared StateManager singleton, the default
-    notification service,
-    routing, parser registry, and the standard no-op notification
-    resolver. Tests that monkeypatch a proxy attribute (e.g.
-    tests/test_telegram_recovery.py) still work because an instance
-    attribute shadows the bound value, exactly as before.
+    app.wiring.composition.compose() before any worker starts. The test
+    session mirrors that contract by binding the same canonical module
+    facades up front: app.adapters.repositories.postgres's
+    PostgresRepository (requires DATABASE_URL), app.adapters.state.json's
+    JsonStateStore over the shared StateManager singleton, a no-op guard
+    allow/publisher pair, parser registry, and the standard no-op
+    notification-category resolver. Tests that monkeypatch a proxy
+    attribute (e.g. tests/test_telegram_recovery.py) still work because
+    an instance attribute shadows the bound value, exactly as before.
+
+    NOTE: this binds a real PostgresRepository, so the test session
+    requires a reachable DATABASE_URL. Tests that only need repository
+    *behavior* faked out should monkeypatch app.wiring.dependencies.logger
+    directly rather than relying on this fixture's real backend.
     """
-    from app.adapters.repositories.sqlite import SQLiteRepository
-    from app.services.logger import logger as _db_logger
+    import os
+
+    from app.adapters.repositories.postgres import PostgresRepository
     from app.adapters.state.json import JsonStateStore
     from app.services.state import state as _state_manager
     from app.wiring.dependencies import configure
-    from app.services.notifier import get_notification_service
     from app.services.parser import get_parser_registry
-    from app.core.routing import queue_for_category
 
-    db = SQLiteRepository(_db_logger)
+    database_url = os.environ.get("DATABASE_URL")
+    db = PostgresRepository(database_url) if database_url else None
     store = JsonStateStore(_state_manager)
 
     async def _noop_resolver(job_uuid, row, category_id):
         return category_id
 
+    async def _noop_guard_allow(payload):
+        return True
+
+    class _NoopStreamPublisher:
+        async def publish(self, job_row):
+            return None
+
     class _NoopUrlShortener:
         """Pass-through stand-in for the real UrlShortenerService (see
-        app.core.url_shortener). Tests that specifically exercise shortening
+        app.infra.url_shortener). Tests that specifically exercise shortening
         behavior bind their own fake via app.wiring.dependencies.configure()
         or by monkeypatching app.wiring.dependencies.url_shortener directly
         (an instance attribute shadows this bound value, same pattern
@@ -129,10 +140,10 @@ def _bind_dependency_slots():
         persistence=db,
         state_store=store,
         dedup_store=store,
-        notification_service=get_notification_service(),
-        routing=queue_for_category,
         parser_registry=get_parser_registry(),
         notification_resolver=_noop_resolver,
+        guard_allow_fn=_noop_guard_allow,
+        stream_publisher_service=_NoopStreamPublisher(),
         url_shortener_service=_NoopUrlShortener(),
     )
     yield
@@ -157,7 +168,7 @@ def _reset_llm_rate_limit_cooldowns():
 
 @pytest.fixture(autouse=True)
 def _reset_worker_liveness():
-    """app.core.heartbeat.liveness is process-lifetime, in-memory, global state
+    """app.infra.heartbeat.liveness is process-lifetime, in-memory, global state
     by design (see its own module docstring) -- the running bot's
     healthcheck depends on exactly one shared registry, snapshotted into
     the heartbeat file. Across a test session that means any test which
@@ -169,7 +180,7 @@ def _reset_worker_liveness():
     relationship to DB/state timeouts at all. Clearing before *and* after
     each test keeps that state from ever leaking across test boundaries.
     """
-    from app.core.heartbeat import liveness as _liveness
+    from app.infra.heartbeat import liveness as _liveness
     with _liveness._lock:
         _liveness._states.clear()
     yield

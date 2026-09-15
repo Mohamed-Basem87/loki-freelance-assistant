@@ -6,154 +6,111 @@ check -- neither of which reflects whether the application's asyncio
 workers are actually alive and making progress. A hung event loop or a
 worker task that silently died left the container reporting healthy
 indefinitely.
+
+Persistence moved from SQLite to Postgres+Redis (see
+app.adapters.repositories.postgres, app.adapters.streams.redis_publisher);
+check_persistence_integrity now checks reachability of those two
+backends (`SELECT 1` / `PING`) instead of a SQLite file, via fakes for
+`psycopg.connect` / `redis.Redis.from_url` rather than a real on-disk
+database.
 """
-import sqlite3
 import tempfile
 import time
 from pathlib import Path
 
 import pytest
 
-from app.core import healthcheck
-from app.core.heartbeat import write_heartbeat
+from app.infra import healthcheck
+from app.infra.heartbeat import write_heartbeat
+
+_FAKE_DATABASE_URL = "postgresql://fake:fake@fake-host:5432/fake"
+_FAKE_REDIS_URL = "redis://fake-host:6379/0"
+
+
+class _FakePgCursor:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def execute(self, sql):
+        pass
+
+
+class _FakePgConn:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def cursor(self):
+        return _FakePgCursor()
+
+
+class _FakeRedisClient:
+    def __init__(self, ping_error=None):
+        self._ping_error = ping_error
+
+    def ping(self):
+        if self._ping_error is not None:
+            raise self._ping_error
+        return True
+
+    def close(self):
+        pass
+
+
+def _patch_healthy_backends(monkeypatch):
+    monkeypatch.setattr(healthcheck.psycopg, "connect", lambda *a, **k: _FakePgConn())
+    monkeypatch.setattr(healthcheck.redis.Redis, "from_url", lambda *a, **k: _FakeRedisClient())
 
 
 @pytest.fixture()
 def tmp_paths():
     tmp_dir = Path(tempfile.mkdtemp(prefix="healthcheck_test_"))
-    db_path = tmp_dir / "logs.db"
-    conn = sqlite3.connect(db_path)
-    conn.execute("CREATE TABLE t (id INTEGER)")
-    conn.commit()
-    conn.close()
     state_path = tmp_dir / "state.json"
     state_path.write_text("{}", encoding="utf-8")
     heartbeat_path = tmp_dir / "heartbeat.txt"
-    return db_path, state_path, heartbeat_path
+    return None, state_path, heartbeat_path
 
 
-def test_persistence_integrity_check_passes_for_a_valid_database(tmp_paths):
-    db_path, state_path, _ = tmp_paths
-    healthcheck.check_persistence_integrity(db_path, state_path)  # must not raise
-
-
-def test_persistence_integrity_check_fails_for_a_missing_database(tmp_paths):
+def test_persistence_integrity_check_passes_when_postgres_and_redis_are_reachable(tmp_paths, monkeypatch):
     _, state_path, _ = tmp_paths
-    with pytest.raises(RuntimeError, match="persistence integrity"):
-        healthcheck.check_persistence_integrity(Path("/nonexistent/db.sqlite"), state_path)
+    _patch_healthy_backends(monkeypatch)
+    healthcheck.check_persistence_integrity(_FAKE_DATABASE_URL, _FAKE_REDIS_URL, state_path)  # must not raise
 
 
-def test_persistence_integrity_check_fails_for_corrupt_state_json(tmp_paths):
-    db_path, state_path, _ = tmp_paths
+def test_persistence_integrity_check_fails_when_postgres_unreachable(tmp_paths, monkeypatch):
+    _, state_path, _ = tmp_paths
+
+    def _raise(*a, **k):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(healthcheck.psycopg, "connect", _raise)
+    with pytest.raises(RuntimeError, match="postgres unreachable"):
+        healthcheck.check_persistence_integrity(_FAKE_DATABASE_URL, _FAKE_REDIS_URL, state_path)
+
+
+def test_persistence_integrity_check_fails_when_redis_unreachable(tmp_paths, monkeypatch):
+    _, state_path, _ = tmp_paths
+    monkeypatch.setattr(healthcheck.psycopg, "connect", lambda *a, **k: _FakePgConn())
+    monkeypatch.setattr(
+        healthcheck.redis.Redis,
+        "from_url",
+        lambda *a, **k: _FakeRedisClient(ping_error=ConnectionError("redis down")),
+    )
+    with pytest.raises(RuntimeError, match="redis unreachable"):
+        healthcheck.check_persistence_integrity(_FAKE_DATABASE_URL, _FAKE_REDIS_URL, state_path)
+
+
+def test_persistence_integrity_check_fails_for_corrupt_state_json(tmp_paths, monkeypatch):
+    _, state_path, _ = tmp_paths
     state_path.write_text("{not valid json", encoding="utf-8")
+    _patch_healthy_backends(monkeypatch)
     with pytest.raises(RuntimeError, match="persistence integrity"):
-        healthcheck.check_persistence_integrity(db_path, state_path)
-
-
-# ------------------------------------------------------------------
-# SQLite busy/lock vs corruption (P2-D): the healthcheck runs as a
-# separate process; under the rollback journal a concurrent writer
-# holds the DB lock, so PRAGMA quick_check can transiently hit
-# "database is locked". That is healthy write contention, not damage --
-# it must not be reported as a persistence failure. Real corruption
-# (non-lock sqlite3 errors, or a quick_check row != 'ok') must keep
-# failing health.
-# ------------------------------------------------------------------
-
-
-def test_persistence_sustained_write_lock_is_not_reported_as_corruption(tmp_paths, monkeypatch, capsys):
-    db_path, state_path, _ = tmp_paths
-
-    class _AlwaysLockedConn:
-        def execute(self, sql):
-            raise sqlite3.OperationalError("database is locked")
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr(
-        healthcheck.sqlite3,
-        "connect",
-        lambda *args, **kwargs: _AlwaysLockedConn(),
-    )
-    # A held write lock for the whole bounded retry window defers the
-    # check rather than failing it.
-    healthcheck.check_persistence_integrity(db_path, state_path)  # must not raise
-    assert "quick_check deferred" in capsys.readouterr().err
-
-
-def test_persistence_lock_that_clears_is_retried_to_success(tmp_paths, monkeypatch):
-    db_path, state_path, _ = tmp_paths
-    calls = {"n": 0}
-
-    class _LockThenOkCursor:
-        def fetchone(self):
-            return ("ok",)
-
-    class _LockThenOkConn:
-        def execute(self, sql):
-            calls["n"] += 1
-            if calls["n"] <= 2:
-                raise sqlite3.OperationalError("database table is locked")
-            return _LockThenOkCursor()
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr(
-        healthcheck.sqlite3,
-        "connect",
-        lambda *args, **kwargs: _LockThenOkConn(),
-    )
-    healthcheck.check_persistence_integrity(db_path, state_path)  # must not raise
-    assert calls["n"] == 3, "two locked failures, then the successful attempt"
-
-
-def test_persistence_non_lock_sqlite_error_is_still_a_failure(tmp_paths, monkeypatch):
-    """A file that is not a database at all is NOT a contention state; the
-    underlying error must keep propagating past the lock-retry logic."""
-    db_path, state_path, _ = tmp_paths
-
-    class _NotADbConn:
-        def execute(self, sql):
-            raise sqlite3.OperationalError("file is not a database")
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr(
-        healthcheck.sqlite3,
-        "connect",
-        lambda *args, **kwargs: _NotADbConn(),
-    )
-    with pytest.raises(sqlite3.OperationalError, match="file is not a database"):
-        healthcheck.check_persistence_integrity(db_path, state_path)
-
-
-def test_persistence_quick_check_non_ok_row_is_still_a_failure(tmp_paths, monkeypatch):
-    """Corruption detection is not weakened: a quick_check result other
-    than 'ok' must still fail health (the lock handling only retries
-    sqlite3 lock errors)."""
-    db_path, state_path, _ = tmp_paths
-
-    class _MalformedCursor:
-        def fetchone(self):
-            return ("database disk image is malformed",)
-
-    class _MalformedConn:
-        def execute(self, sql):
-            return _MalformedCursor()
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr(
-        healthcheck.sqlite3,
-        "connect",
-        lambda *args, **kwargs: _MalformedConn(),
-    )
-    with pytest.raises(RuntimeError, match="quick_check failed"):
-        healthcheck.check_persistence_integrity(db_path, state_path)
+        healthcheck.check_persistence_integrity(_FAKE_DATABASE_URL, _FAKE_REDIS_URL, state_path)
 
 
 def test_worker_runtime_health_fails_when_heartbeat_missing(tmp_paths):
@@ -181,12 +138,13 @@ def test_worker_runtime_health_fails_for_a_stale_heartbeat(tmp_paths):
     assert state == healthcheck.UNHEALTHY
 
 
-def test_database_can_be_intact_while_workers_are_dead(tmp_paths):
+def test_database_can_be_intact_while_workers_are_dead(tmp_paths, monkeypatch):
     """The concrete audit scenario: persistence integrity alone must
     not be reported as overall health -- a hung/dead worker with a
     perfectly intact database must fail the check."""
-    db_path, state_path, heartbeat_path = tmp_paths
-    healthcheck.check_persistence_integrity(db_path, state_path)  # DB itself is fine
+    _, state_path, heartbeat_path = tmp_paths
+    _patch_healthy_backends(monkeypatch)
+    healthcheck.check_persistence_integrity(_FAKE_DATABASE_URL, _FAKE_REDIS_URL, state_path)  # backends are fine
     state, _ = healthcheck.check_worker_runtime_health(heartbeat_path, max_age_seconds=90)
     assert state == healthcheck.UNHEALTHY
 

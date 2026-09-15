@@ -17,19 +17,19 @@ must never grow a second Telegram implementation.
 
 from app.adapters.sources import telegram as _canonical
 
-from app.core.config import (
+from app.infra.config import (
     SESSION_NAME,
     TARGET_CHANNELS,
     get_api_id,
     get_api_hash,
     get_phone_number,
 )
-from app.core.runtime_config import RECOVERY
+from app.infra.runtime_config import RECOVERY
 
 
 async def start():
     """Legacy compatibility entry point: builds a TelegramClient from the
-    configured credentials (app.core.config), then runs the canonical live loop
+    configured credentials (app.infra.config), then runs the canonical live loop
     (_canonical._run_telegram_loop) over the configured channels with the
     configured recovery options. Production uses TelegramChannelWorker over
     a composition-injected TelegramChannelJobSource instead."""
