@@ -36,7 +36,7 @@ from app.llm.manager import (
     build_compact_arbitration_system_prompt,
 )
 from app.llm.utils import build_arbitration_prompt
-from app.categories.registry import get_category, arbitration_only_categories
+from app.domain.categories.registry import get_category, arbitration_only_categories
 
 ALL_GUARD_CATEGORY_IDS = [
     "frontend", "backend", "mobile_app", "data_analysis",
@@ -168,8 +168,8 @@ def test_every_guard_prompt_has_gambling_and_adult_blocks(cid):
 
 
 def test_combined_guard_prompt_carries_pg_rules():
-    from app.categories.backend.guard_prompt import SYSTEM_PROMPT as BACKEND
-    from app.categories.full_stack.guard_prompt import SYSTEM_PROMPT as FULL_STACK
+    from app.domain.categories.backend.guard_prompt import SYSTEM_PROMPT as BACKEND
+    from app.domain.categories.full_stack.guard_prompt import SYSTEM_PROMPT as FULL_STACK
     from app.notification_guard.guard import _build_combined_system_prompt
 
     combined = _build_combined_system_prompt(BACKEND, FULL_STACK, "backend")
@@ -206,7 +206,7 @@ def test_hard_reject_keywords_reject_dating_apps(cid):
 # ---------------------------------------------------------------------------
 
 def test_backend_prompt_recognizes_erp_backend_development():
-    from app.categories.backend.llm_prompt import SYSTEM_PROMPT
+    from app.domain.categories.backend.llm_prompt import SYSTEM_PROMPT
     assert "ERP/business-system backend development" in SYSTEM_PROMPT
     assert "Odoo" in SYSTEM_PROMPT
     assert "IS backend work" in SYSTEM_PROMPT
@@ -214,7 +214,7 @@ def test_backend_prompt_recognizes_erp_backend_development():
 
 
 def test_frontend_prompt_recognizes_portfolio_and_rental_sites():
-    from app.categories.frontend.llm_prompt import SYSTEM_PROMPT
+    from app.domain.categories.frontend.llm_prompt import SYSTEM_PROMPT
     assert "rental-catalog" in SYSTEM_PROMPT
     assert "portfolio" in SYSTEM_PROMPT
     assert "rental-catalog" in (get_category("frontend").arbitration_context or "")
@@ -224,7 +224,7 @@ def test_frontend_prompt_recognizes_portfolio_and_rental_sites():
     assert "WordPress" in SYSTEM_PROMPT
     assert "WordPress" in (get_category("frontend").arbitration_context or "")
     # The guard path must mirror the same recognition.
-    from app.categories.frontend.guard_prompt import SYSTEM_PROMPT as GUARD
+    from app.domain.categories.frontend.guard_prompt import SYSTEM_PROMPT as GUARD
     assert "rental-catalog" in GUARD
 
 
@@ -234,7 +234,7 @@ def test_frontend_guard_recognizes_booking_platform_builds():
     # with hooks/APIs and custom business-layer pages was wrongly
     # suppressed. Building the platform around an existing plugin's
     # engine is development, not plugin configuration.
-    from app.categories.frontend.guard_prompt import SYSTEM_PROMPT as GUARD
+    from app.domain.categories.frontend.guard_prompt import SYSTEM_PROMPT as GUARD
     assert "EXTENDING an existing plugin" in GUARD
     assert "booking engine" in GUARD
     assert "Easy Appointments" in GUARD
@@ -247,7 +247,7 @@ def test_frontend_arbitration_mirrors_booking_platform_builds():
     # the arbitration layer, both in the Groq compact fallback and in
     # the Gemini full-depth system prompt, so a booking-platform build
     # that reaches arbitration is not dropped to "none"/rejected.
-    from app.categories.frontend.llm_prompt import SYSTEM_PROMPT as GEMINI
+    from app.domain.categories.frontend.llm_prompt import SYSTEM_PROMPT as GEMINI
 
     ctx = get_category("frontend").arbitration_context or ""
     assert "Easy Appointments" in ctx
@@ -265,7 +265,7 @@ def test_backend_arbitration_mirrors_automation_script_and_tool_builds():
     # importers/migrators and data-processing tooling are backend
     # integration/data work and must be accepted by both the compact
     # Groq fallback and the Gemini full-depth system prompt.
-    from app.categories.backend.llm_prompt import SYSTEM_PROMPT as GEMINI
+    from app.domain.categories.backend.llm_prompt import SYSTEM_PROMPT as GEMINI
 
     g = re.sub(r"\s+", " ", GEMINI)
     assert "Excel-to-web-form import script" in g
@@ -280,7 +280,7 @@ def test_mobile_app_arbitration_mirrors_design_phase_of_app_build():
     # non-mobile design. Design phases of an existing/new mobile app are
     # mobile development, accepted by both the compact Groq fallback and
     # the Gemini full-depth system prompt.
-    from app.categories.mobile_app.llm_prompt import SYSTEM_PROMPT as GEMINI
+    from app.domain.categories.mobile_app.llm_prompt import SYSTEM_PROMPT as GEMINI
 
     ctx = get_category("mobile_app").arbitration_context or ""
     assert "first-time-user onboarding" in ctx

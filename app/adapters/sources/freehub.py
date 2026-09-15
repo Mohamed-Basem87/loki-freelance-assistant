@@ -1,7 +1,7 @@
 """FreeHub JobSource adapter.
 
 Every collaborator (HTTP client, poller, marker) is injected by the
-composition root. This module never reads app.core.config / app.core.runtime_config
+composition root. This module never reads app.infra.config / app.infra.runtime_config
 and never constructs infrastructure itself -- there is no hidden
 service-locator or adapter-owned dependency construction here.
 """
@@ -13,7 +13,7 @@ class FreeHubApiClient:
     """FreeHub API adapter. HTTP mechanics are delegated to an injected
     HttpTransport (app.ports). Configuration values (base_url, user_id,
     timeout, page_size) are injected by the composition root, never
-    resolved from app.core.config here."""
+    resolved from app.infra.config here."""
 
     def __init__(self, base_url, user_id, *, timeout=None, page_size=None, transport=None):
         self.base_url = base_url.rstrip("/")

@@ -1,5 +1,5 @@
 """
-app.services.parser tests. No app.core.config dependency, so this runs fully offline
+app.services.parser tests. No app.infra.config dependency, so this runs fully offline
 regardless of credentials -- same as test_keyword_filter.py.
 
 The previous version of this file only pprint()'d one Nafezly example

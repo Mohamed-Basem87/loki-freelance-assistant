@@ -1,6 +1,6 @@
 """Regression tests for F-3 (audit finding: hung-worker detection gap).
 
-app.core.heartbeat.heartbeat_loop only proves the event loop itself is still
+app.infra.heartbeat.heartbeat_loop only proves the event loop itself is still
 turning. A genuinely async await that never resolves (a stalled
 Telethon RPC call) or a stuck background thread behind
 asyncio.to_thread (an LLM provider SDK call with no request timeout)
@@ -8,7 +8,7 @@ does not block the event loop -- heartbeat_loop keeps ticking on
 schedule and the container's healthcheck reports healthy even though
 that one worker task is permanently stuck.
 
-app.core.timeouts.call_with_timeout / iter_with_timeout close that gap by
+app.infra.timeouts.call_with_timeout / iter_with_timeout close that gap by
 giving such calls a real ceiling. These tests exercise the helpers
 directly (an actually-hanging awaitable/async-iterator), independent
 of any particular call site.
@@ -17,7 +17,7 @@ import asyncio
 
 import pytest
 
-from app.core.timeouts import call_with_timeout, iter_with_timeout
+from app.infra.timeouts import call_with_timeout, iter_with_timeout
 
 
 def test_call_with_timeout_raises_on_a_call_that_never_resolves():

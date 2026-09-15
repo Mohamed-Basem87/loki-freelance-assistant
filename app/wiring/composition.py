@@ -9,23 +9,20 @@ import os
 import sys
 from functools import partial
 
-from app.adapters.repositories.sqlite import SQLiteRepository
-from app.services.logger import logger as _db_logger
+from app.adapters.repositories.postgres import PostgresRepository
 from app.adapters.state.json import JsonStateStore
 from app.adapters.state.dedup import StateDedupStore
 from app.services.state import state as _state_manager
-from app.adapters.notifications.telegram import TelegramNotificationSink
-from app.adapters.notifications.renderer import TelegramMessageRenderer
+from app.adapters.streams.redis_publisher import RedisJobStreamPublisher
+import redis.asyncio as _redis
 from app.adapters.http.aiohttp import AioHttpTransport
 from app.wiring.dependencies import configure
-from app.services.notifier import NotificationService
 from app.services.parser import get_parser_registry
-from app.core.routing import queue_for_category
 from app.notification_guard.guard import NotificationGuard
-from app.notification_guard.integration import NotificationGuardIntegration, GuardedNotificationService
-from app.core.url_shortener import UrlShortenerService
-from app.core.runtime_config import RUNTIME, RECOVERY, BASE_DIR
-from app.categories.registry import enabled_categories
+from app.notification_guard.integration import NotificationGuardIntegration
+from app.infra.url_shortener import UrlShortenerService
+from app.infra.runtime_config import RUNTIME, RECOVERY, BASE_DIR
+from app.domain.categories.registry import enabled_categories
 import importlib as _importlib
 from app.adapters.sources.registry import register as register_source_factory
 from app.adapters.sources.freehub import FreeHubApiClient, FreeHubJobSource
@@ -35,9 +32,9 @@ from app.adapters.sources.scraper_file import (
     WuzzufFileJobSource,
     ScraperFileClient,
 )
-from app.core.runtime_config import JOB_SOURCES
+from app.infra.runtime_config import JOB_SOURCES
 import app.services.freehub as freehub_logic
-from app.core.config import (
+from app.infra.config import (
     FREEHUB_BASE_URL,
     TARGET_CHANNELS,
     get_api_id,
@@ -46,12 +43,6 @@ from app.core.config import (
     get_freehub_user_id,
     SESSION_NAME,
 )
-from app.adapters.transports.telegram_bot import TelegramBotTransport
-from app.core.config import get_bot_chat_id, get_bot_token
-from telegram import Bot
-from app.adapters.user.telegram import TelegramCommandSurface, TelegramUserMessaging
-from app.services.user_bot import create_user_bot_application, register_configured_channel
-from app.adapters.user.renderer import TelegramUserMessageRenderer
 
 
 class Runtime:
@@ -59,30 +50,22 @@ class Runtime:
     authoritative place the full dependency graph is held, making
     resource ownership explicit and lifecycle/shutdown deterministic."""
 
-    def __init__(self, repository, state, dedup, notifications,
-                 parser_registry, user_bot, guard=None,
-                 http_transport=None, notification_transport=None,
+    def __init__(self, repository, state, dedup, stream_publisher,
+                 parser_registry, guard=None,
+                 http_transport=None,
                  shutdown_hooks=(), telegram_source=None):
         self.repository = repository
         self.state = state
         self.dedup = dedup
-        self.notifications = notifications
+        self.stream_publisher = stream_publisher
         self.parser_registry = parser_registry
-        self.user_bot = user_bot
         self.guard = guard
         self.http_transport = http_transport
-        self.notification_transport = notification_transport
         self.shutdown_hooks = tuple(shutdown_hooks)
         self.telegram_source = telegram_source
 
     async def initialize_database(self):
         await self.repository.initialize()
-
-    async def register_channel(self):
-        await self.user_bot.register_channel()
-
-    async def reset_inflight_notifications(self):
-        await self.repository.reset_sending_user_notifications()
 
     async def shutdown(self):
         """Deterministic resource cleanup. Run exactly once after all
@@ -96,24 +79,15 @@ class Runtime:
                 # failure so a resource leak is visible in the logs instead
                 # of being swallowed.
                 print(f"[SHUTDOWN] error closing http transport (continuing): {exc}", file=sys.stderr)
-        if self.notification_transport is not None:
-            # The Telegram bot transport owns (and must shut down) the
-            # telegram.Bot it lazily created; an injected bot stays with
-            # its injector, so this is a no-op unless the transport built
-            # its own bot. Same fail-open principle as the http transport.
-            close = getattr(self.notification_transport, "close", None)
+        if self.stream_publisher is not None:
+            close = getattr(self.stream_publisher, "close", None)
             if close is not None:
                 try:
                     result = close()
                     if asyncio.iscoroutine(result):
                         await result
                 except Exception as exc:
-                    print(f"[SHUTDOWN] error closing notification transport (continuing): {exc}", file=sys.stderr)
-        if self.user_bot is not None:
-            try:
-                await self.user_bot.stop()
-            except Exception as exc:
-                print(f"[SHUTDOWN] error stopping user bot (continuing): {exc}", file=sys.stderr)
+                    print(f"[SHUTDOWN] error closing stream publisher (continuing): {exc}", file=sys.stderr)
         for hook in self.shutdown_hooks:
             try:
                 result = hook()
@@ -124,7 +98,10 @@ class Runtime:
 
 
 def compose():
-    repository = SQLiteRepository(_db_logger)
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("Missing required environment variable: DATABASE_URL")
+    repository = PostgresRepository(database_url)
     state = JsonStateStore(_state_manager)
     # NOTE: dedup deliberately resolves its own raw backend rather than
     # receiving `state` here. `state` is the StateStore *port* facade
@@ -146,7 +123,7 @@ def compose():
     http_transport = AioHttpTransport()
 
     # URL shortener: reuses the same shared HTTP transport/connection pool
-    # (see app.core.url_shortener) rather than opening a second one.
+    # (see app.infra.url_shortener) rather than opening a second one.
     # Required-at-composition-time, not required-at-import-time -- see the
     # comment above RUNTIME.url_shortener_failure_mode's validation in
     # app/core/runtime_config.py for why domain/endpoint aren't validated there.
@@ -255,100 +232,46 @@ def compose():
             liveness_beat_interval_seconds=RUNTIME.heartbeat_interval_seconds,
         )
 
-    # Build notification infrastructure. The notification adapters are
-    # configuration-free: bot token / chat id are injected as deferred
-    # resolvers (still resolved lazily at first send, preserving the
-    # historical behavior) so the composition root is the only place
-    # that reads application config for them.
-
-    
-    # Create a SINGLE shared Bot instance for all outbound notifications.
-    # This avoids creating multiple Bot instances for the same token and
-    # ensures deterministic shutdown. The user-facing command surface
-    # (user_bot) runs its own Application with its own Bot for inbound
-    # polling; that is a separate lifecycle managed by user_bot.stop().
-    shared_notification_bot = Bot(get_bot_token())
-    
+    # Guard stays in this node: it durably decides notify/do_not_notify
+    # per job. Everything downstream of that decision (fan-out,
+    # rendering, delivery) moved to a separate service that consumes
+    # the Redis stream published below.
     guard = NotificationGuard(repository=repository)
     guard_integration = NotificationGuardIntegration(guard, repository=repository)
-    # Inject the shared bot so the transport doesn't create its own.
-    notification_transport = TelegramBotTransport(bot=shared_notification_bot)
-    notifications = NotificationService(
-        sinks=(
-            TelegramNotificationSink(
-                renderer=TelegramMessageRenderer(),
-                transport=notification_transport,
-                chat_id=lambda: get_bot_chat_id(),
-            ),
-        ),
-        repository=repository,
-    )
-    guarded_notifications = GuardedNotificationService(notifications, guard_integration)
-    # Thread the composed repository into routing through the guard
-    # wrapper's construction boundary; app.core.routing itself no longer
-    # reaches into the service locator in production.
-    guarded_routing = guard_integration.wrap_routing(
-        partial(queue_for_category, repository=repository)
-    )
 
-    # Build user-facing Telegram surface.
-
-    user_bot = TelegramCommandSurface(
-        create_user_bot_application(),
-        channel_registrar=register_configured_channel,
+    redis_url = os.getenv("REDIS_URL")
+    if not redis_url:
+        raise RuntimeError("Missing required environment variable: REDIS_URL")
+    redis_client = _redis.from_url(redis_url)
+    stream_publisher = RedisJobStreamPublisher(
+        redis_client,
+        stream=os.getenv("JOB_STREAM_NAME", "jobs:notify"),
     )
-    # Use the SAME shared bot for user messaging (outbound DMs to users).
-    # The user_bot's Application has its own Bot for inbound polling;
-    # this shared bot is only for outbound notifications.
-    user_messaging = TelegramUserMessaging(shared_notification_bot)
-
-    user_renderer = TelegramUserMessageRenderer()
 
     # Bind all dependencies into the proxy layer for legacy callers.
     configure(
         persistence=repository,
         state_store=state,
         dedup_store=dedup,
-        notification_service=guarded_notifications,
-        routing=guarded_routing,
         parser_registry=parser_registry,
         notification_resolver=guard_integration.resolve_category,
-        user_messaging_service=user_messaging,
-        user_renderer_service=user_renderer,
+        guard_allow_fn=guard_integration.allow,
+        stream_publisher_service=stream_publisher,
         url_shortener_service=url_shortener_service,
     )
-
-    def _shutdown_db():
-        from app.services.logger import logger as _db_logger
-        _db_logger.shutdown()
 
     def _shutdown_state():
         from app.services.state import state as _state_manager
         _state_manager.shutdown()
 
-    async def _shutdown_shared_notification_bot():
-        """Shut down the shared notification bot exactly once. Async to avoid
-        run_until_complete() inside an already-running event loop."""
-        try:
-            # PTB 22.8+: Bot.shutdown() stops the request resources.
-            # Bot.close() is an API operation, not lifecycle cleanup.
-            shutdown = getattr(shared_notification_bot, "shutdown", None)
-            if shutdown is not None:
-                result = shutdown()
-                if asyncio.iscoroutine(result):
-                    await result
-        except Exception as exc:
-            print(
-                f"[SHUTDOWN] error shutting down shared notification bot (continuing): {exc}",
-                flush=True,
-            )
+    def _shutdown_db_engine():
+        repository._engine.dispose()
 
     return Runtime(
-        repository, state, dedup, guarded_notifications,
-        parser_registry, user_bot, guard,
+        repository, state, dedup, stream_publisher,
+        parser_registry, guard,
         http_transport=http_transport,
-        notification_transport=notification_transport,
-        shutdown_hooks=(_shutdown_db, _shutdown_state, _shutdown_shared_notification_bot),
+        shutdown_hooks=(_shutdown_db_engine, _shutdown_state),
         telegram_source=telegram_source,
     )
 

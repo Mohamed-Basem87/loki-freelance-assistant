@@ -1,5 +1,5 @@
 """
-app.services.state.StateManager tests. No app.core.config dependency (state.py only
+app.services.state.StateManager tests. No app.infra.config dependency (state.py only
 imports asyncio/json/os/pathlib/concurrent.futures), so this runs
 fully offline regardless of credentials, same as test_keyword_filter.py.
 

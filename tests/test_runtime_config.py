@@ -1,8 +1,8 @@
 """
-Regression tests for app.core.runtime_config's startup validation/warnings.
+Regression tests for app.infra.runtime_config's startup validation/warnings.
 """
 
-from app.core.runtime_config import _warn_if_freehub_endpoint_is_plaintext
+from app.infra.runtime_config import _warn_if_freehub_endpoint_is_plaintext
 
 
 def test_warns_on_plaintext_freehub_endpoint(capsys):
@@ -38,7 +38,7 @@ def test_llm_providers_follow_llm_providers_selector_order():
     result = _import_runtime_config_with_env(
         {"LLM_PROVIDERS": "groq,gemini"},
         script=(
-            "import app.core.runtime_config as rc\n"
+            "import app.infra.runtime_config as rc\n"
             "print('IDS=' + ','.join(p.provider_id for p in rc.LLM_PROVIDERS))\n"
         ),
     )
@@ -51,7 +51,7 @@ def test_llm_providers_default_to_project_json_order():
     result = _import_runtime_config_with_env(
         {},
         script=(
-            "import app.core.runtime_config as rc\n"
+            "import app.infra.runtime_config as rc\n"
             "print('IDS=' + ','.join(p.provider_id for p in rc.LLM_PROVIDERS))\n"
         ),
     )
@@ -66,7 +66,7 @@ def test_llm_providers_selector_deduplicates_while_preserving_order():
     result = _import_runtime_config_with_env(
         {"LLM_PROVIDERS": "gemini,groq,gemini"},
         script=(
-            "import app.core.runtime_config as rc\n"
+            "import app.infra.runtime_config as rc\n"
             "print('IDS=' + ','.join(p.provider_id for p in rc.LLM_PROVIDERS))\n"
         ),
     )
@@ -99,7 +99,7 @@ def test_relative_configured_paths_are_resolved_against_base_dir(monkeypatch):
     env["PYTHONPATH"] = str(repo_root)
 
     script = (
-        "from app.core.runtime_config import RUNTIME, BASE_DIR\n"
+        "from app.infra.runtime_config import RUNTIME, BASE_DIR\n"
         "print('DB=' + RUNTIME.database_file_path)\n"
         "print('STATE=' + RUNTIME.state_file_path)\n"
         "print('BASE=' + str(BASE_DIR))\n"
@@ -141,7 +141,7 @@ def _import_runtime_config_with_env(env_overrides, script=""):
     env["PYTHONPATH"] = str(repo_root)
 
     code = (
-        "import app.core.runtime_config\n"
+        "import app.infra.runtime_config\n"
         + script
     )
     return subprocess.run(
@@ -193,7 +193,7 @@ def test_valid_heartbeat_timings_import_cleanly():
             "HEARTBEAT_INTERVAL_SECONDS": "5",
             "HEARTBEAT_MAX_AGE_SECONDS": "30",
         },
-        script="print('OK=' + str(app.core.runtime_config.RUNTIME.heartbeat_interval_seconds))\n",
+        script="print('OK=' + str(app.infra.runtime_config.RUNTIME.heartbeat_interval_seconds))\n",
     )
     assert result.returncode == 0, result.stderr
     assert "OK=5.0" in result.stdout
@@ -226,7 +226,7 @@ def test_external_call_timeout_equal_to_http_timeout_imports_cleanly():
             "HTTP_TIMEOUT_SECONDS": "30",
             "EXTERNAL_CALL_TIMEOUT_SECONDS": "30",
         },
-        script="print('OK=' + str(app.core.runtime_config.RUNTIME.external_call_timeout_seconds))\n",
+        script="print('OK=' + str(app.infra.runtime_config.RUNTIME.external_call_timeout_seconds))\n",
     )
     assert result.returncode == 0, result.stderr
     assert "OK=30" in result.stdout
@@ -239,7 +239,7 @@ def test_external_call_timeout_above_http_timeout_imports_cleanly():
             "HTTP_TIMEOUT_SECONDS": "30",
             "EXTERNAL_CALL_TIMEOUT_SECONDS": "100",
         },
-        script="print('OK=' + str(app.core.runtime_config.RUNTIME.external_call_timeout_seconds))\n",
+        script="print('OK=' + str(app.infra.runtime_config.RUNTIME.external_call_timeout_seconds))\n",
     )
     assert result.returncode == 0, result.stderr
     assert "OK=100" in result.stdout
@@ -260,7 +260,7 @@ def test_default_heartbeat_timings_satisfy_the_key_invariants():
     env["PYTHONPATH"] = str(repo_root)
 
     code = (
-        "from app.core.runtime_config import RUNTIME\n"
+        "from app.infra.runtime_config import RUNTIME\n"
         "interval = RUNTIME.heartbeat_interval_seconds\n"
         "max_age = RUNTIME.heartbeat_max_age_seconds\n"
         "print('I=', interval, 'M=', max_age)\n"

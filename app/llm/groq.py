@@ -1,8 +1,8 @@
 from groq import Groq
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
 
-from app.core.config import get_groq_api_key
-from app.core.runtime_config import LLM_PROVIDERS, RUNTIME
+from app.infra.config import get_groq_api_key
+from app.infra.runtime_config import LLM_PROVIDERS, RUNTIME
 from app.llm import rate_limit_tracker
 from app.llm.provider import LLMProvider
 from app.llm.rotation import run_with_rotation

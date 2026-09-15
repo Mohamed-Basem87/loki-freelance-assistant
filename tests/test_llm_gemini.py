@@ -1,7 +1,7 @@
 """
 app.llm.gemini tests.
 
-Like test_llm_manager.py, importing this module needs app.core.config to
+Like test_llm_manager.py, importing this module needs app.infra.config to
 be importable -- see tests/conftest.py. No real Gemini call is made
 in the default (offline) test suite: app.llm.gemini.CLIENTS is
 monkeypatched with a fake client that records how it was called and
@@ -22,8 +22,8 @@ import os
 
 import pytest
 
-from app.core.filters import keyword_filter
-from app.categories.data_analysis.profile import PROFILE
+from app.domain.filters import keyword_filter
+from app.domain.categories.data_analysis.profile import PROFILE
 from app.llm import gemini
 from app.llm.utils import GENERIC_SYSTEM_PROMPT
 

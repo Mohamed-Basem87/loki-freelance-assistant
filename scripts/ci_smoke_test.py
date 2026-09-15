@@ -122,22 +122,25 @@ def _verify_guarded_entrypoints_in_fresh_processes() -> None:
           "and fails loudly without its required config).")
 
 
-def _run_smoke_checks() -> None:
-    """Run every non-network startup check. DATABASE_FILE_PATH and
-    STATE_FILE_PATH are already pointed at the throwaway temp dir by the
-    caller. Raises RuntimeError on any failure so main() can fail CI."""
+def _run_smoke_checks():
+    """Run every non-network startup check against a real DATABASE_URL/
+    REDIS_URL (the schema itself must already be migrated -- see
+    scripts/migrate_postgres.py; this only seeds categories and checks
+    connectivity, same as Runtime.initialize_database() at real startup).
+    STATE_FILE_PATH is already pointed at the throwaway temp dir by the
+    caller. Raises RuntimeError on any failure so main() can fail CI.
+    Returns the composed Runtime so main() can shut it down cleanly."""
     from app.wiring.composition import compose
 
     runtime = compose()
     print("[SMOKE] compose() succeeded: repository, state, dedup, "
-          "notification service, guard, and user-messaging surface "
+          "stream publisher, guard, and user-command surface "
           "all constructed without error.")
 
     asyncio.run(runtime.initialize_database())
-    print("[SMOKE] Database initialized/migrated successfully at "
-          f"{os.environ['DATABASE_FILE_PATH']}.")
+    print("[SMOKE] Database connectivity check + category seed succeeded.")
 
-    from app.categories.registry import enabled_categories
+    from app.domain.categories.registry import enabled_categories
     categories = enabled_categories()
     if not categories:
         raise RuntimeError("No categories are enabled; nothing could ever be classified.")
@@ -166,28 +169,26 @@ def _run_smoke_checks() -> None:
           "has a non-empty SYSTEM_PROMPT; no network calls made).")
 
     _verify_guarded_entrypoints_in_fresh_processes()
+    return runtime
 
 
 def main() -> int:
+    # Persistence is Postgres/Redis now, not an embedded SQLite file --
+    # this script needs a reachable DATABASE_URL and REDIS_URL (e.g. CI
+    # service containers), unlike the old throwaway-temp-file approach.
     with tempfile.TemporaryDirectory() as tmp:
-        # Never touch the real configured DB/state files during a CI
-        # smoke run -- point everything at a throwaway temp directory.
-        os.environ["DATABASE_FILE_PATH"] = os.path.join(tmp, "smoke.db")
+        # STATE_FILE_PATH (JSON dedup state) still never touches the
+        # real configured file during a smoke run.
         os.environ["STATE_FILE_PATH"] = os.path.join(tmp, "state.json")
 
+        runtime = None
         try:
-            _run_smoke_checks()
+            runtime = _run_smoke_checks()
             print("[SMOKE] All checks passed.")
             return 0
         finally:
-            # Close the SQLite connection BEFORE the TemporaryDirectory
-            # context manager's __exit__ runs its cleanup -- on success
-            # AND on failure. On Windows, a still-open file handle
-            # prevents the temp dir deletion (PermissionError: WinError
-            # 32), which would otherwise mask the original failure with
-            # a confusing cleanup error.
-            from app.services.logger import logger as _db
-            _db.close()
+            if runtime is not None:
+                asyncio.run(runtime.shutdown())
 
 
 if __name__ == "__main__":

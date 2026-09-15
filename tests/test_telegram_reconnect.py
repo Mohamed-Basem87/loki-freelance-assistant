@@ -67,7 +67,7 @@ def test_transient_disconnect_reconnects_instead_of_dying(monkeypatch):
         await asyncio.Event().wait()
 
     monkeypatch.setattr(telegram, "_run_telegram_loop", fake_loop)
-    monkeypatch.setattr(telegram, "liveness", __import__("app.core.heartbeat", fromlist=["WorkerLiveness"]).WorkerLiveness())
+    monkeypatch.setattr(telegram, "liveness", __import__("app.infra.heartbeat", fromlist=["WorkerLiveness"]).WorkerLiveness())
     # Shrink only this test's backoff so the second connection attempt
     # (which this test is trying to observe) happens within the wait.
     monkeypatch.setattr(telegram, "_RECONNECT_BASE_SECONDS", 0.01)
@@ -106,7 +106,7 @@ def test_fatal_telethon_error_propagates_to_shut_down(monkeypatch):
         raise ConnectionError("AUTH_KEY_UNREGISTERED: session is invalid")
 
     monkeypatch.setattr(telegram, "_run_telegram_loop", fatal_loop)
-    monkeypatch.setattr(telegram, "liveness", __import__("app.core.heartbeat", fromlist=["WorkerLiveness"]).WorkerLiveness())
+    monkeypatch.setattr(telegram, "liveness", __import__("app.infra.heartbeat", fromlist=["WorkerLiveness"]).WorkerLiveness())
 
     worker = telegram.TelegramChannelWorker(source)
 
@@ -130,7 +130,7 @@ def test_cancellation_propagates_without_reconnecting(monkeypatch):
             raise
 
     monkeypatch.setattr(telegram, "_run_telegram_loop", blocking_loop)
-    monkeypatch.setattr(telegram, "liveness", __import__("app.core.heartbeat", fromlist=["WorkerLiveness"]).WorkerLiveness())
+    monkeypatch.setattr(telegram, "liveness", __import__("app.infra.heartbeat", fromlist=["WorkerLiveness"]).WorkerLiveness())
 
     worker = telegram.TelegramChannelWorker(source)
 
@@ -187,7 +187,7 @@ def test_worker_reports_reconnecting_during_backoff(monkeypatch):
     """While the worker is in its reconnect/backoff window it must beat
     the liveness registry with STATE_RECONNECTING so the healthcheck
     treats it as temporarily degraded, not dead."""
-    from app.core.heartbeat import WorkerLiveness
+    from app.infra.heartbeat import WorkerLiveness
 
     real_liveness = WorkerLiveness()
     source = _FakeSource([SimpleNamespace(id="c")], [])
@@ -204,7 +204,7 @@ def test_worker_reports_reconnecting_during_backoff(monkeypatch):
 
     # And confirm the module constants match what the healthcheck
     # accepts (alive|reconnecting).
-    from app.core.healthcheck import _ACCEPTABLE_STATES
+    from app.infra.healthcheck import _ACCEPTABLE_STATES
     assert telegram.STATE_RECONNECTING in _ACCEPTABLE_STATES
 
 
@@ -355,7 +355,7 @@ def test_recoverable_flood_wait_error_triggers_reconnect_not_propagation(monkeyp
     """Run-level: a FloodWaitError raised inside the live loop is a
     recoverable condition -- the worker must reconnect, not exit."""
     from telethon.errors import FloodWaitError
-    from app.core.heartbeat import WorkerLiveness
+    from app.infra.heartbeat import WorkerLiveness
 
     source = _FakeSource([SimpleNamespace(id="c1"), SimpleNamespace(id="c2")], [])
     loop_calls = {"n": 0}
@@ -368,7 +368,7 @@ def test_recoverable_flood_wait_error_triggers_reconnect_not_propagation(monkeyp
 
     monkeypatch.setattr(telegram, "_run_telegram_loop", flood_loop)
     monkeypatch.setattr(
-        telegram, "liveness", __import__("app.core.heartbeat", fromlist=["WorkerLiveness"]).WorkerLiveness()
+        telegram, "liveness", __import__("app.infra.heartbeat", fromlist=["WorkerLiveness"]).WorkerLiveness()
     )
     monkeypatch.setattr(telegram, "_RECONNECT_BASE_SECONDS", 0.01)
 
@@ -404,7 +404,7 @@ def test_read_cancelled_error_triggers_reconnect_not_propagation(monkeypatch):
 
     monkeypatch.setattr(telegram, "_run_telegram_loop", read_cancelled_loop)
     monkeypatch.setattr(
-        telegram, "liveness", __import__("app.core.heartbeat", fromlist=["WorkerLiveness"]).WorkerLiveness()
+        telegram, "liveness", __import__("app.infra.heartbeat", fromlist=["WorkerLiveness"]).WorkerLiveness()
     )
     monkeypatch.setattr(telegram, "_RECONNECT_BASE_SECONDS", 0.01)
 
@@ -434,7 +434,7 @@ def test_typed_auth_error_still_propagates_to_shut_down(monkeypatch):
 
     monkeypatch.setattr(telegram, "_run_telegram_loop", fatal_loop)
     monkeypatch.setattr(
-        telegram, "liveness", __import__("app.core.heartbeat", fromlist=["WorkerLiveness"]).WorkerLiveness()
+        telegram, "liveness", __import__("app.infra.heartbeat", fromlist=["WorkerLiveness"]).WorkerLiveness()
     )
 
     worker = telegram.TelegramChannelWorker(source)
@@ -453,7 +453,7 @@ def test_typed_auth_error_still_propagates_to_shut_down(monkeypatch):
 
 
 def test_connected_worker_beats_liveness_on_cadence(monkeypatch):
-    from app.core.heartbeat import WorkerLiveness
+    from app.infra.heartbeat import WorkerLiveness
 
     real_liveness = WorkerLiveness()
     source = _FakeSource([SimpleNamespace(id="c1")], [])

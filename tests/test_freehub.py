@@ -1,7 +1,7 @@
 """
 app.services.freehub tests: seen-state dedup and job-identity invariants.
 
-Importing app.services.freehub pulls in app.core.config (for FREEHUB_USER_ID/
+Importing app.services.freehub pulls in app.infra.config (for FREEHUB_USER_ID/
 FREEHUB_PAGE_SIZE), so -- like test_pipeline.py etc. -- this relies on
 tests/conftest.py's environment defaults to import without a real
 .env. No real HTTP request is ever made: app.services.freehub.fetch_projects is

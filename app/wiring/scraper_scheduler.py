@@ -17,7 +17,7 @@ Why a subprocess and not an import:
     even in environments where only requirements.txt is installed.
 
 The loop is a normal WorkerRegistry worker: it beats liveness during its
-idle sleep (see app.core.heartbeat.sleep_with_beats) and keeps looping across
+idle sleep (see app.infra.heartbeat.sleep_with_beats) and keeps looping across
 transient scrape failures, so a broken scrape degrades gracefully instead
 of tripping the TaskGroup's whole-process shutdown.
 """
@@ -26,8 +26,8 @@ import asyncio
 import sys
 from pathlib import Path
 
-from app.core.heartbeat import sleep_with_beats, liveness, STATE_ALIVE, STATE_DEAD
-from app.core.runtime_config import BASE_DIR
+from app.infra.heartbeat import sleep_with_beats, liveness, STATE_ALIVE, STATE_DEAD
+from app.infra.runtime_config import BASE_DIR
 
 
 WORKER_ID = "scraper_scheduler"

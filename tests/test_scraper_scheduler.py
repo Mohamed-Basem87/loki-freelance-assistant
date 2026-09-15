@@ -16,7 +16,7 @@ from app.wiring.scraper_scheduler import _run_scraper_once, scraper_scheduler_fa
 @pytest.fixture()
 def _beatless(monkeypatch):
     """Make the loop idle without touching the process-global liveness
-    registry (app.core.heartbeat.liveness is sticky; beating an extra worker
+    registry (app.infra.heartbeat.liveness is sticky; beating an extra worker
     here would pollute later healthcheck tests)."""
     import app.wiring.scraper_scheduler as scheduler_module
 
@@ -140,7 +140,7 @@ def test_scheduler_keeps_looping_across_failed_runs(
 
 def test_default_registry_registers_scheduler_for_file_sources(monkeypatch):
     import app.wiring.workers as workers_module
-    from app.core.runtime_config import JobSourceConfig
+    from app.infra.runtime_config import JobSourceConfig
 
     fake_sources = (
         JobSourceConfig(
@@ -173,7 +173,7 @@ def test_default_registry_registers_scheduler_for_file_sources(monkeypatch):
 
 def test_default_registry_skips_scheduler_without_file_sources(monkeypatch):
     import app.wiring.workers as workers_module
-    from app.core.runtime_config import JobSourceConfig
+    from app.infra.runtime_config import JobSourceConfig
 
     fake_sources = (
         JobSourceConfig(
@@ -215,7 +215,7 @@ def test_scheduler_reports_dead_after_sustained_failures(tmp_path, _scriptless_s
     real beats. _scriptless_scraper drives run outcomes directly (see
     that fixture) so the state transitions are deterministic instead of
     costing a full python subprocess spawn per failure."""
-    from app.core.heartbeat import liveness
+    from app.infra.heartbeat import liveness
     from app.wiring.scraper_scheduler import CONSECUTIVE_FAILURE_THRESHOLD
 
     _scriptless_scraper["exit_codes"] = [1]  # every run fails, forever
@@ -248,7 +248,7 @@ def test_scheduler_recovers_to_alive_after_a_successful_run_following_failures(
     """Once a run succeeds again, the worker must self-heal back to
     'alive' with no restart required -- sustained failure is reported,
     not a permanent quarantine."""
-    from app.core.heartbeat import liveness
+    from app.infra.heartbeat import liveness
     from app.wiring.scraper_scheduler import CONSECUTIVE_FAILURE_THRESHOLD
 
     _scriptless_scraper["exit_codes"] = [1] * CONSECUTIVE_FAILURE_THRESHOLD + [0]

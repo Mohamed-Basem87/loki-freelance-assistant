@@ -3,16 +3,16 @@ import os
 import time
 from collections import deque
 from pathlib import Path
-from app.core.config import FREEHUB_BASE_URL, get_freehub_user_id
-from app.core.runtime_config import RUNTIME
+from app.infra.config import FREEHUB_BASE_URL, get_freehub_user_id
+from app.infra.runtime_config import RUNTIME
 from app.adapters.http.aiohttp import AioHttpTransport
 from app.adapters.sources.freehub import FreeHubApiClient
-from app.core.config import (
+from app.infra.config import (
     FREEHUB_BASE_URL,
     FREEHUB_USER_ID,
     FREEHUB_PAGE_SIZE,
 )
-from app.core.runtime_config import RUNTIME, RECOVERY, SOURCE_IDS
+from app.infra.runtime_config import RUNTIME, RECOVERY, SOURCE_IDS
 from app.wiring.dependencies import dedup, logger
 
 

@@ -3,26 +3,18 @@ from app.notification_guard.guard import NotificationGuard
 
 class NotificationGuardIntegration:
     """
-    Runtime adapter for the existing notification pipeline.
-
-    The production application remains untouched (aside from one
-    resolution hook -- see resolve_category() below and
-    app.services.job_processor._resolve_notification_category). The adapter
-    replaces the notification references inside app.services.job_processor at
-    runtime.
+    Guard decision + category-resolution surface for job_processor.py.
 
     The guard decision belongs to the *job*, not to an individual
     notification attempt. It is looked up from the durable
-    `notification_guard` table (the existing persistence architecture
-    -- see app.services.logger / app.notification_guard.logger) before ever
-    asking the guard's provider:
+    `notification_guard` table before ever asking the guard's provider:
 
     - A previously persisted "notify" or "do_not_notify" is a valid,
       final decision and is reused forever for that job -- for the
-      private/channel pair of a single process_job() invocation, for
-      every later retry_incomplete_notifications() sweep pass, and
-      across process restarts. The guard's provider is never
-      asked again for that job once a valid decision exists.
+      initial process_job() invocation, for every later
+      retry_incomplete_notifications() sweep pass, and across process
+      restarts. The guard's provider is never asked again for that job
+      once a valid decision exists.
     - "error" (a transient provider/evaluation failure) is NOT a
       valid decision and is never reused -- the guard is evaluated
       fresh the next time this job needs a decision, whether that's
@@ -37,17 +29,15 @@ class NotificationGuardIntegration:
     touch this lookup.
 
     A "notify" decision also carries a category (see "Guard Category"
-    in app.services.logger.NOTIFICATION_GUARD_HEADERS): either the job's
-    original keyword-matched category, unchanged, or "full_stack" when
-    the guard determined the work is broader than a single specialist
-    category. resolve_category() is the single place this is decided
-    and persisted -- it runs once, before either notification leg,
-    from app.services.job_processor._resume_pending_notifications_unlocked.
-    wrap_private/wrap_routing below never trigger a fresh evaluation
-    themselves; they only ever consult the decision resolve_category()
-    already made and persisted. That ordering is what keeps the
-    private message and the subscriber fan-out from ever disagreeing
-    about which category a reclassified job belongs to.
+    on the `notification_guard` table): either the job's original
+    keyword-matched category, unchanged, or "full_stack" when the guard
+    determined the work is broader than a single specialist category.
+    resolve_category() is the single place this is decided and
+    persisted -- it runs once, before allow(), from
+    app.services.job_processor._resume_pending_notifications_unlocked.
+    allow() never triggers a fresh evaluation itself; it only ever
+    consults the decision resolve_category() already made and
+    persisted.
     """
 
     def __init__(self, guard: NotificationGuard, repository=None):
@@ -57,7 +47,7 @@ class NotificationGuardIntegration:
             repository = logger
         self.repository = repository
 
-    async def _allow(self, kwargs: dict) -> bool:
+    async def allow(self, kwargs: dict) -> bool:
 
         # Disabled guard is a transparent no-op. It must never turn an
         # otherwise deliverable notification into a suppression.
@@ -99,11 +89,10 @@ class NotificationGuardIntegration:
         actually use. Installed in place of app.services.job_processor's
         _resolve_notification_category no-op; called once per
         _resume_pending_notifications_unlocked invocation, before
-        either notification leg.
+        allow().
 
-        This is the only place a fresh guard evaluation happens for
-        the direct-match path -- wrap_private/wrap_routing only ever
-        consult the persisted result afterward.
+        This is the only place a fresh guard evaluation happens --
+        allow() only ever consults the persisted result afterward.
         """
 
         if not getattr(self.guard, "enabled", True):
@@ -159,102 +148,9 @@ class NotificationGuardIntegration:
 
         return resolved
 
-    def wrap_private(self, original):
-
-        async def wrapped(**kwargs):
-
-            if not await self._allow(kwargs):
-                return False
-
-            return await original(**kwargs)
-
-        return wrapped
-
-    def wrap_routing(self, original):
-
-        async def wrapped(job_uuid, category_id, source=""):
-            if not category_id:
-                return 0
-
-            row = await self.repository.get_job(job_uuid)
-            if row is None:
-                return 0
-
-            allowed = await self._allow({
-                "job_uuid": job_uuid,
-                "source": source or row.get("Source", ""),
-                "title": row.get("Title", ""),
-                "description": row.get("Description", ""),
-                "decision": row.get("Final Decision", "Accepted"),
-                "ai_used": str(row.get("Needs Gemini") or "").strip().lower() in ("1", "true", "yes", "y"),
-                "category_id": category_id,
-            })
-
-            if not allowed:
-                return 0
-
-            return await original(job_uuid, category_id, source)
-
-        return wrapped
-
-
-
-class GuardedNotificationService:
-    """Constructor-injected notification guard around a sink service."""
-    def __init__(self, service, integration):
-        self.service = service
-        self.integration = integration
-
-    async def send(self, **payload):
-        if not await self.integration._allow(payload):
-            return False
-        return await self.service.send(**payload)
-
 
 def _category_display_name(category_id: str) -> str:
-    from app.categories.registry import get_category
+    from app.domain.categories.registry import get_category
 
     profile = get_category(category_id)
     return profile.name if profile is not None else ""
-
-
-def wire(integration):
-    """Return a dependency bundle for constructor injection.
-
-    Production composition uses this hook instead of relying on monkeypatching.
-    The legacy ``install`` function remains available for external/test callers.
-    """
-    return {
-        "resolve_category": integration.resolve_category,
-        "private": integration.wrap_private,
-        "routing": integration.wrap_routing,
-    }
-
-
-def install():
-
-    import app.services.job_processor as job_processor
-
-    integration = NotificationGuardIntegration(
-        NotificationGuard()
-    )
-
-    job_processor.send_notification = (
-        integration.wrap_private(
-            job_processor.send_notification
-        )
-    )
-
-    # Subscriber routing is the category-based delivery path. It must
-    # use the same Guard decision as the private notification.
-    job_processor.queue_for_category = integration.wrap_routing(
-        job_processor.queue_for_category
-    )
-
-    # Single upfront resolution point: decides (and durably persists)
-    # whether a clean direct-match job should be delivered under its
-    # original category or "full_stack", before either notification
-    # leg above runs. See resolve_category()'s docstring.
-    job_processor._resolve_notification_category = integration.resolve_category
-
-    return integration

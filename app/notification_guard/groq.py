@@ -19,8 +19,8 @@ from app.notification_guard.config import (
 )
 from app.notification_guard.provider import GuardProvider
 from app.notification_guard.prompt import build_prompt
-from app.categories.registry import arbitration_only_categories
-from app.core.runtime_config import LLM_PROVIDERS, RUNTIME
+from app.domain.categories.registry import arbitration_only_categories
+from app.infra.runtime_config import LLM_PROVIDERS, RUNTIME
 
 
 # BUG #2: bounded HTTP lifetime on the guard's Groq SDK (see app.llm.gemini

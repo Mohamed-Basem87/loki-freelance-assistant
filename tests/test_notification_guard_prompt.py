@@ -1,6 +1,6 @@
 """
 app.notification_guard.prompt tests. Pure string-building module, no
-app.core.config dependency -- runs fully offline like test_keyword_filter.py.
+app.infra.config dependency -- runs fully offline like test_keyword_filter.py.
 """
 
 from app.notification_guard.prompt import build_prompt

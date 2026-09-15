@@ -20,13 +20,13 @@ def _fresh_liveness_per_test():
     """Every worker here writes liveness via WorkerRegistry.register and
     _run_tracked; the early tests in this file use the default registry,
     which targets app.wiring.workers.liveness (a reference to the shared
-    app.core.heartbeat.liveness singleton an order-sensitive test_healthcheck
+    app.infra.heartbeat.liveness singleton an order-sensitive test_healthcheck
     and the running app rely on being empty except for the app's own
     workers). Rebinding app.wiring.workers.liveness to a fresh instance keeps
     every test here inside the file's own contract: never mutate the
     process-level liveness singleton other test modules rely on."""
     import app.wiring.workers as workers_module
-    from app.core.heartbeat import WorkerLiveness
+    from app.infra.heartbeat import WorkerLiveness
 
     original = workers_module.liveness
     workers_module.liveness = WorkerLiveness()
@@ -142,7 +142,7 @@ def test_default_registry_rejects_two_job_sources_sharing_one_adapter(monkeypatc
     same underlying adapter -- that would silently double-ingest it.
     """
     import app.wiring.workers as workers_module
-    from app.core.runtime_config import JobSourceConfig
+    from app.infra.runtime_config import JobSourceConfig
 
     fake_sources = (
         JobSourceConfig(
@@ -169,7 +169,7 @@ def test_default_registry_allows_distinct_adapters(monkeypatch):
     """Sanity check: distinct adapters behind distinct JOB_SOURCES
     entries must still be allowed to register their own workers."""
     import app.wiring.workers as workers_module
-    from app.core.runtime_config import JobSourceConfig
+    from app.infra.runtime_config import JobSourceConfig
 
     fake_sources = (
         JobSourceConfig(
@@ -215,7 +215,7 @@ def test_default_registry_allows_distinct_adapters(monkeypatch):
 def test_worker_that_returns_is_recorded_dead():
     """A worker factory that returns rather than looping forever is a
     silent death -- it must be observable as dead, not healthy."""
-    from app.core.heartbeat import WorkerLiveness
+    from app.infra.heartbeat import WorkerLiveness
 
     real_liveness = WorkerLiveness()
     worker_id = "silent-death"
@@ -240,7 +240,7 @@ def test_worker_that_returns_is_recorded_dead():
 def test_worker_cancelled_during_shutdown_is_recorded_shutdown():
     """On TaskGroup shutdown the worker is cancelled -- that is an
     intentional stop, recorded as 'shutdown', not 'dead'."""
-    from app.core.heartbeat import WorkerLiveness
+    from app.infra.heartbeat import WorkerLiveness
     import app.wiring.workers as workers_module
 
     real_liveness = WorkerLiveness()
@@ -276,7 +276,7 @@ def test_worker_cancelled_during_shutdown_is_recorded_shutdown():
 def test_worker_that_raises_is_recorded_dead():
     """An unexpected exception kills the worker -- recorded dead so the
     healthcheck fails until the process is restarted."""
-    from app.core.heartbeat import WorkerLiveness
+    from app.infra.heartbeat import WorkerLiveness
     import app.wiring.workers as workers_module
 
     real_liveness = WorkerLiveness()
