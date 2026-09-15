@@ -124,11 +124,11 @@ def _verify_guarded_entrypoints_in_fresh_processes() -> None:
 
 def _run_smoke_checks():
     """Run every non-network startup check against a real DATABASE_URL/
-    REDIS_URL (the schema itself must already be migrated -- see
-    scripts/migrate_postgres.py; this only seeds categories and checks
-    connectivity, same as Runtime.initialize_database() at real startup).
-    STATE_FILE_PATH is already pointed at the throwaway temp dir by the
-    caller. Raises RuntimeError on any failure so main() can fail CI.
+    REDIS_URL. Runtime.initialize_database() (which the real startup also
+    runs) applies versioned migrations from scripts/migrate_postgres.py,
+    seeds categories, and verifies connectivity. STATE_FILE_PATH is
+    already pointed at the throwaway temp dir by the caller. Raises
+    RuntimeError on any failure so main() can fail CI.
     Returns the composed Runtime so main() can shut it down cleanly."""
     from app.wiring.composition import compose
 
@@ -175,7 +175,16 @@ def _run_smoke_checks():
 def main() -> int:
     # Persistence is Postgres/Redis now, not an embedded SQLite file --
     # this script needs a reachable DATABASE_URL and REDIS_URL (e.g. CI
-    # service containers), unlike the old throwaway-temp-file approach.
+    # service containers). Without them (a plain local `pytest tests/`
+    # with no services), the guarded-entrypoint semantics are still
+    # verified and the DB-dependent checks are skipped so the suite stays
+    # hermetic; CI always supplies both via its service containers.
+    if not os.getenv("DATABASE_URL") or not os.getenv("REDIS_URL"):
+        _verify_guarded_entrypoints_in_fresh_processes()
+        print("[SMOKE] No DATABASE_URL/REDIS_URL set -- DB-dependent smoke "
+              "checks skipped (entrypoint semantics still verified).")
+        return 0
+
     with tempfile.TemporaryDirectory() as tmp:
         # STATE_FILE_PATH (JSON dedup state) still never touches the
         # real configured file during a smoke run.

@@ -43,6 +43,7 @@ construct (e.g. app.services.notifier needs BOT_CHAT_ID to exist, even just to
 import).
 """
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -80,6 +81,61 @@ for _name, _value in _TEST_ENV_DEFAULTS.items():
     os.environ.setdefault(_name, _value)
 
 
+class _StubJobRepository:
+    """Hermetic stand-in for PostgresRepository when no DATABASE_URL is
+    configured (plain `pytest tests/` with no Postgres reachable).
+
+    Implements the JobRepository surface with permissive no-op semantics
+    so tests that only need the dependency graph to construct -- or that
+    monkeypatch a repository method via the DependencyProxy -- can run
+    without infrastructure. When DATABASE_URL IS set (e.g. CI service
+    containers), a real, initialized PostgresRepository is used instead,
+    so repository-behavior tests keep exercising the real adapter.
+    """
+
+    async def initialize(self, *a, **kw):
+        return None
+
+    async def save(self, *a, **kw):
+        return None
+
+    async def get_job(self, *a, **kw):
+        return None
+
+    async def create_job_if_absent(self, *a, **kw):
+        return True
+
+    async def update_job(self, *a, **kw):
+        return True
+
+    async def has_job(self, *a, **kw):
+        return False
+
+    async def log_error(self, *a, **kw):
+        return None
+
+    async def log_gemini(self, *a, **kw):
+        return None
+
+    async def log_notification_guard(self, *a, **kw):
+        return None
+
+    async def get_latest_guard_decision(self, *a, **kw):
+        return None
+
+    async def get_latest_guard_decision_with_category(self, *a, **kw):
+        return (None, None)
+
+    async def get_incomplete_notification_jobs(self, *a, **kw):
+        return []
+
+    async def get_incomplete_classification_jobs(self, *a, **kw):
+        return []
+
+    async def claim_pending_classification(self, *a, **kw):
+        return True
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _bind_dependency_slots():
     """Bind the legacy DependencyProxy slots before any test runs.
@@ -98,10 +154,14 @@ def _bind_dependency_slots():
     attribute (e.g. tests/test_telegram_recovery.py) still work because
     an instance attribute shadows the bound value, exactly as before.
 
-    NOTE: this binds a real PostgresRepository, so the test session
-    requires a reachable DATABASE_URL. Tests that only need repository
-    *behavior* faked out should monkeypatch app.wiring.dependencies.logger
-    directly rather than relying on this fixture's real backend.
+    NOTE: this binds a real PostgresRepository when DATABASE_URL is set
+    (e.g. CI service containers), bringing up the schema via the same
+    versioned migrations / category seed the production startup runs.
+    When DATABASE_URL is NOT set, a permissive no-op stub is bound
+    instead so plain `pytest tests/` works hermetically without a
+    Postgres server. Tests that only need repository *behavior* faked
+    out should monkeypatch app.wiring.dependencies.logger directly
+    rather than relying on either backend.
     """
     import os
 
@@ -112,7 +172,14 @@ def _bind_dependency_slots():
     from app.services.parser import get_parser_registry
 
     database_url = os.environ.get("DATABASE_URL")
-    db = PostgresRepository(database_url) if database_url else None
+    if database_url:
+        db = PostgresRepository(database_url)
+        # Bring up the real schema (versioned migrations + category seed)
+        # exactly as production startup does, so repository-behavior
+        # tests run against a genuine Postgres backing.
+        asyncio.run(db.initialize())
+    else:
+        db = _StubJobRepository()
     store = JsonStateStore(_state_manager)
 
     async def _noop_resolver(job_uuid, row, category_id):

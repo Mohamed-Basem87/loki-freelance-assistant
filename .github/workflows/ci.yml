@@ -13,6 +13,25 @@ jobs:
     name: Run tests (Python 3.11)
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: loki
+          POSTGRES_PASSWORD: loki
+          POSTGRES_DB: loki
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U loki -d loki"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,6 +48,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run test suite
+        env:
+          DATABASE_URL: postgresql://loki:loki@localhost:5432/loki
+          REDIS_URL: redis://localhost:6379/0
         run: pytest tests/ -q
 
       - name: Smoke-test unguarded entrypoint stays config-driven
@@ -97,4 +119,6 @@ jobs:
           PHONE_NUMBER: "+10000000000"
           URL_SHORTENER_DOMAIN: "http://test-shortener.invalid"
           URL_SHORTENER_ENDPOINT: "/shorten"
+          DATABASE_URL: postgresql://loki:loki@localhost:5432/loki
+          REDIS_URL: redis://localhost:6379/0
         run: python scripts/ci_smoke_test.py
