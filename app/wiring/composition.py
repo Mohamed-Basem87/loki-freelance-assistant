@@ -265,7 +265,10 @@ def compose():
         _state_manager.shutdown()
 
     def _shutdown_db_engine():
-        repository._engine.dispose()
+        # dispose() no-ops when the repository was quarantined (a stuck
+        # worker thread may still hold a pooled connection) -- see
+        # PostgresRepository.dispose().
+        repository.dispose()
 
     return Runtime(
         repository, state, dedup, stream_publisher,

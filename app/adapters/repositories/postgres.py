@@ -23,6 +23,7 @@ docstring for exactly how.
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from pathlib import Path
 
 import asyncio
 
@@ -30,6 +31,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 
 from app.ports import JobRepository
+from app.infra.runtime_config import RUNTIME
+from app.infra.heartbeat import liveness, STATE_ALIVE, STATE_DEAD
 
 # snake_case keyword -> SQL column name, mirroring the old DBLogger's
 # COLUMN_MAP so update_job()'s field-name contract is unchanged.
@@ -94,6 +97,53 @@ _DROPPED_FILTER_KEYS = {
 _POOL_SIZE = 10
 _EXECUTOR = ThreadPoolExecutor(max_workers=_POOL_SIZE, thread_name_prefix="pg-repo")
 
+# Every repository call is bounded by the same "database operation must
+# return in this long, or the backend is treated as stuck" bound the old
+# SQLite backend applied to its single writer thread (see the original
+# app/services/logger.py: asyncio.wait_for over run_in_executor, then the
+# executor is quarantined and all later calls fail closed). The Postgres
+# adapter dropped that protection in the refactor: a hung sync call left
+# the caller's await hanging forever while app.infra.heartbeat kept
+# ticking, so the container reported healthy while ingestion stalled
+# (audit finding: database timeout / quarantine dropped). Restored here,
+# on top of the new server-side/http-level bounds below.
+_DATABASE_TIMEOUT_SECONDS = RUNTIME.database_timeout_seconds
+
+# libpq connect timeout used when establishing NEW pooled connections.
+# Matches app.infra.healthcheck's own probe bound: a Postgres that does
+# not answer the TCP/startup handshake within a couple of seconds is not
+# reachable and must fail fast rather than hang a worker thread.
+_CONNECT_TIMEOUT_SECONDS = 2
+
+# Recycle pooled connections on an hourly cadence: belt-and-braces over
+# pool_pre_ping for stale connections dropped by idle-timers/load
+# balancers on long-lived deployments.
+_POOL_RECYCLE_SECONDS = 1800
+
+
+def _statement_timeout_option(database_timeout_seconds: int) -> str:
+    """Server-side statement bound, in milliseconds, as a libpq `options`
+    string. Guarantees Postgres itself aborts a statement that exceeds the
+    app-level bound instead of leaving the executor thread running it
+    forever (a caller-side timeout alone would cancel the await but not
+    the thread)."""
+    return f"-c statement_timeout={max(1, int(database_timeout_seconds * 1000))}"
+
+
+class StuckExecutorError(RuntimeError):
+    """Raised when a Postgres repository call did not return within
+    _DATABASE_TIMEOUT_SECONDS. See PostgresRepository.run for why.
+
+    The stuck worker thread cannot be forcibly killed (and may still be
+    executing a statement server-side, or hold a checked-out pooled
+    connection), so the repository is QUARANTINED rather than replaced:
+    every subsequent run() call fails closed with this exception until
+    the process restarts. A fresh executor/connection pool is deliberately
+    NOT installed -- it could let a second worker touch the same rows as
+    the still-stuck one. The failing call is loud (its caller's existing
+    per-item exception handling surfaces it), the healthcheck sees the
+    "db_worker" liveness go dead, and a restart is the only recovery."""
+
 
 def _now():
     return datetime.now(timezone.utc)
@@ -108,20 +158,201 @@ def _with_psycopg_driver(database_url: str) -> str:
     return database_url
 
 
+# Postgres enforces types the legacy SQLite backend tolerated silently.
+# The old columns were loosely-typed (SQLite stored a 123.45 timer float,
+# an epoch-as-string "1754322000.0", or an empty-string category with no
+# complaint), while this schema declares INTEGER / TIMESTAMPTZ / FK. The
+# production values below arrive in the exact legacy shapes, so they are
+# normalized at the adapter boundary once, where the whole pipeline can
+# rely on it, instead of at each call site.
+_INT_BACKFILL_COLUMNS = {
+    "filter_time_ms",
+    "core_positive_hit_count",
+    "response_time_ms",
+    "prompt_tokens",
+    "completion_tokens",
+}
+
+
+def _as_int_or_none(value):
+    """Coerce to int for Postgres INTEGER columns. Tolerantly returns
+    None for absent/garbage input so a display/audit column can never
+    crash the job pipeline (float 123.45 -> 123, '' -> None)."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_timestamp(value):
+    """Coerce to a tz-aware datetime for Postgres TIMESTAMPTZ columns.
+
+    Accepts a datetime, a real number, a numeric epoch string (what
+    app.services.job_processor historically stored), or an ISO string.
+    None and unparseable input return None so a retry/backoff column
+    can never crash the pipeline.
+    """
+    if value is None or isinstance(value, datetime):
+        return value
+    if isinstance(value, (int, float)):
+        return _from_epoch(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return _from_epoch(stripped)
+        except ValueError:
+            pass
+        try:
+            return datetime.fromisoformat(stripped.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
+
+
+def _normalize_update_value(key, value):
+    """Normalize one update_job() field against the schema it lands in."""
+    if key == "category_id" and value == "":
+        # "no category" must be NULL, never a foreign-key-violating ''.
+        return None
+    if key in _INT_BACKFILL_COLUMNS:
+        return _as_int_or_none(value)
+    if key == "classification_retry_not_before":
+        return _normalize_timestamp(value)
+    return value
+
+
+def _load_migration_runner():
+    """Import scripts/migrate_postgres.py by file path.
+
+    The repository that owns schema bootstrap reuses the exact runner
+    operators/docs reference, without gambling that ``scripts`` is on
+    sys.path in every run mode (stale PYTHONPATH, pytest without rootdir
+    insertion, etc.). Loading by file location keeps one implementation
+    regardless of how the process was launched.
+    """
+    import importlib.util
+
+    script_path = (
+        Path(__file__).resolve().parents[3]
+        / "scripts" / "migrate_postgres.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "app_migrate_postgres", str(script_path)
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class PostgresRepository(JobRepository):
     id = "postgres"
 
-    def __init__(self, database_url: str):
+    def __init__(
+        self,
+        database_url: str,
+        database_timeout_seconds: int | None = None,
+    ):
+        self._database_url = database_url
+        # Bounded detection with REAL bounds, not a fake caller-side
+        # cancel: the connect timeout caps socket/startup handshakes, the
+        # server-side statement_timeout makes Postgres itself abort a
+        # statement that overruns (so the worker thread actually
+        # terminates), pool_timeout caps how long a call waits for a free
+        # pooled connection, and run() additionally bounds the whole call
+        # with asyncio.wait_for -- see run() for the quarantine semantics.
+        self._database_timeout_seconds = (
+            _DATABASE_TIMEOUT_SECONDS
+            if database_timeout_seconds is None
+            else database_timeout_seconds
+        )
+        self._quarantined = False
         self._engine = create_engine(
             _with_psycopg_driver(database_url),
             pool_pre_ping=True,
             pool_size=_POOL_SIZE,
             max_overflow=0,
+            pool_timeout=self._database_timeout_seconds,
+            pool_recycle=_POOL_RECYCLE_SECONDS,
+            connect_args={
+                "connect_timeout": _CONNECT_TIMEOUT_SECONDS,
+                "options": _statement_timeout_option(self._database_timeout_seconds),
+            },
         )
 
     async def run(self, func, *args, **kwargs):
+        """Dispatch one blocking repository call to the worker pool with a
+        hard wall-clock bound (mirrors app.services.state.StateManager.run).
+
+        On timeout the repository is QUARANTINED, exactly like the old
+        SQLite backend and the state backend: the stuck thread cannot be
+        killed (it may still hold a pooled connection / in-flight server
+        statement), so the repository fails closed with StuckExecutorError
+        on this and every later call, the "db_worker" liveness state goes
+        dead for the healthcheck, and restart (a fresh executor/pool) is
+        the only recovery. A hung DB call therefore surfaces loudly
+        instead of silently stalling the source workers while the
+        heartbeat keeps beating.
+        """
+        if self._quarantined:
+            raise StuckExecutorError(
+                "Postgres repository is quarantined after a timed-out "
+                "operation; restart the process before reusing the "
+                "database."
+            )
+
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(_EXECUTOR, lambda: func(*args, **kwargs))
+
+        try:
+            result = await asyncio.wait_for(
+                loop.run_in_executor(_EXECUTOR, lambda: func(*args, **kwargs)),
+                timeout=self._database_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            # wait_for cancels the Future, not the running thread (the
+            # statement may still be executing server-side once
+            # statement_timeout lets the thread unwind). Quarantine
+            # rather than replacing the pool: a second writer could
+            # otherwise touch the same rows concurrently with the
+            # still-stuck call. Restart is the only safe recovery.
+            self._quarantined = True
+            func_name = getattr(func, "__name__", repr(func))
+            print(
+                f"[DB] {func_name} timed out after "
+                f"{self._database_timeout_seconds}s. The worker thread "
+                "cannot be killed safely, so the Postgres repository is "
+                "quarantined until process restart."
+            )
+            # Same reporting seam as app.services.state.StateManager.run:
+            # once quarantined every future call re-raises at the guard
+            # above before reaching the success beat below, so this dead
+            # state can never be silently overwritten back to "alive".
+            liveness.beat("db_worker", STATE_DEAD)
+            raise StuckExecutorError(
+                f"{func_name} did not complete within "
+                f"{self._database_timeout_seconds}s; database backend "
+                "quarantined."
+            ) from None
+        liveness.beat("db_worker", STATE_ALIVE)
+        return result
+
+    def dispose(self):
+        """Release pooled connections at shutdown. Deliberately NO-OPs when
+        the repository is quarantined: a stuck worker thread may still
+        hold a checked-out connection and an in-flight statement, so
+        disposing the pool under it is unsafe -- mirror the old SQLite
+        backend's deliberate leak-on-quarantine (process exit reclaims
+        everything instead of shutdown deadlocking on a stuck thread)."""
+        if self._quarantined:
+            return
+        self._engine.dispose()
 
     # Thin async dispatch surface -- every JobRepository method call runs
     # its blocking SQLAlchemy body (the _sync_* methods below) on the
@@ -148,11 +379,20 @@ class PostgresRepository(JobRepository):
     # ------------------------------------------------------------------
 
     def _sync_initialize(self):
-        """Schema is owned by scripts/migrate_postgres.py, not this
-        adapter. Seeds `categories` from the enabled category profiles on
-        every startup (mirroring the old DBLogger.initialize()) -- jobs
-        and user_notifications both carry a FOREIGN KEY on Category ID,
-        so this must run before anything else writes a job."""
+        """Apply pending versioned migrations, then seed `categories`.
+
+        Migrations run first (idempotent -- schema_migrations records
+        each applied file), restoring the on-boot schema maintenance the
+        old SQLite DBLogger did. Schema must exist before even the
+        category seed: Postgres raises UndefinedTable otherwise, which
+        is exactly what a fresh production database would hit today if
+        scripts/migrate_postgres.py was never run by hand.
+
+        Jobs and user_notifications both carry a FOREIGN KEY on Category
+        ID, so seeding must run before anything else writes a job.
+        """
+        self._run_migrations()
+
         from app.domain.categories.registry import enabled_categories
 
         with self._engine.begin() as conn:
@@ -169,6 +409,13 @@ class PostgresRepository(JobRepository):
                         "now": _now(),
                     },
                 )
+
+    def _run_migrations(self):
+        """Apply pending versioned migrations (see
+        scripts/migrate_postgres.py) before the repository touches any
+        schema. Idempotent, so it is safe on every boot."""
+        runner = _load_migration_runner()
+        runner.run(self._database_url)
 
     def _sync_save(self):
         """No-op: every method below commits immediately. Kept for
@@ -235,7 +482,7 @@ class PostgresRepository(JobRepository):
             "Negative Categories": ", ".join(filter_result.get("negative_categories", []) or []),
             "Has Core Positive": bool(filter_result.get("has_core_positive", False)),
             "Has Core Negative": bool(filter_result.get("has_core_negative", False)),
-            "Core Positive Hit Count": filter_result.get("core_positive_hit_count", 0),
+            "Core Positive Hit Count": _as_int_or_none(filter_result.get("core_positive_hit_count", 0)),
             "Supporting Positive Weight": filter_result.get("supporting_positive_weight", 0),
             "Supporting Negative Weight": filter_result.get("supporting_negative_weight", 0),
             "Hard Reject": bool(filter_result.get("hard_reject", False)),
@@ -246,7 +493,7 @@ class PostgresRepository(JobRepository):
             "Final Decision": "",
             "Category ID": filter_result.get("category_id") or None,
             "Category Selection Method": filter_result.get("category_selection_method", ""),
-            "Filter Time (ms)": kwargs.get("filter_time_ms"),
+            "Filter Time (ms)": _as_int_or_none(kwargs.get("filter_time_ms")),
             "Classification Retry Not Before": None,
         }
         columns = ", ".join(f'"{k}"' for k in params)
@@ -283,6 +530,7 @@ class PostgresRepository(JobRepository):
                 )
             if isinstance(value, list):
                 value = ", ".join(value)
+            value = _normalize_update_value(key, value)
             bind = _bind(COLUMN_MAP[key])
             sets.append(f'"{COLUMN_MAP[key]}" = :{bind}')
             params[bind] = value
@@ -363,9 +611,9 @@ class PostgresRepository(JobRepository):
                 {
                     "ts": _now(), "job_uuid": job_uuid,
                     "decision_before": decision_before, "reason_before": reason_before,
-                    "prompt_tokens": prompt_tokens or None,
-                    "completion_tokens": completion_tokens or None,
-                    "response_time_ms": response_time_ms or None,
+                    "prompt_tokens": _as_int_or_none(prompt_tokens),
+                    "completion_tokens": _as_int_or_none(completion_tokens),
+                    "response_time_ms": _as_int_or_none(response_time_ms),
                     "decision": decision, "confidence": str(confidence),
                     "provider": provider,
                 },
@@ -421,7 +669,7 @@ class PostgresRepository(JobRepository):
                     "ts": _now(), "job_uuid": job_uuid, "source": source, "title": title,
                     "original_decision": original_decision, "guard_decision": guard_decision,
                     "provider": provider, "model": model,
-                    "response_time_ms": response_time_ms or None,
+                    "response_time_ms": _as_int_or_none(response_time_ms),
                     "error": error, "guard_category": guard_category,
                 },
             )

@@ -115,7 +115,16 @@ def test_ci_smoke_script_runs_clean(tmp_path):
     fresh-process entrypoint-semantics checks from within the test
     suite itself, not only from CI's own YAML, so `pytest` alone
     catches a startup-composition regression.
+
+    When DATABASE_URL/REDIS_URL are not supplied (a plain local
+    `pytest tests/` with no Postgres/Redis services), the script
+    verifies the guarded-entrypoint semantics and cleanly skips the
+    DB-dependent checks instead of failing. CI always supplies both
+    env vars via its service containers, so CI still exercises the
+    full composit/database path.
     """
+    import os
+
     env = _base_env()
     env["NOTIFICATION_GUARD_ENABLED"] = "false"
     env["BOT_TOKEN"] = "123456789:test-placeholder"
@@ -134,4 +143,7 @@ def test_ci_smoke_script_runs_clean(tmp_path):
         timeout=60,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "[SMOKE] All checks passed." in result.stdout
+    if os.environ.get("DATABASE_URL") and os.environ.get("REDIS_URL"):
+        assert "[SMOKE] All checks passed." in result.stdout
+    else:
+        assert "DB-dependent smoke checks skipped" in result.stdout

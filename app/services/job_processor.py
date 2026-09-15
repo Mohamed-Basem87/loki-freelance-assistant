@@ -3,6 +3,7 @@ import re
 import time
 import uuid
 import weakref
+from datetime import datetime, timezone
 
 from app.domain.categories.registry import get_category, arbitration_only_categories
 from app.domain.classification import classify_and_select
@@ -99,6 +100,53 @@ def _guard_payload_from_row(job_uuid: str, row: dict) -> dict:
     }
 
 
+# The exact, ordered set of fields the downstream notification service
+# needs to render and fan out a job (the user-facing renderer's inputs:
+# Title, Description, Source, Decision Reason, URL, Categories, Category
+# ID, Category Selection Method, plus the Short URL button target -- and
+# Job UUID, which is what the consumer deduplicates on). Publishing
+# this minimal DTO instead of the whole Postgres row keeps the stream
+# payload stable and self-contained, and replaying the SAME durable row
+# always produces the SAME DTO.
+NOTIFICATION_DTO_FIELDS = (
+    "Job UUID",
+    "Title",
+    "Description",
+    "Source",
+    "URL",
+    "Short URL",
+    "Decision Reason",
+    "Categories",
+    "Category ID",
+    "Category Selection Method",
+)
+
+
+def build_notification_event(final_job: dict) -> dict:
+    """Build the canonical event DTO published for a finalized job.
+
+    The DTO is always derived from the *durable* Postgres row (see
+    _publish_and_mark_complete, which re-reads it), never from a
+    caller's possibly-stale snapshot -- so the guard's durable full_stack
+    reclassification (Category ID + Categories + Category Selection
+    Method updated together in _resolve_notification_category) and every
+    other final field are reflected identically in the initial publish
+    and in every replayed/reswept copy of the same job.
+
+    Job UUID is mandatory, ordered first, and is the consumer's
+    idempotency key: a replayed event for the same Job UUID is the same
+    notification and must be deduplicated downstream (at-least-once
+    delivery on the stream).
+    """
+    if not (final_job or {}).get("Job UUID"):
+        raise ValueError(
+            'build_notification_event: the durable job row must include a '
+            '"Job UUID" -- stream events are keyed by Job UUID so the '
+            "consumer can deduplicate replayed events."
+        )
+    return {field: (final_job.get(field) or "") for field in NOTIFICATION_DTO_FIELDS}
+
+
 async def _publish_and_mark_complete(job_uuid: str, row: dict):
     """Single choke point through which an approved job actually leaves
     this service: confirm it in Postgres, only then hand it to Redis.
@@ -109,6 +157,12 @@ async def _publish_and_mark_complete(job_uuid: str, row: dict):
     publish-then-mark-complete ordering, used identically whether the
     job got here via guard approval or the LLM-arbitration bypass below.
 
+    The DTO is built from a FRESH read of the durable row, not from the
+    caller's snapshot: all the post-snapshot commits that can change a
+    job's published state (notably the guard's full_stack
+    reclassification) are guaranteed to be visible, so the event always
+    carries final state and identical initial/replay bytes.
+
     Publish happens BEFORE the "Complete" write. If publish raises,
     "Notification Status" stays at "Pending" (untouched), so the next
     get_incomplete_notification_jobs() sweep pass republishes it -- this
@@ -116,7 +170,17 @@ async def _publish_and_mark_complete(job_uuid: str, row: dict):
     self-heal instead of silently dropping the job from the downstream
     pipeline.
     """
-    await stream_publisher.publish(row)
+    final_job = await logger.get_job(job_uuid)
+    if final_job is None:
+        # The row is guaranteed durable by the time this runs (every
+        # job-bearing call to create_job_if_absent/update_job precedes
+        # it), so a vanished row is a programming error, not a recoverable
+        # state. Fall back to the caller's snapshot (stamped with the
+        # durable Job UUID) so the publish contract still holds.
+        final_job = dict(row)
+        final_job.setdefault("Job UUID", job_uuid)
+
+    await stream_publisher.publish(build_notification_event(final_job))
     await logger.update_job(job_uuid, notification_status="Complete", save=True)
 
 
@@ -166,7 +230,21 @@ async def _resume_pending_notifications_unlocked(job_uuid: str, row: dict):
     allowed = await guard_allow(payload)
 
     if not allowed:
-        await logger.update_job(job_uuid, notification_status="Suppressed", save=True)
+        # guard_allow() returns False BOTH for a durable, final
+        # "do_not_notify" decision AND for a transient "error" (the
+        # guard is fail-closed). Only the former is terminal: the job
+        # must be recorded "Suppressed" so it is never re-evaluated or
+        # delivered. An "error" is NOT a decision -- leaving the job at
+        # "Pending" here makes the next get_incomplete_notification_jobs()
+        # sweep re-evaluate the guard fresh instead of permanently
+        # dropping a job on a provider outage. (Mirrors the original
+        # _was_suppressed_by_guard check:
+        # get_latest_guard_decision() == "do_not_notify".)
+        decision = await logger.get_latest_guard_decision(job_uuid)
+        if decision == "do_not_notify":
+            await logger.update_job(
+                job_uuid, notification_status="Suppressed", save=True
+            )
         return
 
     await _publish_and_mark_complete(job_uuid, row)
@@ -613,7 +691,7 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
             # source's own rediscovery (e.g. FreeHub polling) re-
             # surfaces this same still-pending job in the meantime.
             retry_not_before = time.time() + RUNTIME.notification_retry_interval
-            await logger.update_job(job_uuid, final_decision=final_decision, decision_reason=decision_reason, category_id="", category_selection_method="", category_candidates=", ".join(candidate_ids), classification_retry_not_before=str(retry_not_before), save=True)
+            await logger.update_job(job_uuid, final_decision=final_decision, decision_reason=decision_reason, category_id=None, category_selection_method="", category_candidates=", ".join(candidate_ids), classification_retry_not_before=datetime.fromtimestamp(retry_not_before, tz=timezone.utc), save=True)
             raise ClassificationPendingError(
                 f"Classification for {job_uuid} is pending after LLM provider failure"
             ) from e
@@ -687,7 +765,7 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
         decision_reason = result.get("reason") or "Direct Category Match"
         should_notify = True
 
-    await logger.update_job(job_uuid, final_decision=final_decision, decision_reason=decision_reason, category_id=result.get("category_id", ""), category_selection_method=result.get("category_selection_method", ""), category_candidates=result.get("category_candidates", ""), save=False)
+    await logger.update_job(job_uuid, final_decision=final_decision, decision_reason=decision_reason, category_id=result.get("category_id") or None, category_selection_method=result.get("category_selection_method", ""), category_candidates=result.get("category_candidates", ""), save=False)
 
     if should_notify:
         final_category_id = result.get("category_id", "")
