@@ -80,7 +80,8 @@ class SourceWorker(Worker):
                             # in app.services.job_processor). The durable pending row
                             # stays reachable by the retry sweeps.
                             continue
-                        await self._logger.log_error(self.source.id, exc, job.get("job_id", job.get("uid", "")))
+                        uid = job.get("uid") or job.get("job_id", "")
+                        await self._logger.log_error(self.source.id, exc, uid)
                     finally:
                         beat_task.cancel()
                         try:
