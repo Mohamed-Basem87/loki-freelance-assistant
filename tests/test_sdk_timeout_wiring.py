@@ -19,7 +19,10 @@ def test_gemini_client_is_constructed_with_http_layer_timeout(monkeypatch):
     from app.llm import gemini
 
     captured = {}
-    expected = float(RUNTIME.http_timeout_seconds)
+    # google-genai's HttpOptions.timeout is milliseconds (its internal
+    # get_timeout_in_seconds() divides by 1000.0), so the seconds-valued
+    # runtime timeout must be scaled up before it reaches the SDK.
+    expected = int(float(RUNTIME.http_timeout_seconds) * 1000)
 
     class _FakeHttpOptions:
         def __init__(self, *, timeout):
