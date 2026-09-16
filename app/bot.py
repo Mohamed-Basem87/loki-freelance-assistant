@@ -5,7 +5,7 @@ from app.wiring.startup import default_startup_steps
 
 async def run():
     runtime = compose()
-    steps = await default_startup_steps(runtime)
+    steps = default_startup_steps(runtime)
     try:
         for step in steps:
             await step()
