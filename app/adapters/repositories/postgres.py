@@ -21,6 +21,7 @@ Postgres's own constraints/row-locking instead -- see each method's
 docstring for exactly how.
 """
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -147,6 +148,21 @@ class StuckExecutorError(RuntimeError):
 
 def _now():
     return datetime.now(timezone.utc)
+
+
+def _as_uuid_or_none(value):
+    """Coerce a value for a uuid-typed column. Callers sometimes pass
+    legacy string identifiers (e.g. "source:internal_id" or a job URL)
+    as the Job UUID; never let that crash the error-log insert itself,
+    since the whole point of the errors table is to record failures."""
+    if not value:
+        return None
+    if not isinstance(value, str):
+        return value
+    try:
+        return str(uuid.UUID(value.strip()))
+    except (ValueError, AttributeError):
+        return None
 
 
 def _with_psycopg_driver(database_url: str) -> str:
@@ -626,7 +642,7 @@ class PostgresRepository(JobRepository):
                     'INSERT INTO errors ("Timestamp", "Job UUID", "Module", "Error") '
                     'VALUES (:ts, :job_uuid, :module, :error)'
                 ),
-                {"ts": _now(), "job_uuid": job_uuid or None, "module": module, "error": str(error)},
+                {"ts": _now(), "job_uuid": _as_uuid_or_none(job_uuid), "module": module, "error": str(error)},
             )
 
     def _sync_get_latest_guard_decision(self, job_uuid):
