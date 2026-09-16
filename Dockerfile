@@ -36,6 +36,12 @@ COPY --from=builder /install /usr/local
 
 COPY . /app
 
+# migrate_postgres.py is a runtime dependency: the Postgres repository
+# imports it by file path to apply schema migrations at startup
+# (app/adapters/repositories/postgres.py). The rest of scripts/ stays
+# out of the image (see .dockerignore).
+COPY scripts/migrate_postgres.py /app/scripts/migrate_postgres.py
+
 # Runtime data dirs: Telethon session, JSON dedup/read-state. The
 # audit log itself lives in Postgres (DATABASE_URL), not on this
 # filesystem -- see docker-compose.yml for the postgres service.
