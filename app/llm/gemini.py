@@ -30,6 +30,13 @@ from app.llm.utils import build_prompt, build_arbitration_prompt, parse_response
 # ---------------------------------------------------------------------------
 _HTTP_TIMEOUT_SECONDS = float(RUNTIME.http_timeout_seconds)
 
+# google-genai's HttpOptions.timeout is in milliseconds -- its internal
+# get_timeout_in_seconds() divides by 1000.0 before passing the value to
+# httpx, so passing the seconds-valued runtime timeout here would give
+# every PCI call a sub-second connect budget and kill the TLS handshake.
+# Scale to milliseconds before handing it to the SDK.
+_HTTP_TIMEOUT_MILLISECONDS = int(_HTTP_TIMEOUT_SECONDS * 1000)
+
 
 CLIENTS = None
 
@@ -40,7 +47,7 @@ def _clients():
             genai.Client(
                 api_key=key,
                 http_options=genai.types.HttpOptions(
-                    timeout=_HTTP_TIMEOUT_SECONDS,
+                    timeout=_HTTP_TIMEOUT_MILLISECONDS,
                 ),
             )
             for key in get_gemini_api_keys()
