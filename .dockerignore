@@ -11,9 +11,11 @@ __pycache__/
 # Test / development-only artifacts -- never needed by the runtime image.
 # (scripts/ is CI/dev tooling -- ci_smoke_test.py, test.sh -- except
 # scripts/migrate_postgres.py, which the Postgres repository imports at
-# startup and the Dockerfile copies into the image explicitly.)
+# startup. It is negated below so the Dockerfile can COPY it into the
+# image while the rest of scripts/ stays out of the build context.)
 tests/
-scripts/
+scripts/*
+!scripts/migrate_postgres.py
 opencode.json
 
 # Development documentation and licensing text. Not required at runtime
