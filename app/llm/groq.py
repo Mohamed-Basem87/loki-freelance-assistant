@@ -73,22 +73,42 @@ def _generate_response(model: str, prompt: str, system_prompt: str, max_tokens: 
     materially larger (two free-text fields plus a list) than
     arbitration's three-field schema and needs more headroom to avoid
     truncating a genuine response mid-JSON.
+
+    A response that hits this cap before finishing valid JSON is
+    reported by Groq in one of two ways depending on timing: a 200 with
+    finish_reason=='length' (caught by _raise_if_truncated after a
+    successful return), or -- when json_object response_format is set,
+    as here -- a server-side 400 json_validate_failed whose
+    failed_generation text is 'max completion tokens reached before
+    generating a valid document'. Both are the same truncation and must
+    surface as TruncatedResponseError (never a permanent-failure
+    classification in run_with_rotation); this try/except normalizes
+    the 400 variant.
     """
-    return _client().chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ],
-        response_format={"type": "json_object"},
-        max_tokens=max_tokens,
-    )
+    try:
+        return _client().chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=max_tokens,
+        )
+    except Exception as exc:
+        error_text = str(exc).lower()
+        if "json_validate_failed" in error_text and "max completion tokens" in error_text:
+            raise TruncatedResponseError(
+                "Completion was cut off by max_tokens before finishing its "
+                "JSON (Groq json_validate_failed: max completion tokens reached)."
+            ) from exc
+        raise
 
 
 class GroqProvider(LLMProvider):

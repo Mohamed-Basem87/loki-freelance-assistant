@@ -141,6 +141,71 @@ def test_groq_raises_after_all_models_fail(monkeypatch):
     assert len(fake_client.completions.calls) == len(groq.GROQ_MODELS)
 
 
+def test_groq_400_json_validate_failed_is_raised_as_truncation(monkeypatch):
+    """Groq's json_object validation truncates a response that hits
+    max_tokens before finishing valid JSON, but reports it as a server-side
+    400 json_validate_failed with 'max completion tokens reached' text --
+    NOT as a 200 with finish_reason=='length'. _generate_response must
+    normalize that 400 into TruncatedResponseError (so run_with_rotation
+    treats it as a per-request response-length issue, never a permanent
+    candidate failure), exactly like the finish_reason path.
+
+    The function-level TruncatedResponseError is caught by run_with_rotation,
+    which accumulates failures and ultimately raises RuntimeError wrapping
+    them -- so the public surface is RuntimeError, not TruncatedResponseError.
+    The key invariant is that the candidate is NOT marked permanently broken
+    (available again immediately), verified by checking
+    rate_limit_tracker.is_available returns True for the candidate id after
+    the rotation fails."""
+    from app.llm import rate_limit_tracker
+
+    error_text = (
+        "{'error': {'message': \"Failed to generate JSON. Please adjust your "
+        "prompt. See 'failed_generation' for more details.\", 'type': "
+        "'invalid_request_error', 'code': 'json_validate_failed', "
+        "'failed_generation': 'max completion tokens reached before generating "
+        "a valid document'}}"
+    )
+
+    class _Raises400(RuntimeError):
+        def __init__(self, msg):
+            super().__init__(f"Error code: 400 - {msg}")
+
+    fake_client = _FakeClient([_Raises400(error_text)] * len(groq.GROQ_MODELS))
+    monkeypatch.setattr(groq, "CLIENT", fake_client)
+
+    with pytest.raises(RuntimeError, match="All Groq candidates failed"):
+        groq.evaluate_job(TEXT, FILTER_RESULT)
+
+    for model in groq.GROQ_MODELS:
+        candidate_id = f"groq-model-{model}"
+        assert rate_limit_tracker.is_available(candidate_id), (
+            f"candidate {candidate_id} must NOT be marked permanently broken "
+            f"after a truncation -- it should be available for the next call"
+        )
+
+
+def test_groq_400_json_validate_failed_without_truncation_text_passes_through(monkeypatch):
+    """A 400 json_validate_failed whose cause is NOT a token cap (e.g. a
+    genuinely malformed schema the prompt cannot satisfy) is a real candidate
+    problem and must NOT be rewritten as TruncatedResponseError -- it should
+    propagate unchanged so run_with_rotation's mark_permanently_broken
+    classification applies."""
+    error_text = (
+        "{'error': {'message': \"Failed to validate JSON. Please adjust your "
+        "prompt.\", 'type': 'invalid_request_error', 'code': "
+        "'json_validate_failed', 'failed_generation': ''}}"
+    )
+
+    fake_client = _FakeClient(
+        [RuntimeError(f"Error code: 400 - {error_text}")] * len(groq.GROQ_MODELS)
+    )
+    monkeypatch.setattr(groq, "CLIENT", fake_client)
+
+    with pytest.raises(RuntimeError, match="All Groq candidates failed"):
+        groq.evaluate_job(TEXT, FILTER_RESULT)
+
+
 _VALID_ARBITRATION_RESPONSE_JSON = json.dumps(
     {
         "selected_category": "data_analysis",
