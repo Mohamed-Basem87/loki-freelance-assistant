@@ -7,7 +7,7 @@
           "gemini-3.5-flash"
         ],
         "max_output_tokens": 1000,
-        "arbitration_max_output_tokens": 1000,
+        "arbitration_max_output_tokens": 2000,
         "retry_attempts": 2,
         "retry_wait_seconds": 1,
         "adapter": "app.llm.gemini:GeminiProvider"
@@ -20,7 +20,7 @@
           "qwen/qwen3.8-27b"
         ],
         "max_output_tokens": 600,
-        "arbitration_max_output_tokens": 500,
+        "arbitration_max_output_tokens": 1000,
         "retry_attempts": 2,
         "retry_wait_seconds": 1,
         "adapter": "app.llm.groq:GroqProvider"

@@ -3,30 +3,47 @@
 The production startup/recovery/live path (``_run_telegram_loop`` and the
 state machines it drives -- ``channel_locks``, ``recovery_blocked``,
 ``retry_wake``, ``failure_generation``, and the durable watermark) must key
-every internal channel by ONE canonical identity: the resolved Telegram
-numeric ``chat_id``.
+every internal channel by ONE canonical identity: the MARKED chat id that
+Telethon itself puts on ``event.chat_id`` / ``message.chat_id`` (e.g.
+``-1002142292720``), NOT the raw entity id returned by ``get_entity``
+(e.g. ``2142292720``). ``telethon.utils.get_peer_id`` performs the
+conversion.
 
 A configured identifier is:
 
-    configured identifier -> resolve Telegram entity -> canonical chat_id
+    configured identifier -> resolve Telegram entity -> canonical marked chat_id
 
-and the canonical ``chat_id`` is then used EVERYWHERE internally. This
+and the canonical marked ``chat_id`` is then used EVERYWHERE internally. This
 prevents ``"@channel"`` and ``"-1001234567890"`` naming the same Telegram
 channel from creating duplicate state (two watermark keys, a split lock, a
 barrier that never lines up with live events).
+
+Regression guarded here: the refactor originally keyed this state by the raw
+``entity.id`` while every write used the marked ``message.chat_id``, which
+split the durable watermark and the live barrier across two keys.
 """
 import asyncio
 from collections import defaultdict
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
+from telethon import utils
+from telethon.tl import types
 
 import app.adapters.sources.telegram as telegram
 from app.adapters.sources.telegram import TelegramChannelJobSource
 
 USERNAME = "@jobs"
-JOBS_ID = -10001
-NUMERIC = -10002
+
+# Raw entity ids as ``get_entity`` reports them (positive, unmarked).
+JOBS_RAW = 1001
+NUMERIC_RAW = 1002
+
+# Canonical marked ids as Telethon reports them on events/messages.
+JOBS_ID = utils.get_peer_id(types.PeerChannel(JOBS_RAW))
+NUMERIC = utils.get_peer_id(types.PeerChannel(NUMERIC_RAW))
+assert JOBS_ID < 0 and NUMERIC < 0
 
 
 class _FakeStateStore:
@@ -72,10 +89,22 @@ class _CanonicalClient:
         return []
 
     async def get_entity(self, token):
-        chat_id = self.id_by_token.get(token)
-        if chat_id is None:
+        # Mirror Telethon: ``get_entity`` yields a real entity whose ``.id``
+        # is the RAW positive id, not the marked id used on events/messages.
+        # A real Channel entity (not a PeerChannel) is required so the fake
+        # reproduces the exact failure mode: reverting to ``chat.id`` yields
+        # the raw id under the same "entity" contract, and the marked form
+        # must still be derived through telethon.utils.get_peer_id.
+        marked = self.id_by_token.get(token)
+        if marked is None:
             raise ValueError(f"unknown entity {token}")
-        return SimpleNamespace(id=chat_id)
+        raw, _ = utils.resolve_id(int(marked))
+        return types.Channel(
+            id=raw,
+            title="Test Channel",
+            photo=types.ChatPhotoEmpty(),
+            date=datetime.now(timezone.utc),
+        )
 
     async def iter_messages(self, channel, min_id, reverse, limit):
         resolved = self._resolve(channel)
@@ -369,10 +398,16 @@ class _FailingClient:
 
     async def get_entity(self, token):
         try:
-            int(token)
+            marked = int(token)
         except (TypeError, ValueError):
             raise ValueError(f"cannot resolve nonnumeric token {token!r}")
-        return SimpleNamespace(id=token)
+        raw, _ = utils.resolve_id(marked)
+        return types.Channel(
+            id=raw,
+            title="Test Channel",
+            photo=types.ChatPhotoEmpty(),
+            date=datetime.now(timezone.utc),
+        )
 
     async def iter_messages(self, channel, min_id, reverse, limit):
         newer = [m for m in self.by_chat_id.get(channel, []) if m.id > int(min_id)]
@@ -575,3 +610,87 @@ def test_poll_keeps_unresolved_numeric_id_as_canonical():
     # mark_seen works under the canonical key.
     asyncio.run(source.mark_seen(jobs[0]))
     assert store.data.get(str(NUMERIC)) == 42
+
+
+# ---------------------------------------------------------------------------
+# Test 9 -- Regression: resolved canonical id must be the MARKED form
+# (matching ``event.chat_id`` / ``message.chat_id``), not the raw
+# ``entity.id`` returned by ``get_entity``.
+# ---------------------------------------------------------------------------
+def test_resolved_canonical_id_is_marked_not_raw_entity_id():
+    """``_resolve_channel_ids`` must return the same id form Telethon
+    exposes on live events (the marked id, e.g. ``-1002142292720``), not the
+    raw positive ``entity.id`` (e.g. ``2142292720``).  Keying internal state
+    by the raw id while writing progress under the marked id split the durable
+    watermark from the live path (the root cause of the recovery regression
+    addressed here)."""
+    client = _CanonicalClient(
+        id_by_token={USERNAME: JOBS_ID},
+        by_chat_id={},
+    )
+    resolved = asyncio.run(telegram._resolve_channel_ids(client, [USERNAME]))
+    assert len(resolved) == 1
+    assert resolved[0] == JOBS_ID, (
+        f"resolved canonical id must be the MARKED id {JOBS_ID!r}; "
+        f"got raw {resolved[0]!r} instead"
+    )
+    assert resolved[0] < 0, (
+        "canonical id must be the marked (negative) form used by event.chat_id"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 10 -- _marked_chat_id fallback: plain .id stand-ins.
+# ---------------------------------------------------------------------------
+def test_marked_chat_id_getattr_fallback(monkeypatch):
+    """``_marked_chat_id`` must fall back to ``getattr(entity, "id", entity)``
+    when ``telethon.utils.get_peer_id`` rejects the object (test stand-ins
+    expose only a plain ``.id``). A real Telethon entity takes the
+    ``get_peer_id`` path instead."""
+    raw = 2142292720
+
+    real_get_peer_id = utils.get_peer_id
+
+    def rejecting_get_peer_id(entity):
+        raise TypeError("not a peer")
+
+    monkeypatch.setattr(utils, "get_peer_id", rejecting_get_peer_id)
+    assert telegram._marked_chat_id(SimpleNamespace(id=raw)) == raw
+
+    # get_peer_id is restored: a raw positive id is ambiguous to get_peer_id
+    # in production (treated as a user id), so the fallback is the only path
+    # that preserves a plain .id but never guesses at channel marking.
+    monkeypatch.setattr(utils, "get_peer_id", real_get_peer_id)
+    assert telegram._marked_chat_id(
+        types.Channel(
+            id=raw,
+            title="Test Channel",
+            photo=types.ChatPhotoEmpty(),
+            date=datetime.now(timezone.utc),
+        )
+    ) == utils.get_peer_id(types.PeerChannel(raw))
+
+
+# ---------------------------------------------------------------------------
+# Test 11 -- Fake fidelity: get_entity honors Telethon's raw-.id contract.
+# ---------------------------------------------------------------------------
+def test_fake_get_entity_models_telethon_raw_id_contract():
+    """``_CanonicalClient.get_entity`` must mimic Telethon faithfully: the
+    returned entity exposes the RAW positive ``.id`` (like a real
+    ``types.Channel``) while ``telethon.utils.get_peer_id`` derives the marked
+    form from it. Test 9 is a real revert guard only because this fake upholds
+    that contract -- if the fake ever drifts back to a ``PeerChannel`` (no
+    ``.id``) or a plain stand-in, a production regression to ``chat.id`` would
+    be masked by the skip path instead of a raw-vs-marked assertion."""
+    client = _CanonicalClient(
+        id_by_token={USERNAME: JOBS_ID},
+        by_chat_id={},
+    )
+    entity = asyncio.run(client.get_entity(USERNAME))
+
+    assert entity.id == JOBS_RAW, (
+        "a real Telethon entity exposes the raw positive id on .id"
+    )
+    assert telegram._marked_chat_id(entity) == JOBS_ID, (
+        "get_peer_id must derive the marked id from the raw entity id"
+    )

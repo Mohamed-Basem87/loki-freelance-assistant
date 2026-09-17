@@ -66,7 +66,7 @@ import re
 import time as _time
 from collections import defaultdict, deque
 
-from telethon import TelegramClient, events, errors as _errors
+from telethon import TelegramClient, events, errors as _errors, utils
 
 from app.wiring.dependencies import logger, state
 from app.services.message_processor import process_message
@@ -310,9 +310,56 @@ async def _warm_entity_cache(client, channels):
         )
 
 
+def _marked_chat_id(entity):
+    """Return the id form Telethon exposes on live events and messages.
+
+    ``client.get_entity`` returns entities whose ``.id`` is the raw,
+    unmarked id (e.g. a supergroup's ``2142292720``), whereas
+    ``event.chat_id`` and ``message.chat_id`` use the marked form (e.g.
+    ``-1002142292720``). Keying the durable watermark, the per-channel
+    locks, the ``recovery_blocked`` barrier and the retry state by the raw
+    id splits them from the write path, so every canonical identity must
+    be normalized to the marked form.
+
+    Test stand-ins expose a plain ``.id``; real Telethon entities always
+    take the ``get_peer_id`` path above that fallback.
+    """
+    try:
+        return utils.get_peer_id(entity)
+    except (TypeError, ValueError):
+        return getattr(entity, "id", entity)
+
+
+def _warn_raw_positive_channel_id(channel):
+    """Warn when a configured channel id is a raw positive entity id.
+
+    Telegram's marked id for channels/supergroups is the negative
+    ``-100...`` form that ``event.chat_id`` and ``message.chat_id`` carry. A
+    raw positive id in the config only matches internal keys while every
+    ``get_entity`` succeeds; on the numeric fallback path the raw id is used
+    as-is while live events still use the marked form, silently re-creating
+    the watermark/lock key split this module guards against.
+    ``utils.get_peer_id`` cannot repair this: a positive integer is ambiguous
+    (user vs channel), so the split condition is only surfaced, not auto-fixed.
+    """
+    try:
+        value = int(channel)
+    except (TypeError, ValueError):
+        return
+    if value > 0:
+        print(
+            f"[WARNING] Channel {channel!r} is a raw positive id. "
+            f"Telegram's marked channel id is the negative '-100...' form "
+            f"live events use; a positive id only matches internal keys when "
+            f"get_entity always succeeds. Prefer the marked form to avoid a "
+            f"split watermark/lock key on the numeric fallback path."
+        )
+
+
 async def _resolve_channel_ids(client, channels):
     """Resolve every configured Telegram channel identifier to its canonical
-    numeric chat id (the Telethon entity id), preserving order.
+    numeric chat id (the marked id Telethon uses for ``event.chat_id``),
+    preserving order.
 
     This is the production startup/recovery/live-path counterpart to
     ``TelegramChannelJobSource._resolve_channel_id`` (used by the poll-mode
@@ -321,12 +368,13 @@ async def _resolve_channel_ids(client, channels):
     resolve a username/alias to its numeric chat id just as reliably as it
     resolves a numeric id to itself.
 
-    Returning the canonical numeric chat id for every channel is what lets
+    Returning the canonical marked chat id for every channel is what lets
     the live loop key its whole channel state machine (``channel_locks``,
     ``recovery_blocked``, ``retry_wake``, ``failure_generation``) and the
-    durable watermark by ONE canonical identity. A configured numeric id
-    resolves to itself (the existing numeric deployment is unchanged); a
-    configured username/alias resolves to the numeric chat id it denotes, so
+    durable watermark by ONE canonical identity -- the same id Telethon
+    puts on ``event.chat_id`` and ``message.chat_id``. A configured numeric
+    id resolves to itself (the existing numeric deployment is unchanged); a
+    configured username/alias resolves to the marked chat id it denotes, so
     ``"@channel"`` and ``"-1001234567890"`` cannot create duplicate state
     when they name the same Telegram channel.
 
@@ -347,7 +395,7 @@ async def _resolve_channel_ids(client, channels):
                 client.get_entity(channel),
                 label=f"Telegram get_entity({channel!r})",
             )
-            resolved_ids.append(chat.id)
+            resolved_ids.append(_marked_chat_id(chat))
         except Exception:
             # A numeric identifier is already the canonical chat id and
             # can be used as-is even when get_entity fails (e.g. an
@@ -361,6 +409,7 @@ async def _resolve_channel_ids(client, channels):
             # unavailable and will be retried on the next startup.
             try:
                 int(channel)
+                _warn_raw_positive_channel_id(channel)
                 resolved_ids.append(channel)
             except (TypeError, ValueError):
                 print(
@@ -1203,8 +1252,9 @@ class TelegramChannelJobSource(JobSource):
 
     async def _resolve_channel_id(self, channel):
         # One canonical identity per configured channel, resolved lazily and
-        # cached for the source's lifetime. Using the resolved numeric chat
-        # id (instead of the raw configured token) means poll(), mark_seen(),
+        # cached for the source's lifetime. Using the resolved marked chat id
+        # (the same form Telethon puts on event.chat_id, instead of the raw
+        # configured token) means poll(), mark_seen(), the durable watermark
         # and job["identity_source"] all agree on the SAME key whether the
         # configuration names the channel by numeric id, username, or alias.
         #
@@ -1222,7 +1272,7 @@ class TelegramChannelJobSource(JobSource):
                     self.client.get_entity(channel),
                     label=f"Telegram get_entity({channel!r})",
                 )
-                resolved = str(chat.id)
+                resolved = str(_marked_chat_id(chat))
             except Exception:
                 resolved = None
         if resolved is None:
@@ -1235,6 +1285,7 @@ class TelegramChannelJobSource(JobSource):
             # identity and live events fire under another.
             try:
                 int(channel)
+                _warn_raw_positive_channel_id(channel)
                 resolved = str(channel)
             except (TypeError, ValueError):
                 print(
