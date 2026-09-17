@@ -71,28 +71,37 @@ def _generate_response(
     staying well under the range that triggered that rejection.
     """
     if max_tokens is None:
-        max_tokens = int(os.getenv("GROQ_NOTIFICATION_GUARD_MAX_OUTPUT_TOKENS", "500"))
+        max_tokens = int(os.getenv("GROQ_NOTIFICATION_GUARD_MAX_OUTPUT_TOKENS", "800"))
 
-    return client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "system",
-                "content": system_prompt,
+    try:
+        return client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                },
+                {
+                    "role": "user",
+                    # Single source of truth for the guard's user-turn
+                    # prompt structure (including the untrusted-content
+                    # framing) -- see app.notification_guard.prompt.
+                    "content": build_prompt(title, description),
+                },
+            ],
+            response_format={
+                "type": "json_object",
             },
-            {
-                "role": "user",
-                # Single source of truth for the guard's user-turn
-                # prompt structure (including the untrusted-content
-                # framing) -- see app.notification_guard.prompt.
-                "content": build_prompt(title, description),
-            },
-        ],
-        response_format={
-            "type": "json_object",
-        },
-        max_tokens=max_tokens,
-    )
+            max_tokens=max_tokens,
+        )
+    except Exception as exc:
+        error_text = str(exc).lower()
+        if "json_validate_failed" in error_text and "max completion tokens" in error_text:
+            raise rate_limit_tracker.TruncatedResponseError(
+                "Completion was cut off by max_tokens before finishing its "
+                "JSON (Groq json_validate_failed: max completion tokens reached)."
+            ) from exc
+        raise
 
 
 def _raise_if_truncated(response):

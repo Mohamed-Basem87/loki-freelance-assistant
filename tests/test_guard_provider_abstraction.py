@@ -22,6 +22,8 @@ from app.notification_guard import config as guard_config
 from app.notification_guard import guard as guard_module
 from app.notification_guard import provider as provider_module
 from app.notification_guard.groq import GroqNotificationGuard
+from app.notification_guard.groq import _generate_response
+from app.llm import rate_limit_tracker
 
 FAKE_ID = "fake"
 FAKE_MODEL = "fake-model"
@@ -546,3 +548,55 @@ def test_evaluate_guard_uses_get_guard_providers_at_call_time(monkeypatch):
     allowed, provider_id, model = guard_module._evaluate_guard("t", "d", "p")
     assert allowed is True
     assert provider_id == FAKE_ID
+
+
+def test_guard_generates_400_json_validate_failed_as_truncation(monkeypatch):
+    """Same Groq json_object truncation failure mode as the main pipeline
+    (see test_llm_groq.py): a 400 json_validate_failed whose
+    failed_generation text is 'max completion tokens reached before generating
+    a valid document' is a response cut off by the output-token cap, and the
+    guard's _generate_response must normalize it to TruncatedResponseError so
+    run_with_rotation treats it as per-request (no candidate blacklist) rather
+    than the 400 falling into the 'mark permanently broken' bucket (the real
+    production failure this guards against)."""
+
+    class _Raises400(RuntimeError):
+        def __init__(self, msg):
+            super().__init__(f"Error code: 400 - {msg}")
+
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            raise _Raises400(
+                "{'error': {'message': \"Failed to generate JSON. Please "
+                "adjust your prompt. See 'failed_generation' for more "
+                "details.\", 'type': 'invalid_request_error', 'code': "
+                "'json_validate_failed', 'failed_generation': 'max "
+                "completion tokens reached before generating a valid "
+                "document'}}"
+            )
+
+    class _FakeChat:
+        completions = _FakeCompletions()
+
+    class _FakeClient:
+        chat = _FakeChat()
+
+    monkeypatch.setattr(
+        "app.notification_guard.groq._clients",
+        lambda: [_FakeClient()],
+    )
+    monkeypatch.setattr(
+        "app.notification_guard.groq.NOTIFICATION_GUARD_MODELS",
+        ("openai/gpt-oss-120b",),
+    )
+
+    provider = GroqNotificationGuard()
+
+    def make_thunk(client, model):
+        def thunk():
+            _generate_response(client, model, "title", "desc", "system")
+        return thunk
+
+    with pytest.raises(rate_limit_tracker.TruncatedResponseError):
+        for _candidate_id, _label, thunk in provider._candidates(make_thunk):
+            thunk()
