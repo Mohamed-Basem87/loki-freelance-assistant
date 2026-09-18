@@ -7,7 +7,7 @@ def test_registry_has_data_analysis():
     ids = [p.id for p in profiles]
     assert "data_analysis" in ids
     assert "full_stack" in ids
-    assert len(ids) == 7
+    assert len(ids) == 8
 
 
 def test_direct_match_selects_one_final_category():
