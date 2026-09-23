@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 with (BASE_DIR / "config" / "project.json").open(encoding="utf-8") as _f:
