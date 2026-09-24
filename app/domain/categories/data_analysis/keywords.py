@@ -206,6 +206,12 @@ POSITIVE_KEYWORDS = {
             "dimension table": 4,
             "snowflake schema": 4,
             "cohort analysis": 4,
+            # Goal A lone-core supporting (2026-09-24 Goal-A audit):
+            # 5048 'Pharmacoepidemiology EHR Analysis' was lone-core
+            # data-analysis needs_gemini (< 5 supporting) despite a wholly
+            # DA deliverable. Word-boundary exclusive across the window and
+            # DB-accepted populations; zero delivery collateral in replay.
+            "cohort studies": 2,          # 5048 EHR (supp analysis 3 -> 5)
             "customer segmentation": 4,
             "data validation": 3,
             "data curation": 3,
@@ -891,6 +897,15 @@ HARD_REJECT_KEYWORDS = {
     # as mobile_app).  Rowid 13128 contains these phrases literally;
     # hard-rejecting avoids wasting Gemini API calls.
     "wearable electronics", "embedded firmware",
+    # Arbitration-none sweep (2026-09 run-c audit): deterministic rejects for
+    # the 53 single-arb none jobs. Validated via clear_keyword_profile_cache
+    # replay over DB-accepted + window-accepted + 5 flip-risk rows: 0 flips,
+    # no change to flip-risk 3810/3912/3969/4184/4387 (still arbitration).
+    "pharmacy assistant", "tours agency", "procurement specialist",
+    "office manager", "property consultant", "hr coordinator",
+    "receptionist", "administration coordinator", "senior fp&a",
+    "senior property", "foreign procurement", "cost engineer",
+    "tender business", "contact scrape", "linkedin company",
 }
 
 

@@ -321,6 +321,35 @@ POSITIVE_KEYWORDS = {
             "labeling": 3,
         },
     },
+
+    # Arabic AI-imaging / AI-search builds (2026-09-24 run 1 gate review).
+    # Two Arabic deterministic FNs had ZERO ai_ml vocabulary: 3929
+    # (library search engine 'محرك بحث' powered by 'الذكاء الاصطناعي')
+    # and 4974 ('نظام ذكاء اصطناعي لتحليل صور الأشعة السينية':
+    # deep learning, computer vision, Streamlit UI -- Arabic
+    # 'رؤية حاسوبية'/'تعلم عميق'/'تحليل صور'). Both rejected
+    # insufficient_signal with no LLM arbitration. Collocations only;
+    # bare nouns stay unscored. Lone-core hits route to needs_gemini.
+    "arabic_ai_builds": {
+        "core": {
+            "محرك بحث": 7,
+            "تحليل صور": 7,
+            "صور الاشعة": 7,
+            "صور الاشعه": 7,
+            "الاشعة السينية": 7,
+            "الاشعه السينيه": 7,
+            "رؤية حاسوبية": 7,
+            "رؤيه حاسوبيه": 7,
+            "تعلم عميق": 7,
+            "تعلم آلي": 6,
+            "بحث ذكي": 6,
+        },
+        "supporting": {
+            "طبيب اشعة": 5,
+            "راديو": 4,
+            "كشف العظام": 4,
+        },
+    },
 }
 
 
@@ -642,11 +671,13 @@ HARD_REJECT_KEYWORDS = {
     # Arbitration-none sweep (2026-08-26 run 14): 0 accepted corpus hits.
     # 'lead generation' REMOVED from HARD_REJECT (2026-09-13 run 2): run-1
     # edit3 removed it from backend but mobile_app/ai_ml still hard-rejected.
-    # rowid 19032 'Factory Office Automation Bots' (ERP/backend automation
-    # build) died Hard-Reject on this phrase -- genuine build scope with a
-    # marketing sub-task. Backend/marketing negative cores already route
-    # pure marketing and build+marketing hybrids to arbitration.
-    "digital marketing",
+    # 'digital marketing' REMOVED from HARD_REJECT (2026-09-24 fn_llm pass,
+    # rowid 4672 'Autonomous AI Marketing Agent Creation'): same
+    # enumeration-misfire pattern already documented in backend/frontend/
+    # mobile_app -- the phrase lives inside genuine AI build scopes (4672 is a
+    # LangChain/CrewAI/RAG agent build). 'digital marketing' stays a NEGATIVE
+    # core (marketing family, weight 8) so pure marketing still rejects and
+    # build+marketing hybrids route to arbitration via mixed_core_signals.
     "task creator",
     # Gambling/real-money gaming products are out of scope (policy block).
     "gambling", "casino", "igaming", "jackpot", "poker", "roulette",
@@ -700,6 +731,20 @@ HARD_REJECT_KEYWORDS = {
     # as mobile_app).  Rowid 13128 reached ai_ml via guard; hard-rejecting
     # at keyword layer avoids wasting Gemini API calls.
     "wearable electronics", "embedded firmware",
+    # Arbitration-none sweep (2026-09 run-c audit): deterministic rejects for
+    # the 53 single-arb none jobs. Validated via clear_keyword_profile_cache
+    # replay over DB-accepted + window-accepted + 5 flip-risk rows: 0 flips,
+    # no change to flip-risk 3810/3912/3969/4184/4387 (still arbitration).
+    "reputation management", "online reputation", "orm specialist",
+    # 'nutrition whatsapp'/'virtual nutrition'/'nutrición whatsapp' REMOVED
+    # from HARD_REJECT (2026-09-24 fn_llm pass, rowid 5018 'Asistente
+    # Virtual Nutrición WhatsApp'): genuine Spanish WhatsApp chatbot build
+    # (chatbot core hit) that the run-C none-sweep HR buried deterministically.
+    # Only 5018 matches these phrases across the latest-1000 corpus; removing
+    # them lets ai_ml nominate the chatbot as an arbitration candidate
+    # (report Fix #2). 0 collateral. 'excel data'/'entry cleanup' kept.
+    "excel data",
+    "entry cleanup",
 }
 
 

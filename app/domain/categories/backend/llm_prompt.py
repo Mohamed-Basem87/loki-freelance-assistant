@@ -58,6 +58,16 @@ Reject when the primary deliverable is instead:
 - Education or tutoring
 - Another non-backend deliverable
 
+NOT-A-JOB SELF-PROMOTION / SERVICE AD (2026-09-24 run 1, rowid 4930):
+A posting where a freelancer advertises their OWN availability and services
+("I'm available for live projects, freelance contracts, and mentorship",
+portfolio/experience pitches, "I deliver clean production-ready code") is not
+a client project at all -- there is no client paying for a deliverable.
+Answer "none" (no project) even when the self-promotion is stuffed with
+in-scope keywords (MERN stack, React, Node, MongoDB, JWT, CI/CD). The
+presence of the freelancer's goal ("I'm available for", "what I bring",
+"recent work", "hire me") marks a service ad, not a project request.
+
 Do not let secondary backend features make a primarily
 non-backend project acceptable.
 

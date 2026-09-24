@@ -80,6 +80,48 @@ whenever the actual work is as described below:
   CMS is development and must be approved; "من الصفر"/"from scratch"
   makes the build intent explicit.
 
+HARD RULE AGAINST MISSED IN-SCOPE BUILDS (2026-09-24 run 1 gate
+review; rowids 3840/4112/4175/4261/4963/4981):
+The following were wrongly suppressed at the guard and MUST be approved
+whenever the actual work is as described below:
+
+- Site/story REBUILD or replica on a fresh platform: rebuilding the
+  pages of a site that went down (virus, outage, migration off a dead
+  host) on a new CMS/platform -- recreating design, layout, copy,
+  images, navigation, forms, and basic on-page SEO -- is a BUILD of the
+  site, not mere server migration. Approve it (3840 "Replicate My
+  WordPress Site": 5 public pages recreated with preserved forms and
+  SEO). Only reject an admin-only move of a working site byte-for-byte
+  onto new hosting with zero page work.
+- Storefront launch with real styling/sections: building/polishing a
+  storefront on an installed theme with palette application, homepage
+  banner construction, product-page composition, quick-view,
+  review blocks, mobile optimization is DEVELOPMENT even when the title
+  says "setup" (4112 Shopify "Dawn Festive Store Setup"). Reject only
+  when literally nothing beyond installing an existing theme and
+  entering text is requested.
+- Code-level payment-gateway integration into a store (custom plugin/
+  webhook wiring, sandbox->live, PCI) is development, not "setup" even
+  when the phrase "payment gateway setup" appears (4175 Thai
+  WooCommerce gateway with cards + bank transfer + webhooks).
+- New site builds that pull live data/booking via an API are full
+  builds, not "plugin config": a rental/property site with gallery,
+  virtual tour, Airbnb-synced live calendar, on-site booking/payments
+  and reviews is development (4261). The presence of a booking tool or
+  API does not demote the build to configuration.
+- Completing a near-ready store into a working one -- configuring
+  platform Commerce for bookings/payments, creating service entries,
+  checkout flow, mobile QA -- is build/completion work when it turns
+  the store operational (4963 Squarespace "almost ready" -> fully
+  operational services store). Distinguish from mere ongoing product
+  entry, which stays rejected.
+- Platform version upgrades that include implementing/adapting a modern
+  responsive theme and rebuilding views (not just running an updater/
+  migration script) are development; the theme/build half is genuine
+  in-scope work and must not be blanketed as "migration" (4981 Drupal
+  7 -> 10 with theme + module + view rebuild). Only a pure migration
+  script run with no theming/rebuild remains rejected.
+
 The following are also genuine frontend builds and MUST be approved even
 when framed around a student/final-year/university project (2026-09-13
 run 2): a real, implementable web build with concrete deliverables --

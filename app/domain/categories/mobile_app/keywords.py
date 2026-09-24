@@ -129,6 +129,21 @@ POSITIVE_KEYWORDS = {
             # 3 rejected including genuine build 11283 PWA app.
             "تطبيق لتعليم": 7,
             "تطبيق تعليمي": 7,
+            # Arabic game/top-up-store app class (2026-09-24 run 1 gate
+            # review): 4490 'متجر MOON لشحن انواع البرامج -- موقع شحن
+            # تطبيقات والعاب اندريد او تطبيق شحن' (mobile top-up / in-app
+            # purchase store) rejected insufficient_signal with ZERO Arabic
+            # app vocabulary beyond generic تطبيق. Collocations only;
+            # 'متجر'/'تطبيق' bare stay unscored/supporting-2.
+            "تطبيق شحن": 7,
+            "شحن تطبيقات": 6,
+            "شحن العاب": 6,
+            "شحن الالعاب": 6,
+            "متجر شحن": 6,
+            "شحن بلايستيشن": 6,
+            "شحن بليستيشن": 6,
+            "شحن فيفا": 5,
+            "شحن يوتيوب": 5,
             },
         "supporting": {
             "app development": 4,
@@ -190,6 +205,13 @@ POSITIVE_KEYWORDS = {
             "analytics": 2,
             "app store optimization": 4,
             "aso": 4,
+            # Goal A lone-core supporting (2026-09-24 Goal-A audit):
+            # 5211 Bengali 'Android-controlled robotic arm' was lone-core
+            # gps needs_gemini (< 5 supporting) despite a wholly mobile-app
+            # deliverable (Android Studio app controlling the arm via
+            # Bluetooth). Word-boundary exclusive across the window and
+            # DB-accepted populations; zero delivery collateral in replay.
+            "internet of things": 5,          # 5211 robotic arm (mobile + IoT)
         },
     },
 }
@@ -782,6 +804,14 @@ HARD_REJECT_KEYWORDS = {
     # 'AI-Powered Football Shorts Prototype' literally contains both phrases;
     # hard-rejecting avoids wasting Gemini API calls.
     "wearable electronics", "embedded firmware",
+    # Arbitration-none sweep (2026-09 run-c audit): deterministic rejects for
+    # the 53 single-arb none jobs. Validated via clear_keyword_profile_cache
+    # replay over DB-accepted + window-accepted + 5 flip-risk rows: 0 flips,
+    # no change to flip-risk 3810/3912/3969/4184/4387 (still arbitration).
+    "android testers", "manual testing", "software testing",
+    "test the mobile app", "electrical maintenance", "maintenance engineer",
+    "apple store", "رفع تطبيقي", "متجر بلاي", "حالات اختبار",
+    "mobile app test", "qa tester", "app testing", "root unroot",
 }
 
 

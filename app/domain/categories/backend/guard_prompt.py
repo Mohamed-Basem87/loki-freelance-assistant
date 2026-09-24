@@ -113,6 +113,19 @@ tool configuration with no code construction on the client's own account
 scripted-automation build with real engineering (scheduling, change
 detection, dual-channel alerting, session/2FA handling), approve it.
 
+PIPELINE PERFORMANCE/OPTIMIZATION ENGINEERING IS BACKEND WORK
+(2026-09-24 run 1, rowid 4987):
+Diagnosing and fixing bottlenecks in an EXISTING server-side application
+-- profiling a Python/FastAPI video pipeline, refining FFmpeg filter
+graphs, making async calls smarter, improving asset-matching logic,
+reducing redundant downloads, and delivering before/after benchmarks -- is
+genuine backend performance engineering worth notifying, not clerical
+"optimization" maintenance. The client pays for code-level diagnosis,
+refactor, and measurable improvement of server-side logic. Only reject
+performance/optimization postings that are purely operational (cache/CDN
+toggles, server resource sizing, config-only tuning) with no code-level
+engineering requested.
+
 REJECT when the PRIMARY DELIVERABLE is operational or clerical rather
 than engineering. Common patterns:
 

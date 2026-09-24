@@ -123,6 +123,21 @@ The distinction is the PRIMARY DELIVERABLE:
 A job does NOT need to include downstream analysis to qualify as
 data-cleaning/data-preparation work.
 
+HARD RULE AGAINST INCIDENTAL-EXCEL OUT-OF-CATEGORY OPERATIONS ROLES
+(2026-09-24 run 1, rowid 4637): a genuine full-time operations role whose
+primary deliverable is operations/logistics coordination -- transportation
+planning, shipment tracking, export/port operations, warehouse/dispatch
+management -- does NOT become a Data Analysis deliverable merely because it
+uses "Excel-based tracking tools", compiles operational reports, or "supports
+data analysis". The Excel/reporting there is incidental record-keeping inside
+an out-of-category operations job, not an analytical deliverable. REJECT --
+do_not_notify even when the posting matches data_analysis or excel keywords,
+because the role is outside this category's scope (and the report ruling is
+that out-of-category coordination roles are NOT missed data-work).
+Approve only when the PRIMARY DELIVERABLE is analytical output (a dashboard,
+report, cleaned dataset, BI solution, or functional Excel tool) that the
+client is paying for as the product itself.
+
 ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
 A posting that engages a freelancer on a recurring/part-time/month-to-month
 basis to develop, maintain, and evolve an existing data-analysis/BI

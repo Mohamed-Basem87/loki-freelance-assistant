@@ -32,6 +32,11 @@ POSITIVE_KEYWORDS = {
             "ngrx": 4,
             "recoil": 4,
             "jotai": 4,
+            # Goal A lone-core supporting (2026-09-24 Goal-A audit):
+            # 5066 'Líder Técnico / Team Lead + Programador' (Spanish React
+            # team-lead) was lone-core react < 5 -> needs_gemini despite a
+            # wholly-frontend deliverable. Delivery-identical reroute only.
+            "proyectos desarrollados con react": 5,
         },
     },
 
@@ -348,6 +353,24 @@ POSITIVE_KEYWORDS = {
             # had ZERO vocabulary coverage -> silent reject. CORE here AND
             # in backend -> ambiguity -> full_stack arbitration.
             "موقع اجتماعات": 7,
+            # Arabic streaming-site / admin-system builds (2026-09-24 run 1
+            # gate review). Five Arabic deterministic FNs had ZERO frontend
+            # vocabulary: 4095 (Netflix/OSN-style streaming site
+            # 'موقع أفلام ومسلسلات'), 4196 (Umrah-agency admin system,
+            # 'لوحة التحكم الرئيسية Dashboard'), 4843 ('سيستم ادارة متجر'),
+            # 4848 ('سيستم ادارة بنك'), 5075 (full platform + payment
+            # gateways + domain hookup). All rejected insufficient_signal
+            # without reaching the LLM. Collocations only -- bare نظام/موقع/
+            # منصة/متجر stay in NOISE_KEYWORDS. 'نظام ادارة'/'سيستم ادارة'
+            # mirrored CORE here AND in backend (منصة ويب pattern) so the
+            # admin-system class produces two direct matches ->
+            # needs_gemini -> full_stack arbitration. Streaming collocation
+            # is lone-core (arbitrates) unless read directly.
+            "نظام ادارة": 7,
+            "سيستم ادارة": 7,
+            "افلام ومسلسلات": 6,
+            "منصة كاملة": 7,
+            "منصه كامله": 7,
         },
         "supporting": {
             # Store mention alone is not web-dev evidence (customer service,
@@ -372,7 +395,12 @@ POSITIVE_KEYWORDS = {
             "منصة تدريب": 6,
             # English LMS/exam-platform build vocabulary (supporting tier:
             # course-content gigs also use these words).
-            "lms": 4,
+            "لms": 4,
+            "الداش بورد": 6,
+            "سيستم لوحة تحكم": 6,
+            "اللوحة الرئيسية": 5,
+            "لوحة تحكم": 4,
+            "لوحه تحكم": 4,
             "learning platform": 4,
             "e-learning": 4,
             "elearning": 4,
@@ -381,6 +409,17 @@ POSITIVE_KEYWORDS = {
             "template": 3,
             "custom theme": 4,
             "custom plugin": 4,
+            # Goal A lone-core supporting (2026-09-24 Goal-A audit):
+            # delivery-identical website-build reroutes that were lone-core
+            # needs_gemini (< 5 supporting) despite wholly-frontend
+            # deliverables. Each phrase is word-boundary exclusive to its
+            # target across the window and DB-accepted populations; zero
+            # delivery collateral in replay.
+            "publishing articles": 5,              # 4850 blog website
+            "testimonials page": 5,                # 5151 service website
+            "stripe payment integration": 5,       # 5164 stripe class (target itself stays blocked: backend 'stripe' title core)
+            "customer facing websites": 5,         # 5258 website changes
+            "article section": 2,                  # 5302 healthcare site (supp theme 3 -> 5)
         },
     },
 
@@ -832,6 +871,13 @@ HARD_REJECT_KEYWORDS = {
     # as mobile_app).  Rowid 13128 reached frontend via guard; hard-rejecting
     # at keyword layer avoids wasting Gemini API calls.
     "wearable electronics", "embedded firmware",
+    # Arbitration-none sweep (2026-09 run-c audit): deterministic rejects for
+    # the 53 single-arb none jobs. Validated via clear_keyword_profile_cache
+    # replay over DB-accepted + window-accepted + 5 flip-risk rows: 0 flips,
+    # no change to flip-risk 3810/3912/3969/4184/4387 (still arbitration).
+    "shopify consent", "gtm setup", "x-band",
+    "single executable", "compile source", "manual website",
+    "wordpress security", "حملة تسويقية", "factledger", "meta tiktok",
 }
 
 

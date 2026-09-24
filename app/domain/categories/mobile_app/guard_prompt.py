@@ -34,12 +34,29 @@ plus performance tuning or optimization of the app's OWN database or
 backend services ARE mobile development work. Approve them whenever
 an iOS/Android deliverable is part of the job.
 
+STORE-PUBLISHING-ONLY IS NOT WORK (2026-09-24 run 1 ruling):
+Publish-only / upload-only engagements for an ALREADY-BUILT app are
+not development work and are never a miss: turning a finished app or
+assets into a store listing (App Store Connect metadata, build/archive
+upload, provisioning/signing, submission and review follow-up of an
+existing binary) with no building or modifying of the app itself is
+REJECT -- do_not_notify, exactly as the classifier-arbitration LLM
+already rejects these. Only approve deployment/release work when the
+app (or a substantial part of it) is actually being built, signed, or
+modified within this same job. Ask what the client pays for: building
+or changing the app vs. merely publishing an already-complete app.
+
 For example:
 
 ACCEPT:
 "A cross-platform iOS/Android app is nearly feature-complete; set up
 release signing and store deployment, and optimize its MongoDB
 database."
+
+REJECT:
+"Publish my existing Angular iOS app: provisioning, code-signing,
+archive, App Store Connect metadata, submit for review." -- upload-only
+of an already-built app, no app development in this job.
 
 The "Database design and management" reject below means STANDALONE
 database administration work with no mobile app involved -- not the
@@ -61,14 +78,18 @@ HARD RULE AGAINST MISSED IN-SCOPE MONETIZATION/RELEASE WORK
 (2026-09-02 run 31):
 Mobile app subscription, in-app-purchase, and free-trial configuration
 on App Store Connect / Google Play Console, RevenueCat setup, and
-store payload/deployment configuration for an EXISTING mobile app ARE
-in scope -- this is app monetization/release engineering, not account
+store payload/release configuration for an EXISTING mobile app ARE in
+scope -- this is app monetization/release engineering, not account
 administration and not a new build. 12667 (Apple + Google subscription
 free-trial setup with RevenueCat) was wrongly suppressed in run 31.
 Approve subscription/IAP/trial/paywall and release-store configuration
-when it targets a mobile app's monetization or release. Only reject
+when it targets a mobile app's monetization or release, as long as it
+involves app-level configuration (product setup, entitlements, SDK/
+payload work) of a real app the client owns and runs. Only reject
 pure developer-account ADMINISTRATION (renewing membership, changing
-Account Holder) with no app-level deliverable.
+Account Holder) with no app-level deliverable, and -- per the
+2026-09-24 run 1 ruling -- upload-only/publish-only store work with no
+app configuration or development at all.
 
 REJECT when the PRIMARY DELIVERABLE is:
 
@@ -85,6 +106,16 @@ REJECT when the PRIMARY DELIVERABLE is:
   regardless of any positive keywords, including moderation, detection,
   filtering, or analytics tooling for dating and any job materially
   related to dating.
+  KEYWORD-CONTEXT NOTE (2026-09-24 run 1, rowid 4330): the blocklist
+  target is work whose deliverable IS a dating/matchmaking product.
+  A job whose scope REMOVES dating functionality -- e.g. "remove the
+  dating layer (discovery, swipe, likes, matches) from an existing
+  social app; keep auth/IAP/push/users; apply a Figma redesign;
+  upgrade chat with admin roles" -- is NOT a dating deliverable and the
+  mere word "dating" in the description must not trigger a blanket
+  reject. Judge the primary deliverable: ACTUALLY building dating/
+  matchmaking features = reject; REMOVING dating features and building
+  general social/chat/UI work = approve if otherwise in scope.
 - Adult/sexually-explicit deliverables: porn/paysite/adult websites or
   platforms (including adult video-distribution sites), escort or
   adult-service platforms, sexually-explicit games (including NSFW

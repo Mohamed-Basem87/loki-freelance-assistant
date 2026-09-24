@@ -356,6 +356,37 @@ POSITIVE_KEYWORDS = {
         },
     },
 
+    # Arabic book-layout / calligraphy-vector / bot-visual builds
+    # (2026-09-24 run 1 gate review). Three Arabic deterministic FNs had
+    # ZERO graphic_design vocabulary: 4732 (تنسيق كتاب مع الصور -- book
+    # layout/typesetting with images), 5070 (خط قصيدة بخط الثلث بصيغة
+    # فيكتور -- Thuluth calligraphy poem vector), 4447 (تحديث تصاميم بوت
+    # Discord وموقعه -- visual refresh of a Discord bot + its site).
+    # All rejected insufficient_signal with no LLM arbitration.
+    # Collocations only; lone-core hits route to needs_gemini.
+    "arabic_book_vector_bot": {
+        "core": {
+            "تنسيق كتاب": 7,
+            "تخطيط كتاب": 7,
+            "تحرير كتاب": 6,
+            "خط الثلث": 8,
+            "خط عربي": 7,
+            "خطاط": 7,
+            "صيغة فيكتور": 7,
+            "فيكتور": 6,
+            "تصميم بوت": 6,
+            "تصاميم بوت": 6,
+            "بوت ديسكورد": 6,
+            "بوت ديسكورد وموقعه": 6,
+        },
+        "supporting": {
+            "كتاب": 2,
+            "انيق": 3,
+            "خط": 2,
+            "بوت": 2,
+        },
+    },
+
     # --- General Arabic/creative design vocabulary (weak, aggregation only) ---
     "arabic_general": {
         "supporting": {
@@ -678,6 +709,12 @@ HARD_REJECT_KEYWORDS = {
     "free logo",
     "logo contest",
     "design contest",
+    # Arbitration-none sweep (2026-09 run-c audit): deterministic rejects for
+    # the 53 single-arb none jobs. Validated via clear_keyword_profile_cache
+    # replay over DB-accepted + window-accepted + 5 flip-risk rows: 0 flips,
+    # no change to flip-risk 3810/3912/3969/4184/4387 (still arbitration).
+    "course development", "powerpoint course", "نشر كتابي",
+    "دور النشر", "صانع محتوى",
 }
 
 # Noise: intentionally unscored terms that are too ambiguous to classify.

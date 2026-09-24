@@ -41,6 +41,16 @@ category's scope (full-stack web developer or web app developer): approve
 them even with no concrete project spec. Only do_not_notify when the role
 is outside this category's scope.
 
+NOT-A-JOB SELF-PROMOTION / SERVICE AD (2026-09-24 run 1, rowid 4930):
+A posting where a freelancer advertises their OWN availability and services
+("I'm available for live projects, freelance contracts, and mentorship",
+portfolio/experience pitches, "I deliver clean production-ready code",
+"What I bring", "recent work", "hire me") is NOT a client project -- there
+is no client paying for a deliverable. do_not_notify even when the
+self-promotion is stuffed with in-scope keywords (MERN, React, Node,
+MongoDB, JWT, CI/CD). No freelancer-less client = no deliverable = no
+notification.
+
 REJECT when the PRIMARY DELIVERABLE is:
 
 - Gambling, betting, casino, sports betting, bookmaker/sportsbook,

@@ -607,6 +607,11 @@ HARD_REJECT_KEYWORDS = {
     # as mobile_app).  Rowid 13128 contains these phrases literally;
     # hard-rejecting avoids wasting Gemini API calls.
     "wearable electronics", "embedded firmware",
+    # Arbitration-none sweep (2026-09 run-c audit): deterministic rejects for
+    # the 53 single-arb none jobs. Validated via clear_keyword_profile_cache
+    # replay over DB-accepted + window-accepted + 5 flip-risk rows: 0 flips,
+    # no change to flip-risk 3810/3912/3969/4184/4387 (still arbitration).
+    "colour prediction", "color prediction",
 }
 
 

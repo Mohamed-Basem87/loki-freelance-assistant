@@ -132,6 +132,13 @@ POSITIVE_KEYWORDS = {
             "swagger": 4,
             "openapi": 4,
             "postman": 3,
+            # Goal A lone-core supporting (2026-09-24 Goal-A audit):
+            # delivery-identical reroutes that were lone-core needs_gemini
+            # (< 5 supporting) despite wholly-backend deliverables. Each
+            # phrase is word-boundary exclusive to its target across the
+            # window and DB-accepted populations; zero delivery collateral.
+            "vote counts": 2,                  # 4950 influencer voting (supp seed 3 -> 5)
+            "at the money options": 5,         # 5289 TradingView ATM options
         },
     },
 
@@ -472,6 +479,71 @@ POSITIVE_KEYWORDS = {
             "المزاد": 7,
         },
         "supporting": {},
+    },
+
+    # Arabic WhatsApp/booking/database bot builds (2026-09-24 run 1 gate
+    # review). Eight Arabic deterministic FNs had ZERO backend Arabic
+    # vocabulary: 3811 (Python library booking assistant 'بيتون'),
+    # 4019 (print-centre order automation & WhatsApp client replies),
+    # 4240/4345 (BLS/MAFIFA appointment-booking bots, 'لقط مواعيد'),
+    # 4438/4439 (teacher-database form system 'داتا بيس للمعلمين'),
+    # 4599 (PDF uploader into WhatsApp groups), 5124 (WhatsApp auto-reply
+    # bot 'الرد التلقائي'). All were rejected insufficient_signal without
+    # ever reaching the LLM. These collocations route them to needs_gemini
+    # (lone-core rule) so arbitration -- which already classifies them
+    # correctly -- gets to see them. Bare 'بوت'/'واتساب'/'نظام' stay out
+    # (Noise/wildcard collateral); only specific deliverable-collocations
+    # are scored. Transliteration: 'بيتون/بايتون/بيثون/بايثون' = Python.
+    "arabic_bot_booking": {
+        "core": {
+            "بوت واتساب": 6,
+            "بوت واتس اب": 6,
+            "بوت حجز مواعيد": 6,
+            "بوت حجز المواعيد": 6,
+            "لقط مواعيد": 7,
+            "لقط المواعيد": 7,
+            "حجز مواعيد": 6,
+            "حجز موعد": 6,
+            "الرد التلقائي": 6,
+            "الرد الالي": 6,
+            "رد تلقائي": 6,
+            "جروبات واتساب": 6,
+            "جروبات واتس اب": 6,
+            "اتمتة طلبات": 6,
+            "أتمتة طلبات": 6,
+            "بيتون": 6,
+            "بايتون": 6,
+            "بيثون": 6,
+            "بايثون": 6,
+            "داتا بيس": 6,
+        },
+        "supporting": {},
+    },
+
+    # Arabic admin/management-system builds (2026-09-24 run 1 gate review).
+    # Mirrors of frontend 'نظام ادارة'/'سيستم ادارة'/'لوحة تحكم' (منصة ويب
+    # CORE-in-frontend-and-backend pattern): 4196 (Umrah agency admin),
+    # 4843 (store admin), 4848 (bank admin), 5075 (full platform + payment
+    # gateway integration 'بوابات دفع' + domain/email hookup 'ربط الدومين')
+    # were all rejected insufficient_signal for missing Arabic vocabulary.
+    # Two direct matches (frontend + backend) -> needs_gemini -> full_stack
+    # arbitration; 5075's backend-side integration terms add the second
+    # direct match. Bare نظام/موقع/منصة/متجر stay NOISE.
+    "arabic_admin_systems": {
+        "core": {
+            "نظام ادارة": 7,
+            "سيستم ادارة": 7,
+            "نظام إدارة": 7,
+            "نظام ادراه": 7,
+        },
+        "supporting": {
+            "لوحة تحكم": 4,
+            "لوحه تحكم": 4,
+            "بوابات دفع": 6,
+            "بوابه دفع": 6,
+            "ربط الدومين": 6,
+            "ربط دومين": 6,
+        },
     },
 }
 
@@ -881,6 +953,31 @@ HARD_REJECT_KEYWORDS = {
     # as mobile_app).  Rowid 13128 reached backend via guard; hard-rejecting
     # at keyword layer avoids wasting Gemini API calls.
     "wearable electronics", "embedded firmware",
+    # Arbitration-none sweep (2026-09 run-c audit): deterministic rejects for
+    # the 53 single-arb none jobs. Validated via clear_keyword_profile_cache
+    # replay over DB-accepted + window-accepted + 5 flip-risk rows: 0 flips,
+    # no change to flip-risk 3810/3912/3969/4184/4387 (still arbitration).
+    # 'technical interviewer' narrowed to 'technical interviewer needed'
+    # (2026-09-24 Goal-A regression fix): bare phrase falsely hard-rejected
+    # freelancer:40730825 'Python/Django Technical Interviewer' (recorded
+    # backend/Accepted, HEAD->notify_directly); '... needed' still catches the
+    # staffing/repost spam ("Senior Technical Interviewer Needed") without
+    # blocking genuine developer-stack interviewer gigs.
+    "ticket buying", "zoominfo", "executive assistant", "digital growth",
+    "media buyer", "noon listing", "amazon & noon", "internal audit",
+    "cost engineer", "electrical tendering", "warehouse supervisor",
+    "wearhouse supervisor", "presales", "technical interviewer needed",
+    "coding interview", "lead generation expert", "colour prediction",
+    # 'race predictor'/'garmin' REMOVED from hard reject (2026-09-24 fn_llm
+    # pass): 4996 'Garmin Forerunner Race Predictor Connect IQ watch app'
+    # (recorded needs_gemini/data_feed_pipelines+frameworks, Gemini none) is
+    # a genuine wearable-software build (Connect IQ SDK, not firmware
+    # manufacturing). Removing the phrases restores it to arbitration; only
+    # rowid 4996 in the frozen corpus hits them. 'sunroof'/'spoiler' stay:
+    # 5040 car-modification install must keep rejecting.
+    "sunroof", "spoiler",
+    "chief financial officer", "account receivable", "sales partner",
+    "data linking", "meta tiktok",
 }
 
 

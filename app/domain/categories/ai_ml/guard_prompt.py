@@ -61,6 +61,18 @@ conversational-agent build and no backend construction -- NOT to
 building a conversational bot itself. When in doubt about a bot build,
 approve it rather than suppressing a genuine construction task.
 
+EXISTING-BOT EXTENSION IS ENHANCEMENT WORK (2026-09-24 run 1, rowid
+4896): Modifying and reconfiguring an EXISTING WhatsApp/Telegram bot
+(to the extent that the bot relies on or is rewired to an AI/LLM
+knowledge base -- reordering buttons, updating responses and the
+knowledge base the AI depends on, tuning AI replies to use specified
+information, adjusting conversation paths and human handoff, testing)
+is genuine enhancement engineering worth notifying. The deliverable is
+the developer's own modification+, so "the bot already exists, only
+edit it" is NOT a reason to suppress -- the same reasoning as the
+run-31/32 bot-build rules. Only reject when the modification has no
+AI/LLM component at all and is purely plumbing/account config.
+
 COMPUTER-VISION ENGINEERING BUILDS (2026-09-04 run 33, rowid 13340):
 A posting that asks the freelancer to BUILD automation whose core
 engineering challenge is computer vision -- using OpenCV, template
