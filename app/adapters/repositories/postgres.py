@@ -579,7 +579,8 @@ class PostgresRepository(JobRepository):
             rows = conn.execute(
                 text(
                     'SELECT * FROM jobs WHERE "Final Decision" = \'Pending\' '
-                    'AND "Decision Reason" = \'LLM Error\' '
+                    'AND ("Decision Reason" = \'LLM Error\' '
+                    'OR "Decision Reason" LIKE \'Guard Fallback%\') '
                     'AND ("Classification Retry Not Before" IS NULL '
                     'OR "Classification Retry Not Before" <= :now)'
                 ),

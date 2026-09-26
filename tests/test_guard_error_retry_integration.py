@@ -164,8 +164,13 @@ def test_guard_error_leaves_pending_then_retry_completes(monkeypatch):
 
 
 def test_durable_do_not_notify_suppresses_and_stays_suppressed(monkeypatch):
+    # Non-tie-break rows keep the original terminal contract: a durable
+    # guard rejection always ends in "Suppressed" and is never
+    # re-evaluated. (Only multi-candidate tie-break picks go down the
+    # fallback path instead -- see
+    # test_guard_do_not_notify_keyword_direct_falls_back.)
     repo = _FakeRepo()
-    repo.seed(_row(JOB_UUID2))
+    repo.seed(_row(JOB_UUID2, method="arbitration_only"))
     guard = _ScriptedGuard(repo, outcomes=[False])
     _wire(monkeypatch, repo, guard)
 
@@ -180,6 +185,63 @@ def test_durable_do_not_notify_suppresses_and_stays_suppressed(monkeypatch):
     retried = asyncio.run(jp.retry_incomplete_notifications())
     assert retried == 0
     assert guard.calls == [False], "suppressed job must never be re-evaluated"
+
+
+# ------------------------------------------------------------------
+# Test B2 -- a durable do_not_notify on a MULTI-CANDIDATE tie-break
+# pick ("keyword_direct_tiebreak") is NOT terminal: it is re-routed to
+# one LLM arbitration pass by resetting the durable row to a pending
+# classification with the guard-fallback marker. A clean single-
+# candidate keyword-direct pick that the guard rejects stays
+# terminally suppressed (Test B3).
+# ------------------------------------------------------------------
+
+
+def test_guard_do_not_notify_keyword_direct_falls_back(monkeypatch):
+    repo = _FakeRepo()
+    repo.seed(_row(JOB_UUID2, method="keyword_direct_tiebreak"))
+    guard = _ScriptedGuard(repo, outcomes=[False])
+    _wire(monkeypatch, repo, guard)
+
+    asyncio.run(jp._resume_pending_notifications_unlocked(
+        JOB_UUID2, repo.rows[JOB_UUID2]
+    ))
+
+    row = repo.rows[JOB_UUID2]
+    assert guard.calls == [False]
+    assert row["Final Decision"] == "Pending", (
+        "a guard-rejected multi-candidate tie-break pick must go back to "
+        "pending classification instead of being terminally suppressed"
+    )
+    assert row["Needs Gemini"] is True
+    assert str(row["Decision Reason"] or "").startswith("Guard Fallback")
+    assert (row.get("Notification Status") or "") == "", (
+        "notification status must be cleared so the notification sweep "
+        "and the classification retry sweep do not race on the same job"
+    )
+
+    # The cleared notification status means the notification retry sweep
+    # must NOT re-evaluate the guard for this job.
+    retried = asyncio.run(jp.retry_incomplete_notifications())
+    assert retried == 0
+
+
+def test_guard_do_not_notify_single_keyword_direct_suppresses(monkeypatch):
+    repo = _FakeRepo()
+    repo.seed(_row(JOB_UUID6, method="keyword_direct"))
+    guard = _ScriptedGuard(repo, outcomes=[False])
+    _wire(monkeypatch, repo, guard)
+
+    asyncio.run(jp._resume_pending_notifications_unlocked(
+        JOB_UUID6, repo.rows[JOB_UUID6]
+    ))
+
+    assert guard.calls == [False]
+    assert repo.rows[JOB_UUID6]["Notification Status"] == "Suppressed", (
+        "a clean single-candidate keyword-direct pick that the guard "
+        "rejects must be terminally suppressed -- only multi-candidate "
+        "tie-break picks get the fallback rescue"
+    )
 
 
 # ------------------------------------------------------------------

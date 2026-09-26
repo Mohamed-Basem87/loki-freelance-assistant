@@ -242,9 +242,40 @@ async def _resume_pending_notifications_unlocked(job_uuid: str, row: dict):
         # get_latest_guard_decision() == "do_not_notify".)
         decision = await logger.get_latest_guard_decision(job_uuid)
         if decision == "do_not_notify":
-            await logger.update_job(
-                job_uuid, notification_status="Suppressed", save=True
-            )
+            selection_method = row.get("Category Selection Method") or ""
+            if selection_method == "keyword_direct_tiebreak":
+                # GUARD FALLBACK: a multi-candidate tie-break pick that the
+                # guard rejects is re-routed to one LLM arbitration pass
+                # instead of being terminally suppressed. The durable row is
+                # reset to a pending classification so the classification
+                # retry sweep (classification_retry_loop, on
+                # notification_retry_interval) re-enters process_job, which
+                # sees the "Needs Gemini" flag and forces the arbitration
+                # path even though the deterministic tier already produced a
+                # category (see process_job). The guard decision itself stays
+                # durable ("do_not_notify" on the notification_guard table) --
+                # once the arbitration pass completes the job is an LLM-
+                # reviewed row and bypasses the guard exactly as today.
+                # A clean single-candidate keyword-direct pick that the
+                # guard rejects stays terminally suppressed -- only
+                # multi-candidate tie-break picks get rescued.
+                # retry_not_before = time.time() + RUNTIME.notification_retry_interval
+                retry_not_before = time.time() + RUNTIME.notification_retry_interval
+                await logger.update_job(
+                    job_uuid,
+                    final_decision="Pending",
+                    decision_reason="Guard Fallback (multi-candidate tie-break recheck)",
+                    needs_gemini=True,
+                    notification_status="",
+                    classification_retry_not_before=datetime.fromtimestamp(
+                        retry_not_before, tz=timezone.utc
+                    ),
+                    save=True,
+                )
+            else:
+                await logger.update_job(
+                    job_uuid, notification_status="Suppressed", save=True
+                )
         return
 
     await _publish_and_mark_complete(job_uuid, row)
@@ -526,6 +557,24 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
     selected_category_id = classification["category_id"]
     arbitration_required = classification["needs_category_arbitration"]
 
+    # Guard-fallback re-entry: a keyword-direct pick that the guard
+    # rejected was durably reset to a pending classification (see
+    # _resume_pending_notifications_unlocked). The deterministic tier
+    # reproduces the SAME keyword-direct category here, so its
+    # "arbitration_required=False" cannot be trusted on this pass --
+    # force the LLM arbitration path over the deterministic candidate
+    # set instead, making this a real Gemini call that the guard then
+    # bypasses (LLM-reviewed rows skip the guard exactly as today).
+    fallback_recheck = bool(
+        existing_incomplete
+        and existing is not None
+        and existing.get("Needs Gemini")
+        and str(existing.get("Decision Reason") or "").startswith("Guard Fallback")
+    )
+    if fallback_recheck:
+        selected_category_id = None
+        arbitration_required = True
+
     if selected_category_id and selected_category_id in category_results:
         result = dict(category_results[selected_category_id]["result"])
     elif arbitration_required and candidate_ids:
@@ -539,9 +588,17 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
         result = {}
 
     result["category_id"] = selected_category_id or ""
-    result["category_selection_method"] = (
-        "keyword_direct" if selected_category_id else ""
-    )
+    if selected_category_id:
+        if classification.get("multi_candidate_resolved"):
+            # A TRUE multi-candidate tie-break (>= 2 competing categories,
+            # resolved by top score). Only these picks get the guard
+            # fallback rescue -- a clean single-candidate keyword-direct
+            # pick that the guard rejects stays terminally suppressed.
+            result["category_selection_method"] = "keyword_direct_tiebreak"
+        else:
+            result["category_selection_method"] = "keyword_direct"
+    else:
+        result["category_selection_method"] = ""
     result["category_candidates"] = ", ".join(candidate_ids)
 
     filter_time = round(

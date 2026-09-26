@@ -13,6 +13,57 @@ from app.domain.normalize import normalize
 # ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
+# Mixed-category confidence scoring
+#
+# When a job deterministically matches MULTIPLE categories, the old
+# behavior routed to LLM arbitration unconditionally. Instead we now
+# resolve such a job deterministically (saving a Gemini call) whenever
+# the top candidate clears the score threshold for its structure and
+# beats the runner-up by MIXED_CATEGORY_MIN_SCORE_MARGIN. A candidate's
+# confidence score is, in order of authority:
+#   + title core positive   (the job title names the category)
+#   + body core hits * hit weight
+#   + supporting positive weight
+#   - core-negative penalty if the body carries core negatives
+#   - supporting negative weight
+#
+# The picker (classification.select_category) accepts the highest
+# scoring candidate only when:
+#   * it clears the score threshold for its structure, AND
+#   * it beats the runner-up by at least MIXED_CATEGORY_MIN_SCORE_MARGIN.
+# Two base thresholds because the signal is asymmetric: when the top candidate
+# is a notify_directly decision a profile has already formally claimed the
+# job, so a moderate score (10) is enough to trust it; when the top
+# candidate is only a needs_gemini ask (a genuine cross-category fight with
+# no claimed winner) a higher bar (20) keeps precision. Anything else still
+# goes to LLM arbitration.
+# ------------------------------------------------------------------
+MIXED_CATEGORY_CLAIM_DIRECT_SCORE_THRESHOLD = 10.0
+MIXED_CATEGORY_AMBIGUOUS_DIRECT_SCORE_THRESHOLD = 20.0
+MIXED_CATEGORY_MIN_SCORE_MARGIN = 1.0
+
+MIXED_CATEGORY_SCORE_TITLE_CORE_POSITIVE = 12.0
+MIXED_CATEGORY_SCORE_CORE_POSITIVE_HIT = 8.0
+MIXED_CATEGORY_SCORE_SUPPORTING_POSITIVE = 1.0
+MIXED_CATEGORY_SCORE_CORE_NEGATIVE_PENALTY = 25.0
+MIXED_CATEGORY_SCORE_SUPPORTING_NEGATIVE = 0.8
+
+
+def category_select_score(result: dict) -> float:
+    """Confidence score for one keyword_filter() result, used to break
+    ties when multiple categories deterministically match a job."""
+    score = 0.0
+    if result.get("title_core_positive"):
+        score += MIXED_CATEGORY_SCORE_TITLE_CORE_POSITIVE
+    score += MIXED_CATEGORY_SCORE_CORE_POSITIVE_HIT * result.get("core_positive_hit_count", 0)
+    score += MIXED_CATEGORY_SCORE_SUPPORTING_POSITIVE * result.get("supporting_positive_weight", 0)
+    if result.get("has_core_negative"):
+        score -= MIXED_CATEGORY_SCORE_CORE_NEGATIVE_PENALTY
+    score -= MIXED_CATEGORY_SCORE_SUPPORTING_NEGATIVE * result.get("supporting_negative_weight", 0)
+    return score
+
+
+# ------------------------------------------------------------------
 # Keyword matching helpers
 # ------------------------------------------------------------------
 
