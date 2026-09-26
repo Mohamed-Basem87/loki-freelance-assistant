@@ -314,7 +314,6 @@ POSITIVE_KEYWORDS = {
     "generative_ai": {
         "core": {
             "generative ai": 8,
-            "generative ai": 8,
             "diffusion model": 7,
             "stable diffusion": 7,
             "midjourney": 6,
@@ -604,7 +603,6 @@ NEGATIVE_KEYWORDS = {
             "erp": 7,
             "wms": 7,
             "saas": 6,
-            "netsuite": 7,
             "netsuite": 7,
             "business central": 7,
             "dynamics 365": 7,

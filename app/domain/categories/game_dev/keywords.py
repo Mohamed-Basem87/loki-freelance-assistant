@@ -404,7 +404,6 @@ NEGATIVE_KEYWORDS = {
             "wms": 7,
             "saas": 6,
             "netsuite": 7,
-            "netsuite": 7,
             "business central": 7,
             "dynamics 365": 7,
         },
