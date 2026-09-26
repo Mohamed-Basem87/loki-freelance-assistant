@@ -29,6 +29,17 @@ class ClassificationPendingError(RuntimeError):
 CLASSIFICATION_CLAIM_LEASE_SECONDS = 120
 
 
+# Stagger applied when a multi-candidate tie-break pick is re-routed to
+# LLM arbitration after the guard rejects it (guard fallback rescue).
+# Deliberately much shorter than RUNTIME.notification_retry_interval:
+# the rescue is not a failure backoff -- it is a low-latency re-check
+# that should re-arbitrate quickly so a mis-rejected pick is not held
+# for the full general retry cadence (5 min). 60s keeps the 
+# classification retry sweep from hammering the provider while still
+# delivering rescued jobs within about a minute.
+GUARD_FALLBACK_RETRY_INTERVAL_SECONDS = 60
+
+
 # Deterministic namespace for deriving job_uuid from (source, job_id).
 _JOB_UUID_NAMESPACE = uuid.UUID("6f6e6465-7370-4a6f-6273-7570706f7274")
 
@@ -248,19 +259,23 @@ async def _resume_pending_notifications_unlocked(job_uuid: str, row: dict):
                 # guard rejects is re-routed to one LLM arbitration pass
                 # instead of being terminally suppressed. The durable row is
                 # reset to a pending classification so the classification
-                # retry sweep (classification_retry_loop, on
-                # notification_retry_interval) re-enters process_job, which
-                # sees the "Needs Gemini" flag and forces the arbitration
-                # path even though the deterministic tier already produced a
-                # category (see process_job). The guard decision itself stays
-                # durable ("do_not_notify" on the notification_guard table) --
-                # once the arbitration pass completes the job is an LLM-
-                # reviewed row and bypasses the guard exactly as today.
-                # A clean single-candidate keyword-direct pick that the
-                # guard rejects stays terminally suppressed -- only
-                # multi-candidate tie-break picks get rescued.
-                # retry_not_before = time.time() + RUNTIME.notification_retry_interval
-                retry_not_before = time.time() + RUNTIME.notification_retry_interval
+                # retry sweep (classification_retry_loop) re-enters
+                # process_job, which sees the "Needs Gemini" flag and forces
+                # the arbitration path even though the deterministic tier
+                # already produced a category (see process_job). The guard
+                # decision itself stays durable ("do_not_notify" on the
+                # notification_guard table) -- once the arbitration pass
+                # completes the job is an LLM-reviewed row and bypasses the
+                # guard exactly as today. A clean single-candidate
+                # keyword-direct pick that the guard rejects stays
+                # terminally suppressed -- only multi-candidate tie-break
+                # picks get rescued. The rescue stagger is its own short
+                # window (GUARD_FALLBACK_RETRY_INTERVAL_SECONDS, 60s), not
+                # the general notification retry backoff, so re-arbitration
+                # is low-latency rather than waiting out a full retry cycle.
+                retry_not_before = (
+                    time.time() + GUARD_FALLBACK_RETRY_INTERVAL_SECONDS
+                )
                 await logger.update_job(
                     job_uuid,
                     final_decision="Pending",
