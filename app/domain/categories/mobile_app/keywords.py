@@ -46,6 +46,23 @@ POSITIVE_KEYWORDS = {
             "ايفون": 6,
             "اجهزه الايفون": 7,
             "اجهزة الايفون": 7,
+            # Arabic 'فلاتر' = Flutter (2026-09-25 run 48 audit, fn recovery).
+            # Rowid 5305/5313 'مبرمج تطبيقات فلاتر وداتا بيز للموبايل' was
+            # deterministic-rejected (no Arabic Flutter vocabulary; English
+            # 'flutter' present only). Arabic transliteration mirrors the
+            # English 'flutter' in the app-build family, same class as the
+            # ايفون/ios Arabic mirrors above.
+            # Verified 2026-09-25 (diff review): recovers 457/458/5305/5313/
+            # 3543 (genuine Flutter builds) and moves 3540 (accepted, genuine
+            # Flutter mobile app) from arbitration to a correct deterministic
+            # mobile_app notify.
+            # WATCH ITEM - homonym: 'فلاتر' also spells the common Arabic word
+            # for FILTERS. Screened the whole corpus: the only filters-sense
+            # job (709, real-estate 'smart filters') stays at needs_arbitration
+            # both with and without this phrase, so it is NOT wrongly
+            # delivered. No accepted job flips to a wrong delivery. Re-check
+            # this if a filters-sense job is ever delivered as mobile_app.
+            "فلاتر": 8,
             "xcode": 8,
             "playstore": 7,
             "play store": 7,
@@ -812,6 +829,10 @@ HARD_REJECT_KEYWORDS = {
     "test the mobile app", "electrical maintenance", "maintenance engineer",
     "apple store", "رفع تطبيقي", "متجر بلاي", "حالات اختبار",
     "mobile app test", "qa tester", "app testing", "root unroot",
+    "earn commission", "commission bringing", "referral commission",
+    "referral fee", "collect your share", "refer clients",
+    "pass along opportunities", "partner with my development team",
+    "sales partner",
 }
 
 

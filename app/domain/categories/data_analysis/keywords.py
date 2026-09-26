@@ -906,6 +906,22 @@ HARD_REJECT_KEYWORDS = {
     "receptionist", "administration coordinator", "senior fp&a",
     "senior property", "foreign procurement", "cost engineer",
     "tender business", "contact scrape", "linkedin company",
+    "senior planning engineer", "job overview", "career level",
+    "we are seeking", "senior management specialist",
+    "developer representative", "primavera", "primavera p6",
+    "master scheduling", "master schedule", "critical path",
+    "forensic delay", "delay analysis", "extension of time",
+    # 6N single-arb none -> deterministic reject (2026-09-25 run 2). Six
+    # employment/non-dev role postings reached arbitration on an
+    # excel/tendering core and were correctly rejected by Gemini. Screened
+    # at word boundary against all 2051 DB-accepted jobs: 0 hits. Bare
+    # 'accountant' and 'media buyer' deliberately NOT added -- they collide
+    # with accepted jobs 5577/2220. 'financial planning and analysis' is
+    # UNSAFE on its own (accepted 922 'Senior Specialist- Financial
+    # Planning and Analysis'), hence the 'head of' prefix.
+    "tendering procurement engineer", "head of financial planning and analysis",
+    "administrative assistant", "human resources director",
+    "senior bid manager", "lead generation specialist",
 }
 
 

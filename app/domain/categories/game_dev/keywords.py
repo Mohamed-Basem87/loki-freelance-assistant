@@ -612,6 +612,12 @@ HARD_REJECT_KEYWORDS = {
     # replay over DB-accepted + window-accepted + 5 flip-risk rows: 0 flips,
     # no change to flip-risk 3810/3912/3969/4184/4387 (still arbitration).
     "colour prediction", "color prediction",
+    # 6N single-arb none -> deterministic reject (2026-09-25 run 2). These
+    # are gameplay/content services, not game development: an account
+    # grinding service and a video-essay commission. Screened at word
+    # boundary against all 2051 DB-accepted jobs: 0 hits. 'grinding' also
+    # converts the duplicate posting rowid 5569 (already rejected).
+    "grinding", "game graphics analysis",
 }
 
 

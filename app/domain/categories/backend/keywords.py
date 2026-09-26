@@ -370,7 +370,18 @@ POSITIVE_KEYWORDS = {
             "spreadsheet to form": 6,
             "survey from spreadsheet": 6,
         },
-        "supporting": {},
+        "supporting": {
+            # Goal A 6G lone-core supporting (2026-09-25 run 2): 5689 'Data
+            # Entry Automation Script' was LLM-accepted backend with a lone
+            # 'google sheets' core and ZERO supporting, so it burned a Gemini
+            # call on every rerun. The API-integration deliverable is the
+            # literal 'Excel and Google Sheets APIs' requirement. Deliberately
+            # the specific API phrase, NOT the broader 'task automation'
+            # (which collides on accepted 4473 'Custom Python Development
+            # Help') and NOT bare 'data entry' (a data_analysis hard-reject
+            # direction). Supporting-only; target reroutes backend->backend.
+            "excel and google sheets apis": 5,
+        },
     },
 
     # Affiliate/campaign tracking platform builds (2026-09-13 run 2): rowid
@@ -516,8 +527,45 @@ POSITIVE_KEYWORDS = {
             "بيثون": 6,
             "بايثون": 6,
             "داتا بيس": 6,
+            # English WhatsApp auto-reply / WhatsApp-bot collocation family
+            # (2026-09-25 run 2 gate). rowid 5250 'WhatsApp Auto-Reply Assistant'
+            # (auto-respond to client messages) missed deterministically: backend
+            # core had only the ARABIC WhatsApp family (بوت واتساب/الرد التلقائي/
+            # جروبات واتساب above) and ZERO scored English whatsapp.* / auto.*
+            # reply vocabulary, so an English title never reached arbitration.
+            # Mirrors that Arabic discipline exactly: bare 'whatsapp' is
+            # supporting-only (booking/marketing/promotion collateral must stay
+            # rejected via lone-supporting rule), bare 'auto reply' supporting-only
+            # too; ONLY the deliverable collocations (auto-reply bot / WhatsApp
+            # automation bot) are core. Same single-core dict as the Arabic
+            # family (NO duplicate 'core' key -- a dup would silently drop the
+            # Arabic family via dict-literal last-wins). NOISE untouched.
+            "whatsapp auto reply": 6,
+            "whatsapp auto.?reply": 6,
+            "whatsapp.?auto.?reply": 7,
+            "whatsapp bot": 6,
+            "whatsapp.?bot": 6,
+            "whatsapp automation": 5,
+            "whatsapp.?automation": 5,
+            "whatsapp chatbot": 6,
+            "whatsapp.?chatbot": 6,
+            "whatsapp messaging bot": 6,
+            "whatsapp.?messaging.?bot": 5,
+            "auto reply bot": 6,
+            "auto.?reply.?bot": 6,
+            "automated whatsapp reply": 5,
+            "automated.?whatsapp.?reply": 5,
+            "whatsapp auto responder": 5,
+            "whatsapp.?auto.?responder": 5,
         },
-        "supporting": {},
+        "supporting": {
+            "whatsapp": 3,
+            "whats app": 3,
+            "auto reply": 3,
+            "auto.?reply": 3,
+            "whatsapp api": 3,
+            "whatsapp.?api": 3,
+        },
     },
 
     # Arabic admin/management-system builds (2026-09-24 run 1 gate review).
@@ -978,6 +1026,21 @@ HARD_REJECT_KEYWORDS = {
     "sunroof", "spoiler",
     "chief financial officer", "account receivable", "sales partner",
     "data linking", "meta tiktok",
+    "usdt flash", "trc20 flash", "flash engine", "flash window",
+    "spoof resistant", "programmed reversal", "flashed amount",
+    "hyip", "hyiplab", "high yield investment",
+    "high yield investment website", "high yield investment program",
+    "high yield investment plan",
+    "earn commission", "commission bringing", "referral commission",
+    "referral fee", "collect your share", "refer clients",
+    "pass along opportunities", "partner with my development team",
+    "اليكم اخر ابداعات", "معرض اعمالي", "اعمالي السابقة", "اعمال سابقة",
+    # 6N single-arb none -> deterministic reject (2026-09-25 run 2). Three
+    # employment role postings reached arbitration on odoo/oracle cores.
+    # Screened at word boundary against all 2051 DB-accepted jobs: 0 hits.
+    # 'it systems administrator' also converts rowid 3198 (already rejected).
+    "sales development representative", "it systems administrator",
+    "billing executive",
 }
 
 

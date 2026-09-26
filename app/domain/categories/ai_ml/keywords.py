@@ -169,6 +169,15 @@ POSITIVE_KEYWORDS = {
             "iou": 3,
             "map": 3,
             "drone": 4,
+            # Goal A 6G lone-core supporting (2026-09-25 run 2): 5729
+            # 'Enhance PoolShark ball Detection and accuracy' (OpenCV Qt build
+            # whose ball recognition mislabels colours) was LLM-accepted ai_ml
+            # with a lone 'opencv' core and ZERO supporting. 'colour
+            # classifier' is the literal requested deliverable; British
+            # spelling only, matching the production text (no US 'color'
+            # variant without production evidence). Supporting-only; target
+            # reroutes ai_ml->ai_ml.
+            "colour classifier": 5,
         },
     },
 
@@ -276,6 +285,22 @@ POSITIVE_KEYWORDS = {
             "chatbot": 7,
             "chatbots": 7,
             "chat bot": 7,
+            # AI Engineer / Claude-app + Slack-bot builds (2026-09 run 2 gate
+            # FN recovery). rowid 5272 genuine 'AI Engineer' (Claude-powered
+            # apps + Slack bot automation). ai_ml core had zero "ai.?engineer"
+            # and zero "slack.?bot" vocabulary so it missed deterministically
+            # -> None. Mirrors the English phrase family: 'ai engineer' /
+            # 'ai.?engineer' match 'AI Engineer' title core (8 = lone-core
+            # direct notify); 'slack.?bot' is the supporting collocation (7)
+            # so a bare Slack-bot mention alone routes to needs_gemini
+            # arbitration rather than hard-direct (noise-safe: Slack is
+            # widely ambient middleware). Collateral replay (latest-1000 +
+            # corpus): 0 flips.
+            "ai engineer": 8,
+            "ai engineers": 7,
+            "ai.?engineer": 8,
+            "slack bot": 3,
+            "slack.?bot": 4,
             "بوت واتساب": 6,
         },
         "supporting": {
@@ -306,6 +331,31 @@ POSITIVE_KEYWORDS = {
             "ai agent": 7,
             "ai agents": 7,
             "autonomous agent": 7,
+            # fn_llm recovery (2026-09-25 run 2, row 5193) and its
+            # none->deterministic-accept justification. 5193 recorded arbitration
+            # outcome 'none' while the text is unambiguously AI/ML: an AI-driven
+            # agent with NLP resume customisation plus scraper/API modules.
+            # Auto-notify is gated on TWO independent core phrases from TWO
+            # different subcategories -- generative_ai 'ai driven agent' w7 plus
+            # nlp 'nlp' w8, core_positive_hit_count=2, reason core_positive_clean
+            # -- so removing either core drops it back to needs_arbitration.
+            # Probed, not assumed. Blast radius: 'ai driven agent' 2 jobs / 6023
+            # DB; the only other hit (2022) is an already-accepted ai_ml job whose
+            # state does not change. Deliberate, justified none->accept under
+            # daily.md 6N.6/6G.2.
+            #
+            # 'ai wrapper design' (rowid 5212 'AI wrapper development') is
+            # deliberately the ONLY member of that family. 'ai wrapper' and
+            # 'llm wrapper' were both REMOVED on duplicate/precedence review:
+            #  - 'ai wrapper' overlapped 'ai wrapper design' on a second span in
+            #    5212 ("ai wrapper development ... ai wrapper design"), which let
+            #    ONE phrase family satisfy core_positive_hit_count=2 and pass the
+            #    two-core gate for the wrong reason. Without it 5212 correctly
+            #    stays a lone core at needs_arbitration and reaches Gemini.
+            #  - 'llm wrapper' fired on 0 of 6023 jobs, i.e. it had no production
+            #    evidence at all (daily.md 6N.1.4 / 6G.5).
+            "ai driven agent": 7,
+            "ai wrapper design": 7,
         },
         "supporting": {
             "lora": 3,

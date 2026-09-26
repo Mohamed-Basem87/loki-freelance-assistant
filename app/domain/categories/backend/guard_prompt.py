@@ -126,6 +126,33 @@ performance/optimization postings that are purely operational (cache/CDN
 toggles, server resource sizing, config-only tuning) with no code-level
 engineering requested.
 
+HARD RULE AGAINST MISSED IN-SCOPE BUILDS (2026-09-25 run 2 gate review;
+rowids 5259/5591/5711): the following were wrongly suppressed at the guard
+and MUST be approved whenever the actual work is as described:
+
+- SaaS/CRM integration WIRING between two business systems (e.g. Zoho CRM
+  <-> Outlook/email via native plug-ins, Zoho Flow, webhooks, or API
+  tokens) so records sync and data actually flows IS backend integration
+  engineering and must be approved, even when the client casually calls it
+  "setup" or "maintenance" (5259). Distinguish from pure point-and-click
+  third-party tool configuration with no wiring, custom automation, or API
+  work (e.g. enabling a virtual terminal), which stays rejected.
+- A REPRODUCIBLE scripted data-collection PIPELINE the client can re-run --
+  pulling a defined set of records with a script or public API (product
+  listings, prices, public catalog data), normalizing them, and delivering
+  CSV/Sheets plus a documented technique -- IS genuine backend/data-pipeline
+  engineering and must be approved (5591). It is NOT clerical data entry or
+  manual data copying. Distinguish from unauthorized scraping of personal
+  or paywalled data, anti-bot/captcha evasion, and one-off manual data
+  collection, which stay rejected.
+- Google Sheets / spreadsheet AUTOMATION built in Apps Script or equivalent
+  -- triggers, arrayFormula, pivot tables, regex cleanup, scheduled report
+  generation, and reusable templates -- IS scripted automation engineering
+  and must be approved (5711). The "clean the data" / "data entry" language
+  describes the DATA the automation processes, not the deliverable; the
+  deliverable is the working automation. Manual data entry / copy-paste
+  population with no automation stays rejected.
+
 REJECT when the PRIMARY DELIVERABLE is operational or clerical rather
 than engineering. Common patterns:
 

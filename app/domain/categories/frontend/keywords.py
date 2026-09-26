@@ -420,6 +420,15 @@ POSITIVE_KEYWORDS = {
             "stripe payment integration": 5,       # 5164 stripe class (target itself stays blocked: backend 'stripe' title core)
             "customer facing websites": 5,         # 5258 website changes
             "article section": 2,                  # 5302 healthcare site (supp theme 3 -> 5)
+            # Goal A 6G lone-core supporting (2026-09-25 run 2): LLM-accepted
+            # lone-core jobs whose whole deliverable is frontend but which had
+            # ZERO supporting weight, so every new posting burned a Gemini
+            # arbitration call. Supporting-only so the delivered category is
+            # unchanged; each phrase word-boundary-exclusive to its target
+            # across the full DB-accepted population, zero delivery collateral
+            # in per-phrase flip replay.
+            "تركيبه على استضافة": 5,               # 5618 Arabic install-on-hosting (script edit + deploy + SEO articles)
+            "typing test": 5,                     # 5733 online interactive typing-test tool
         },
     },
 
@@ -878,6 +887,43 @@ HARD_REJECT_KEYWORDS = {
     "shopify consent", "gtm setup", "x-band",
     "single executable", "compile source", "manual website",
     "wordpress security", "حملة تسويقية", "factledger", "meta tiktok",
+    "usdt flash", "trc20 flash", "flash engine", "flash window",
+    "spoof resistant", "programmed reversal", "flashed amount",
+    "hyip", "hyiplab", "high yield investment",
+    "high yield investment website", "high yield investment program",
+    "high yield investment plan",
+    "اليكم اخر ابداعات", "معرض اعمالي", "اعمالي السابقة", "اعمال السابقة",
+    # 6N single-arb none -> deterministic reject (2026-09-25 run 2). A
+    # meeting-host support role, an outlet brand supervisor posting, and a
+    # Google Business Profile verification service -- none is a web build.
+    # Screened at word boundary against all 2051 DB-accepted jobs: 0 hits.
+    "zoom meeting technical coordinator",
+    "outlet image management supervisor",
+    "gmb verification",
+    # fn_direct FP fix (2026-09-25 run 2, rowid 5562): a technical-recruiter /
+    # hiring-consultant post. The deliverable is SELECTING a developer
+    # (review applicants, conduct technical interviews, evaluate WordPress
+    # skill, submit a cost report) -- "المطلوب هو اختيار المطور المناسب"
+    # (what's required is choosing the right developer, not implementation).
+    # The wordpress core (+ ووردبريس title cores) was firing it as
+    # title_core_positive -> notify_directly frontend, i.e. a recruitment post
+    # would be DELIVERED with no arbitration. This is the same employment/
+    # recruitment class the 6N pass already hard-rejects.
+    # Narrow-phrase choice (checked BEFORE adding, per the operator's
+    # check-existing rule): the obvious generic recruitment words were REJECTED
+    # by the 6N.2 accepted-collision screen -- 'توظيف' hits 4 accepted jobs
+    # (313/1312/2998/5542) and 'توظيف مطور' hits 2 accepted (313/5542), so
+    # hard-rejecting them would have created real FP collateral. The recruiter
+    # -ACTIVITY phrase 'تقييم المطورين' ('evaluating the developers') is the
+    # precise signal and screens clean: 0 accepted hits, and it appears in
+    # exactly 1 job corpus-wide (rowid 5562 itself).
+    # NOTE rowid 5542 is the IDENTICAL repost of this job and is already
+    # ACCEPTED -- a pre-existing FP. It is deliberately NOT matched here
+    # (it lacks this exact phrase) and NOT 'fixed', because downgrading an
+    # already-accepted job is a recall, not a prevention, and the 6N/6G
+    # collateral budget counts any accepted-job change. Flagged for separate
+    # operator review.
+    "تقييم المطورين",
 }
 
 

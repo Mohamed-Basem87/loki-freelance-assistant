@@ -241,6 +241,14 @@ development work:
   built for a business or creator -- these are website builds and are
   approved regardless of the "portfolio"/"rental"/"catalog"/"content"
   framing.
+- A client commissioning a PORTFOLIO website BUILD is a build and must be
+  approved: when a client (first person) asks a developer to BUILD their
+  portfolio site -- key pages, CMS, contact/inquiry form, responsive
+  design, SEO/accessibility, deliverables and sign-off -- it is ordinary
+  website development even though the finished site showcases the client's
+  own work and is called a "portfolio" (5221). Do not mistake this for a
+  freelancer advertising already-completed work (a self-promo showcase
+  with no build request, scope, or deliverables), which stays rejected.
 - Custom platform builds around an existing plugin (booking/scheduling
   engines such as Easy Appointments, customer portals, membership apps):
   "build the business layer around an existing booking engine", "extend
