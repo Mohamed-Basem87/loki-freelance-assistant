@@ -105,6 +105,11 @@ ACCEPT:
 customizable templates, color-coded schedules, dynamic behavior, and
 formulas." -- building a functional Excel tool, not data entry.
 
+Excel forecasting/financial-modeling workbooks (driver/assumption sheets,
+formula-driven projections, charts, dashboards) are functional Excel tools
+and are approved; the "Forecasting models" reject below applies to
+ML/statistical predictive-model builds, not formula-driven Excel models.
+
 REJECT (static/passive only):
 "Produce a blank invoice or form template with formulas and formatting,
 with no operating tool logic or dynamic behavior."
@@ -268,13 +273,17 @@ Also reject when the PRIMARY DELIVERABLE is:
 - Transcription
 - OCR or manual document extraction
 - PDF/image to Excel conversion when the work is extraction rather than
-  analysis or meaningful data transformation
+  analysis or meaningful data transformation -- but a reusable
+  extraction/ETL script that automates future conversions is data-processing
+  engineering and is approved
 - Virtual assistance or administrative work
 - Web research without meaningful analysis
 - Web scraping when analysis is not the primary deliverable
 - Testing, QA, manual testing, beta testing, or test automation of any kind
 - Power Apps / Power Automate development
-- Web/backend/mobile/software development unrelated to data analysis
+- Web/backend/mobile/software development unrelated to data analysis --
+  but a genuine full-stack/platform BUILD is not a data-analysis job;
+  deliver it through the full_stack option rather than suppressing it
 - Graphic/UI/UX design
 - Marketing/SEO
 - CAD/engineering

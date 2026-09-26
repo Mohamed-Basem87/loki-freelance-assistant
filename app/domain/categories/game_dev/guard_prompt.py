@@ -28,6 +28,9 @@ development, such as:
 - Game trailers and marketing
 - VR/AR game development
 - Game scripting (Blueprint, GDScript, etc.)
+- Game modding and game tooling: mods, mod loaders, and
+  reverse-engineering/debugging an existing game to build loadable mods
+  or tools
 
 SERVER / MINIGAME DEPLOYMENT IS IN SCOPE (2026-09-13 run 1):
 Setting up, configuring, and stabilizing a game server for a specific

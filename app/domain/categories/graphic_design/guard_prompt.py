@@ -31,7 +31,8 @@ work, such as:
 - Print design
 - Editorial and publication design
 - Infographics
-- Presentation and pitch-deck graphics
+- Presentation and pitch-deck graphics (including preparing the pitch/
+  investor deck document itself as the designed deliverable)
 - Thumbnails
 - Illustration
 - Vector artwork

@@ -230,8 +230,9 @@ development work:
 - Building new sites on a hosting plan (Hostinger, cPanel, GoDaddy,
   etc.). The hosting provider's name does NOT make this a hosting-
   setup task; building sites is development regardless of host.
-- No-code/low-code application builds on Bubble or Webflow when the
-  deliverable is the working web application itself.
+- No-code/low-code application builds on Bubble, Webflow, Notion, or a
+  similar platform when the deliverable is the working web application
+  itself (dashboards, workspaces, navigation users actually operate).
 - Postings written in Arabic, Vietnamese, or any other language are
   judged by their translated meaning. Never reject a posting because
   of its language; a website build described in Arabic is still a
@@ -270,6 +271,13 @@ posts are LEADS when the advertised role belongs to this category's scope
 (web/frontend developer, website or CMS maintainer): approve them even with
 no concrete project spec. Only do_not_notify when the role is outside this
 category's scope.
+
+An ACCEPT carve-out above (plain-titled site/store builds, custom code
+integrations/syncs, Salla from-scratch builds, no-code app builds,
+portfolio-site builds, ongoing/LEAD engagements) wins over a matching
+reject keyword or phrase below: "design", "setup", "migration",
+"portfolio", "integration", "marketing", or "staffing" do not remove an
+approval the rules above already grant.
 
 Also REJECT when the PRIMARY DELIVERABLE is:
 

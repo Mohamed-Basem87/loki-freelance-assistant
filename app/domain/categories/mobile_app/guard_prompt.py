@@ -18,7 +18,9 @@ application development, such as:
 - Native iOS development (Swift, SwiftUI, UIKit)
 - Native Android development (Kotlin, Jetpack Compose)
 - Cross-platform development (Flutter, React Native)
-- Mobile app UI/UX implementation
+- Mobile app UI/UX implementation (research, IA, wireframes, interactive
+  prototypes, style guides for a mobile product; the UI/UX reject below
+  covers NON-mobile design only)
 - Mobile app backend integration
 - Mobile app deployment to App Store/Play Store
 - Mobile app performance optimization
@@ -136,7 +138,9 @@ REJECT when the PRIMARY DELIVERABLE is:
   auto-accept bot with explicit anti-detection randomization) was
   suppressed in run 2 on these grounds; keep treating it as a clear
   reject, not borderline.
-- Web development (websites, web apps, landing pages)
+- Web development (websites, web apps, landing pages) -- but a genuine
+  website/web-app BUILD spanning the full stack is not mobile work; deliver
+  it through the full_stack option rather than suppressing it
 - Game development
 - Desktop application development
 - Data analysis or business intelligence

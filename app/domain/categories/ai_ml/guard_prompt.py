@@ -140,7 +140,9 @@ REJECT when the PRIMARY DELIVERABLE is:
 - Testing, QA, manual testing, beta testing, or test automation of any kind
 - Data entry, manual data copying, product entry, or store population (including `إدخال بيانات`)
 - Pure rule-based automation, RPA, scraping, or marketing-funnel work
-  that has NO AI/LLM component in what is being built
+  that has NO AI/LLM component in what is being built -- data-collection
+  that accompanies a genuine AI/ML build (e.g. ComfyUI/SD batch-generation
+  pipelines, model deployment) does not demote the AI build
 - Any other non-AI/ML-related task
 
 The distinction is the PRIMARY DELIVERABLE:

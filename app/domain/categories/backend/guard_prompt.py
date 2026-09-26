@@ -130,21 +130,26 @@ HARD RULE AGAINST MISSED IN-SCOPE BUILDS (2026-09-25 run 2 gate review;
 rowids 5259/5591/5711): the following were wrongly suppressed at the guard
 and MUST be approved whenever the actual work is as described:
 
-- SaaS/CRM integration WIRING between two business systems (e.g. Zoho CRM
-  <-> Outlook/email via native plug-ins, Zoho Flow, webhooks, or API
-  tokens) so records sync and data actually flows IS backend integration
-  engineering and must be approved, even when the client casually calls it
-  "setup" or "maintenance" (5259). Distinguish from pure point-and-click
-  third-party tool configuration with no wiring, custom automation, or API
-  work (e.g. enabling a virtual terminal), which stays rejected.
+- SaaS/CRM integration WIRING between two business systems (e.g. Zoho
+  CRM/Books <-> other SaaS, Smartflo/telephony <-> CRM, Notion/M365/
+  Airtable, Harvest <-> FreeAgent, WhatsApp/Telegram business flows,
+  payment-gateway production wiring incl. sandbox->live) via native
+  plug-ins, workflow platforms (Make.com, Zapier, n8n), webhooks, or API/
+  tokens -- including constructing the automation flow itself -- so records
+  sync and data actually flows IS backend integration engineering and must
+  be approved, even when the client casually calls it "setup" or
+  "maintenance" (5259). Distinguish from pure point-and-click third-party
+  tool configuration with no wiring, custom automation, or API work (e.g.
+  enabling a virtual terminal), which stays rejected.
 - A REPRODUCIBLE scripted data-collection PIPELINE the client can re-run --
   pulling a defined set of records with a script or public API (product
   listings, prices, public catalog data), normalizing them, and delivering
-  CSV/Sheets plus a documented technique -- IS genuine backend/data-pipeline
-  engineering and must be approved (5591). It is NOT clerical data entry or
-  manual data copying. Distinguish from unauthorized scraping of personal
-  or paywalled data, anti-bot/captcha evasion, and one-off manual data
-  collection, which stay rejected.
+  CSV/Sheets -- optionally with change-detection/monitoring/alerting on the
+  collected data -- plus a documented technique -- IS genuine
+  backend/data-pipeline engineering and must be approved (5591). It is NOT
+  clerical data entry or manual data copying. Distinguish from unauthorized
+  scraping of personal or paywalled data, anti-bot/captcha evasion, and
+  one-off manual data collection, which stay rejected.
 - Google Sheets / spreadsheet AUTOMATION built in Apps Script or equivalent
   -- triggers, arrayFormula, pivot tables, regex cleanup, scheduled report
   generation, and reusable templates -- IS scripted automation engineering
@@ -152,6 +157,14 @@ and MUST be approved whenever the actual work is as described:
   describes the DATA the automation processes, not the deliverable; the
   deliverable is the working automation. Manual data entry / copy-paste
   population with no automation stays rejected.
+
+An ACCEPT carve-out above (full-stack distinction, integration WIRING,
+scripted automation on the client's account, reproducible pipeline, Sheets
+automation, Odoo customization, ongoing/LEAD engagements) wins over a
+matching reject keyword or phrase below: "setup", "configuration",
+"migration", "automation", "data entry", "integration", "design",
+"maintenance", or "staffing/hiring" do not remove an approval the rules
+above already grant.
 
 REJECT when the PRIMARY DELIVERABLE is operational or clerical rather
 than engineering. Common patterns:
@@ -229,8 +242,10 @@ databases, business logic, integrations built in code -- approve it.
 
 Backend development on an enterprise system such as Odoo (custom
 modules, server-side logic, database and API work) is engineered
-server-side software and is approved; installing/configuring an ERP
-with no development work is not.
+server-side software and is approved; customization beyond a plain
+install -- custom fields/views, automated actions, custom reports --
+is server-side work, while installing/configuring an ERP with no
+development work is not.
 
 If the answer is installing/configuring existing tools, documentation,
 consulting, administration, or a non-backend deliverable, reject it.
