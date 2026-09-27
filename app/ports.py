@@ -106,7 +106,7 @@ class JobRepository(ABC):
         "has_job", "log_error", "log_gemini",
         "log_notification_guard", "get_latest_guard_decision", "get_latest_guard_decision_with_category",
         "get_incomplete_notification_jobs", "get_incomplete_classification_jobs",
-        "claim_pending_classification",
+        "claim_pending_classification", "claim_guard_evaluation",
     )
 
     # Every operation exposed to application code is declared here. The
@@ -126,6 +126,7 @@ class JobRepository(ABC):
     def get_incomplete_notification_jobs(self): raise NotImplementedError
     def get_incomplete_classification_jobs(self): raise NotImplementedError
     def claim_pending_classification(self, job_uuid, lease_until): raise NotImplementedError
+    def claim_guard_evaluation(self, job_uuid, lease_until): raise NotImplementedError
 
     # NOTE: The Postgres backend commits each call immediately (one
     # engine.begin() block per method). The `save` parameter on many

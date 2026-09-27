@@ -382,3 +382,183 @@ def test_two_concurrent_callers_cannot_both_classify_the_same_pending_job(
         "the losing caller must back off rather than also classify"
     )
     assert repo.rows[job_uuid]["Final Decision"] == "Accepted"
+
+
+# ------------------------------------------------------------------
+# Guard-fallback rescue flip (fix 3): when the rescue re-arbitration
+# ACCEPTS a guard-rejected tie-break pick, a "notify" guard row must be
+# appended so the latest durable guard decision truthfully reflects the
+# delivery ("sent but guard table says suppressed" must never reappear).
+# A rescue that REJECTS the job must not append anything.
+# ------------------------------------------------------------------
+
+
+class _RecordingGuardRepo(MemRepository):
+    """MemRepository that records every notification_guard row written,
+    so a rescue flip can be asserted."""
+
+    def __init__(self):
+        super().__init__()
+        self.guard_rows = []
+
+    async def log_notification_guard(
+        self, job_uuid, source, title, original_decision, guard_decision,
+        provider, model, response_time_ms, error="", guard_category="", save=True,
+    ):
+        await self._roll()
+        self.guard_rows.append(
+            {
+                "job_uuid": job_uuid,
+                "source": source,
+                "title": title,
+                "original_decision": original_decision,
+                "guard_decision": guard_decision,
+                "provider": provider,
+                "model": model,
+                "response_time_ms": response_time_ms,
+                "guard_category": guard_category,
+            }
+        )
+
+
+def _guard_fallback_rescue_row(repo, job_uuid):
+    repo.seed(
+        {
+            "Job UUID": job_uuid,
+            "Job ID": job_uuid,
+            "Identity Source": "test",
+            "Source": "test",
+            "Title": "Build a Power BI dashboard from Excel",
+            "Description": "",
+            "Raw Message": "Build a Power BI dashboard from Excel",
+            "Final Decision": "Pending",
+            "Decision Reason": "Guard Fallback (multi-candidate tie-break recheck)",
+            "Needs Gemini": True,
+            "Notification Status": "",
+            "Classification Retry Not Before": None,
+        }
+    )
+
+
+def _reproducing_tiebreak_classify(filter_text, *, title=None, **kw):
+    return {
+        "category_id": "data_analysis",
+        "needs_category_arbitration": False,
+        "multi_candidate_resolved": True,
+        "categories": {
+            "data_analysis": {
+                "result": {
+                    "decision": "needs_gemini",
+                    "reason": "mixed_core_signals",
+                    "categories": ["power_bi"],
+                    "negative_categories": [],
+                    "core_positive_hit_count": 2,
+                    "supporting_positive_weight": 1.5,
+                    "needs_gemini": True,
+                }
+            },
+            "backend": {
+                "result": {
+                    "decision": "needs_gemini",
+                    "reason": "mixed_core_signals",
+                    "categories": ["api"],
+                    "negative_categories": [],
+                    "core_positive_hit_count": 2,
+                    "supporting_positive_weight": 1.5,
+                    "needs_gemini": True,
+                }
+            },
+        },
+    }
+
+
+def _rescue_job(job_uuid):
+    return {
+        "title": "Build a Power BI dashboard from Excel",
+        "description": "",
+        "raw_text": "Build a Power BI dashboard from Excel",
+        "source": "test",
+        "url": f"https://example.invalid/{job_uuid}",
+        "budget": "",
+        "company": "",
+    }
+
+
+def test_guard_fallback_rescue_flips_durable_guard_row_to_notify(pipeline, monkeypatch):
+    repo = _RecordingGuardRepo()
+    monkeypatch.setattr(jp, "logger", repo)
+    _, publisher = pipeline
+
+    job_uuid = jp._make_job_uuid("test", "rescue-flip")
+    _guard_fallback_rescue_row(repo, job_uuid)
+
+    monkeypatch.setattr(jp, "classify_and_select", _reproducing_tiebreak_classify)
+
+    rescue_calls = {"count": 0}
+
+    def _rescue(filter_text, candidates, **kwargs):
+        rescue_calls["count"] += 1
+        return {
+            "selected_category": "data_analysis",
+            "reason": "rescue arbitration accepted",
+            "confidence": 0.91,
+            "provider": "gemini",
+        }
+
+    monkeypatch.setattr(jp, "arbitrate_category", _rescue)
+
+    _run(_rescue_job("rescue-flip"), "rescue-flip", "test")
+
+    row = repo.rows[job_uuid]
+    assert rescue_calls["count"] == 1, (
+        "the guard-fallback rescue must re-arbitrate exactly once"
+    )
+    assert row["Final Decision"] == "Accepted"
+    assert row["Category Selection Method"] == "llm"
+    assert row["Notification Status"] == "Complete"
+    assert len(publisher.events) == 1, "the rescued job must actually be delivered"
+
+    flips = [r for r in repo.guard_rows if r["provider"] == "rescue-arbitration"]
+    assert len(flips) == 1, (
+        "an accepting rescue must append exactly one rescue-arbitration row"
+    )
+    assert flips[0]["job_uuid"] == job_uuid
+    assert flips[0]["guard_decision"] == "notify"
+    assert flips[0]["original_decision"] == "do_not_notify"
+    assert flips[0]["guard_category"] == "data_analysis"
+
+
+def test_guard_fallback_rescue_reject_writes_no_flip(pipeline, monkeypatch):
+    repo = _RecordingGuardRepo()
+    monkeypatch.setattr(jp, "logger", repo)
+    _, publisher = pipeline
+
+    job_uuid = jp._make_job_uuid("test", "rescue-reject")
+    _guard_fallback_rescue_row(repo, job_uuid)
+
+    monkeypatch.setattr(jp, "classify_and_select", _reproducing_tiebreak_classify)
+
+    def _reject(filter_text, candidates, **kwargs):
+        return {
+            "selected_category": "none",
+            "reason": "not a real project",
+            "confidence": 0.8,
+            "provider": "gemini",
+        }
+
+    monkeypatch.setattr(jp, "arbitrate_category", _reject)
+
+    _run(_rescue_job("rescue-reject"), "rescue-reject", "test")
+
+    row = repo.rows[job_uuid]
+    assert row["Final Decision"] == "Rejected"
+    assert row["Notification Status"] in ("", None), (
+        "a rejected rescue must not deliver anything"
+    )
+    assert not publisher.events
+
+    flips = [r for r in repo.guard_rows if r["provider"] == "rescue-arbitration"]
+    assert flips == [], (
+        "a rescue that rejects the job must NOT flip the durable guard "
+        "decision to notify -- the rejection stays final"
+    )

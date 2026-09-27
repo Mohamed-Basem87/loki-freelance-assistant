@@ -135,6 +135,9 @@ class _StubJobRepository:
     async def claim_pending_classification(self, *a, **kw):
         return True
 
+    async def claim_guard_evaluation(self, *a, **kw):
+        return True
+
 
 @pytest.fixture(autouse=True, scope="session")
 def _bind_dependency_slots():

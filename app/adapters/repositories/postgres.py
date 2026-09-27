@@ -68,6 +68,7 @@ COLUMN_MAP = {
     "category_selection_method": "Category Selection Method",
     "filter_time_ms": "Filter Time (ms)",
     "classification_retry_not_before": "Classification Retry Not Before",
+    "guard_eval_claim": "Guard Eval Claim",
 }
 
 # Columns dropped from the fresh Postgres schema (see
@@ -242,6 +243,8 @@ def _normalize_update_value(key, value):
         return _as_int_or_none(value)
     if key == "classification_retry_not_before":
         return _normalize_timestamp(value)
+    if key == "guard_eval_claim":
+        return _normalize_timestamp(value)
     return value
 
 
@@ -382,6 +385,7 @@ class PostgresRepository(JobRepository):
     def create_job_if_absent(self, *a, **kw): return self.run(self._sync_create_job_if_absent, *a, **kw)
     def update_job(self, *a, **kw): return self.run(self._sync_update_job, *a, **kw)
     def claim_pending_classification(self, *a, **kw): return self.run(self._sync_claim_pending_classification, *a, **kw)
+    def claim_guard_evaluation(self, *a, **kw): return self.run(self._sync_claim_guard_evaluation, *a, **kw)
     def get_incomplete_classification_jobs(self, *a, **kw): return self.run(self._sync_get_incomplete_classification_jobs, *a, **kw)
     def get_incomplete_notification_jobs(self, *a, **kw): return self.run(self._sync_get_incomplete_notification_jobs, *a, **kw)
     def log_gemini(self, *a, **kw): return self.run(self._sync_log_gemini, *a, **kw)
@@ -569,6 +573,18 @@ class PostgresRepository(JobRepository):
                     'WHERE "Job UUID" = :job_uuid AND "Final Decision" = \'Pending\' '
                     'AND ("Classification Retry Not Before" IS NULL '
                     'OR "Classification Retry Not Before" <= :now)'
+                ),
+                {"lease": _from_epoch(lease_until), "job_uuid": job_uuid, "now": _now()},
+            )
+            return result.rowcount == 1
+
+    def _sync_claim_guard_evaluation(self, job_uuid, lease_until):
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    'UPDATE jobs SET "Guard Eval Claim" = :lease '
+                    'WHERE "Job UUID" = :job_uuid '
+                    'AND ("Guard Eval Claim" IS NULL OR "Guard Eval Claim" <= :now)'
                 ),
                 {"lease": _from_epoch(lease_until), "job_uuid": job_uuid, "now": _now()},
             )

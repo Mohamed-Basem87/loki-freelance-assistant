@@ -20,6 +20,7 @@ JOB_UUID3 = "guard-llm-1"
 JOB_UUID4 = "guard-reclass-1"
 JOB_UUID5 = "guard-reuse-1"
 JOB_UUID6 = "guard-disabled-1"
+JOB_UUID7 = "guard-ng-needs-gemini-1"
 
 
 def _row(job_uuid, method="keyword_direct", **overrides):
@@ -80,6 +81,12 @@ class _FakeRepo:
 
     async def get_latest_guard_decision_with_category(self, job_uuid):
         return self.decisions.get(job_uuid), self.guard_categories.get(job_uuid)
+
+    async def claim_guard_evaluation(self, job_uuid, lease_until):
+        return True
+
+    async def log_notification_guard(self, *a, **kw):
+        return None
 
     async def get_incomplete_notification_jobs(self):
         return [
@@ -385,4 +392,179 @@ def test_disabled_guard_is_transparent_despite_stale_do_not_notify(monkeypatch):
 
     assert repo.rows[JOB_UUID6]["Notification Status"] == "Complete", (
         "a disabled guard must never suppress a deliverable job"
+    )
+
+
+# ------------------------------------------------------------------
+# Test G -- a 'Needs Gemini' KEYWORD-DIRECT pick is still guard-
+# evaluated. The deterministic tier decided it without any LLM review,
+# so the guard bypass must key off "Category Selection Method" == "llm"
+# (a real arbitration ran), never the "Needs Gemini" boolean -- the
+# stale-flag skip is what stranded 62 accepted jobs at Pending.
+# ------------------------------------------------------------------
+
+
+def test_keyword_direct_needs_gemini_pick_still_gets_guard_evaluation(monkeypatch):
+    from app.notification_guard.integration import NotificationGuardIntegration
+
+    repo = _FakeRepo()
+    repo.seed(_row(JOB_UUID7, method="keyword_direct", **{"Needs Gemini": True}))
+
+    class _PersistingGuard:
+        enabled = True
+        calls = []
+
+        async def decide(self, job, *, original_decision="", category_id=""):
+            self.calls.append(job["job_uuid"])
+            repo.decisions[job["job_uuid"]] = "notify"
+            return {"allowed": True, "category_id": category_id}
+
+    integration = NotificationGuardIntegration(_PersistingGuard(), repository=repo)
+
+    monkeypatch.setattr(jp, "logger", repo)
+    monkeypatch.setattr(jp, "stream_publisher", _Recorder())
+    monkeypatch.setattr(jp, "guard_allow", integration.allow)
+    monkeypatch.setattr(jp, "resolver", integration.resolve_category)
+
+    asyncio.run(jp._resume_pending_notifications_unlocked(
+        JOB_UUID7, repo.rows[JOB_UUID7]
+    ))
+
+    assert _PersistingGuard.calls == [JOB_UUID7], (
+        "a keyword-direct pick with the 'Needs Gemini' flag unset-held "
+        "no real LLM arbitration and must still be guard-evaluated"
+    )
+    assert repo.rows[JOB_UUID7]["Notification Status"] == "Complete", (
+        "the guard decision must resolve the job instead of leaving it "
+        "stuck at Pending forever"
+    )
+
+
+# ------------------------------------------------------------------
+# Test H -- concurrent fresh evaluations of the SAME job are serialized
+# by the DB claim: exactly one worker evaluates the guard, and the
+# loser reuses the winner's durable verdict instead of racing its own
+# (the mixed-verdict race that produced "sent but logged Suppressed",
+# bug 86b8fa87).
+# ------------------------------------------------------------------
+
+
+def test_concurrent_guard_evaluation_is_serialized_by_db_claim(monkeypatch):
+    import app.notification_guard.integration as integration_module
+
+    monkeypatch.setattr(integration_module, "GUARD_EVAL_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(integration_module, "GUARD_EVAL_POLL_TRIES", 200)
+
+    repo = _FakeRepo()
+    repo.seed(_row(JOB_UUID7, method="keyword_direct", **{"Needs Gemini": True}))
+    repo.claims = {"granted": False}
+
+    async def _claim_guard_evaluation(self, job_uuid, lease_until):
+        if self.claims["granted"]:
+            return False
+        self.claims["granted"] = True
+        await asyncio.sleep(0)
+        return True
+
+    repo.claim_guard_evaluation = _claim_guard_evaluation.__get__(repo)
+
+    decided = {"calls": 0}
+
+    class _DecidingGuard:
+        enabled = True
+
+        async def decide(self, job, *, original_decision="", category_id=""):
+            decided["calls"] += 1
+            await asyncio.sleep(0.05)
+            repo.decisions[job["job_uuid"]] = "notify"
+            return {"allowed": True, "category_id": category_id}
+
+    integration = integration_module.NotificationGuardIntegration(
+        _DecidingGuard(), repository=repo
+    )
+
+    async def _race():
+        return await asyncio.gather(
+            integration.resolve_category(
+                JOB_UUID7, repo.rows[JOB_UUID7], "data_analysis"
+            ),
+            integration.resolve_category(
+                JOB_UUID7, repo.rows[JOB_UUID7], "data_analysis"
+            ),
+        )
+
+    results = asyncio.run(_race())
+
+    assert len(results) == 2 and set(results) == {"data_analysis"}
+    assert decided["calls"] == 1, (
+        "exactly one worker may win the guard-evaluation claim; the "
+        "loser must reuse the winner's durable verdict"
+    )
+    assert repo.decisions[JOB_UUID7] == "notify"
+
+
+# ------------------------------------------------------------------
+# Test H2 -- a worker that LOSES the claim but never sees a verdict
+# (lease-holder still in flight / crashed) must fail closed: return the
+# original category WITHOUT delivering, so the job stays retryable and
+# a later sweep re-resolves it. It must never publish on an unresolved
+# decision.
+# ------------------------------------------------------------------
+
+
+def test_claim_loser_without_verdict_fails_closed(monkeypatch):
+    import app.notification_guard.integration as integration_module
+
+    monkeypatch.setattr(integration_module, "GUARD_EVAL_POLL_INTERVAL", 0.005)
+    monkeypatch.setattr(integration_module, "GUARD_EVAL_POLL_TRIES", 1)
+
+    repo = _FakeRepo()
+    repo.seed(_row(JOB_UUID7, method="keyword_direct", **{"Needs Gemini": True}))
+    repo.claims = {"granted": False}
+
+    async def _claim_guard_evaluation(self, job_uuid, lease_until):
+        if self.claims["granted"]:
+            return False
+        self.claims["granted"] = True
+        await asyncio.sleep(0)
+        return True
+
+    repo.claim_guard_evaluation = _claim_guard_evaluation.__get__(repo)
+
+    class _CrashedGuard:
+        # The lease-holder "crashes" before persisting any verdict: its
+        # provider call never lands a durable row (mirrors the real
+        # NotificationGuard.decide provider-error path returning allowed
+        # False without leaving a notify/do_not_notify behind). The
+        # loser must not wait forever -- it fails closed to the original
+        # category after the bounded poll window, leaving the row Pending
+        # for a later sweep.
+        enabled = True
+
+        async def decide(self, job, *, original_decision="", category_id=""):
+            await asyncio.sleep(1)
+            return {"allowed": False, "category_id": category_id}
+
+    integration = integration_module.NotificationGuardIntegration(
+        _CrashedGuard(), repository=repo
+    )
+
+    async def _race():
+        return await asyncio.gather(
+            integration.resolve_category(
+                JOB_UUID7, repo.rows[JOB_UUID7], "data_analysis"
+            ),
+            integration.resolve_category(
+                JOB_UUID7, repo.rows[JOB_UUID7], "data_analysis"
+            ),
+        )
+
+    results = asyncio.run(_race())
+
+    assert len(results) == 2 and set(results) == {"data_analysis"}, (
+        "no worker may reclassify or deliver on an unresolved guard "
+        "decision; both must fail closed to the original category"
+    )
+    assert JOB_UUID7 not in repo.decisions, (
+        "a crashed evaluation must not leave a phantom decision behind"
     )

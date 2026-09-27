@@ -165,6 +165,26 @@ def test_claim_pending_classification_lease_semantics(make_job):
     ) is False, "a row that already left the Pending state must never be claimed"
 
 
+def test_claim_guard_evaluation_lease_semantics(make_job):
+    import time
+
+    job_uuid, repository, params = make_job()
+    asyncio.run(repository.create_job_if_absent(**params))
+
+    lease = time.time() + 120
+    assert asyncio.run(repository.claim_guard_evaluation(job_uuid, lease)) is True
+    assert asyncio.run(
+        repository.claim_guard_evaluation(job_uuid, lease + 10)
+    ) is False, "an in-window lease must prevent a second worker from evaluating"
+
+    asyncio.run(
+        repository.update_job(job_uuid, guard_eval_claim="0")
+    )
+    assert asyncio.run(
+        repository.claim_guard_evaluation(job_uuid, lease + 20)
+    ) is True, "an expired lease must be reclaimable (self-healing crash)"
+
+
 def test_get_incomplete_notification_jobs_filters_terminal_states(make_job):
     statuses = {}
     for i, status in enumerate(["Pending", "Complete", "Suppressed", ""]):

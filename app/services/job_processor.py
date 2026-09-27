@@ -108,6 +108,12 @@ def _guard_payload_from_row(job_uuid: str, row: dict) -> dict:
         "description": row.get("Description") or "",
         "decision": row.get("Final Decision") or "Accepted",
         "category_id": row.get("Category ID") or "",
+        # Defense in depth: mirror resolve_category()'s bypass key. A row
+        # the LLM genuinely arbitrated (Category Selection Method ==
+        # "llm") is bypassed earlier in _resume_pending_notifications_
+        # unlocked (it never reaches guard_allow at all); this keeps the
+        # guard non-re-litigating even if that ordering ever changes.
+        "ai_used": (row.get("Category Selection Method") or "") == "llm",
     }
 
 
@@ -828,6 +834,33 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
                 result["category_candidates"] = ", ".join(candidate_ids)
                 final_decision = "Accepted"
                 should_notify = True
+
+                if fallback_recheck:
+                    # GUARD FALLBACK RESCUE FLIP: this arbitration IS the
+                    # rescue triggered by a durable "do_not_notify" guard
+                    # decision. Now that the LLM override accepts the job,
+                    # append a "notify" row so the LATEST durable guard
+                    # decision truthfully reflects delivery -- the original
+                    # "do_not_notify" stays below it in the audit history
+                    # (get_latest_guard_decision reads the newest row).
+                    # Purely audit/display consistency: this row is only
+                    # consulted by the guard resolver for pending sweeps,
+                    # and this job is now an "llm"-method row that
+                    # bypasses the guard entirely (see
+                    # _resume_pending_notifications_unlocked), so appending
+                    # it cannot re-trigger evaluation or flip delivery.
+                    await logger.log_notification_guard(
+                        job_uuid=job_uuid,
+                        source=job["source"],
+                        title=job["title"],
+                        original_decision="do_not_notify",
+                        guard_decision="notify",
+                        provider="rescue-arbitration",
+                        model=arbitration.get("provider", ""),
+                        response_time_ms=arbitration_time,
+                        guard_category=selected,
+                        save=False,
+                    )
 
             await logger.update_job(job_uuid, gemini_decision=selected, save=False)
             await logger.log_gemini(job_uuid=job_uuid, decision_before=result.get("decision", ""), reason_before=result.get("reason", ""), prompt_tokens="", completion_tokens="", response_time_ms=arbitration_time, decision=selected, confidence=arbitration["confidence"], provider=arbitration.get("provider", ""), save=False)

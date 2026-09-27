@@ -1,0 +1,19 @@
+-- Serialize guard evaluation across worker processes.
+--
+-- Guard evaluations (app/notification_guard/integration.py) are the
+-- one remaining check-then-act sequence not covered by an app-level
+-- lock: multiple worker *processes* (live process_job + the
+-- notification retry sweep) can observe the same job with no durable
+-- guard decision and evaluate the guard for it concurrently. Each
+-- evaluation is a separate provider call (tens of seconds) rotating
+-- through different models, so two in-flight evaluations of the SAME
+-- job can legitimately produce different verdicts, and whichever writes
+-- its row last overwrites the other -- after the other already
+-- published. That race is what produced "sent but logged Suppressed".
+--
+-- This column is a lease/claim exactly like "Classification Retry Not
+-- Before": a worker takes it atomically (a conditional UPDATE winning
+-- on a single row) before evaluating, and the lease expiry self-heals
+-- a crash mid-evaluation. Losers of the claim reuse the winner's
+-- persisted decision instead of evaluating the same job concurrently.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS "Guard Eval Claim" TIMESTAMPTZ;

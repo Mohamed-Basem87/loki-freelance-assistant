@@ -61,6 +61,7 @@ def _row_base(uuid, **overrides):
         "Category Selection Method": "",
         "Filter Time (ms)": 0,
         "Classification Retry Not Before": None,
+        "Guard Eval Claim": None,
     }
     row.update(overrides)
     return row
@@ -179,6 +180,21 @@ class MemRepository:
             if not_before is not None and not_before > datetime.now(timezone.utc):
                 return False
         row["Classification Retry Not Before"] = datetime.fromtimestamp(
+            float(lease_until), tz=timezone.utc
+        )
+        return True
+
+    async def claim_guard_evaluation(self, job_uuid, lease_until):
+        await self._roll()
+        row = self.rows.get(job_uuid)
+        if row is None:
+            return False
+        claim = row.get("Guard Eval Claim")
+        if claim is not None:
+            claim = _normalize_timestamp(claim)
+            if claim is not None and claim > datetime.now(timezone.utc):
+                return False
+        row["Guard Eval Claim"] = datetime.fromtimestamp(
             float(lease_until), tz=timezone.utc
         )
         return True
