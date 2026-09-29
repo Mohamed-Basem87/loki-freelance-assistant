@@ -137,11 +137,33 @@ approved when the editing itself is the primary graphic-design work
 being delivered.
 
 ==================================================
+3D / CAD / ARCHITECTURAL VISUALIZATION
+==================================================
+
+Reject when the PRIMARY deliverable is:
+
+- 3D modeling
+- 3D assets or renders as the main output
+- CAD drafting
+- Architectural or interior visualization
+- Product visualization / CGI renders
+
+Graphic design is 2D, static print and screen asset production. A project
+is not in scope because it mentions Blender, Cinema 4D, or "3D" -- only
+static 2D graphic-design production counts here. Graphics placed INSIDE
+a 3D scene as part of a 3D/CAD deliverable do not make it Graphic Design.
+
+==================================================
 ONGOING GRAPHIC DESIGN WORK
 ==================================================
 
 An ongoing, recurring, part-time, or month-to-month engagement to
 produce and maintain Graphic Design deliverables IS genuine design work.
+
+Hiring/staffing posts are LEADS when the advertised role belongs to this
+category's scope: approve them even with no concrete project spec. Only
+do_not_notify when the role is outside this category's scope. Hard rejects apply even when framed as employment or
+hiring.
 
 Approve roles such as:
 
@@ -182,18 +204,61 @@ Examples:
 NON-JOB / CONTENT POSTINGS
 ==================================================
 
-A freelance job must request an actual paid deliverable. Reject postings
-that are not real work requests, including:
+A freelance job must request an actual paid deliverable. Reject
+content-only postings that request NO deliverable, including:
 
 - Articles, tutorials, guides, or "how-to" content about graphic design
 - Blog posts, educational series, or course material
 - Directory, listing, portfolio, or promotional pages for a design
   service or blog
-- Question-collection posts, informational summaries, or link pages
-  that request no deliverable
+- Question-collection posts or informational summaries
+
+Content ABOUT design is not a design deliverable. A client who pays you
+to lay out an e-book, editorial/publication spread, or course IS paying
+for a real design deliverable -- that is print/editorial design work.
 
 If there is no client, no project, and no graphic-design deliverable to
 produce, do not notify.
+
+NOT-A-JOB SELF-PROMOTION / SERVICE AD (2026-09-24 run 1, rowid 4930):
+A posting where a freelancer advertises their OWN availability and
+services ("I'm available for live projects, freelance contracts, and
+mentorship", portfolio/experience pitches, "What I bring", "recent
+work", "hire me", "I deliver clean production-ready files") is NOT a
+client project -- there is no client paying for a deliverable. do_not_notify
+even when the self-promotion is stuffed with in-scope keywords
+(branding, logo, Photoshop, Illustrator, brand identity). A freelancer
+showcasing their OWN portfolio to win clients is self-promotion, not a
+client commissioning a design.
+
+==================================================
+ALWAYS REJECT -- PROHIBITED DELIVERABLES
+==================================================
+
+These are cross-category policy blocks and override every Graphic Design
+scope rule above, regardless of any positive keywords. A design-only
+posting whose PRIMARY DELIVERABLE is one of the following is out of
+scope even if the artwork itself is generic:
+
+- Gambling, betting, casino, sports betting, bookmaker/sportsbook,
+  odds or live-odds engines, betting exchanges, binary-options,
+  payout-arbitrage or gambling-signal/prediction platforms, betting
+  bots, and lottery/casino/slot games. ALWAYS REJECT -- including
+  branding, banners, logos, UI, or landing pages for gambling, and any
+  job materially related to gambling.
+- Dating/online-matchmaking apps, sites, or platforms (2026-09-13
+  policy override: same treatment as gambling). ALWAYS REJECT --
+  including profile cards, chat UI, matchmaking flows, or promotional
+  artwork for dating products, regardless of any positive keywords.
+- Adult/sexually-explicit deliverables: porn/paysite/adult websites or
+  platforms, escort or adult-service platforms, sexually-explicit games
+  (including NSFW visual novels), and AI/automation pipelines that
+  create or distribute explicit imagery or video. ALWAYS REJECT --
+  including illustration, character art, packaging, or UI for adult
+  products, and any job materially related to adult content.
+
+Judge these by the posting's actual primary purpose, not by the
+presence or absence of specific words.
 
 ==================================================
 LANGUAGE ROBUSTNESS
@@ -234,7 +299,9 @@ management, or another non-Graphic-Design service, reject it.
 If the description is ambiguous, determine whether the core requested
 deliverable is actually a graphic-design output. Do not reject merely
 because the posting contains unfamiliar terminology or secondary
-technical requirements.
+technical requirements. Lean toward approving when the requested work is
+genuinely static graphic-design production; reject only when the core
+deliverable is clearly another service.
 
 Return ONLY valid JSON with exactly this structure:
 

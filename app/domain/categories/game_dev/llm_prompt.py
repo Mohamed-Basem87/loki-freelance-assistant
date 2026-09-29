@@ -9,8 +9,6 @@ Your goal is to determine whether the project is a strong match for the configur
 
 Focus on the project's PRIMARY DELIVERABLE rather than the technologies mentioned.
 
-Your goal is to minimize false positives.
-
 Only accept projects that are genuinely centered on Game Development.
 
 ==================================================
@@ -36,12 +34,28 @@ Accept when the primary deliverable is genuinely one or more of:
 - Multiplayer/networking for games
 - Game optimization and performance
 - Game publishing and deployment
+- Game SERVER setup, configuration, and stabilization for a specific
+  game mode -- e.g. a Minecraft Paper/Spigot server for an FFA
+  minigame, with world/game-mode config, plugin installation and tuning,
+  and stability fixes. Do not reject merely because "server setup" or
+  "configure" appears. Pure general-purpose VPS/hosting administration
+  with no game deliverable stays rejected.
+- Game modding and game tooling: mods, mod loaders, and
+  reverse-engineering/debugging an existing game to build loadable mods
+  or tools
 - Game trailers and marketing materials
 - VR/AR game development
 - Game engines and tools
+- Ongoing/part-time/month-to-month development and maintenance of an
+  existing game: adding features, fixing bugs, refactoring, keeping the
+  codebase aligned with current Unity/Unreal/library versions, and
+  producing iterative builds/releases is genuine game development with
+  real deliverables
 
 Reject when the primary deliverable is instead:
 - A website or web application
+- A full-stack web product spanning frontend + backend + database
+  (route it to full_stack)
 - A mobile app (non-game)
 - A desktop application
 - Testing, QA, manual/beta testing, or game test automation/testing services
@@ -49,9 +63,11 @@ Reject when the primary deliverable is instead:
 - Machine learning or AI model
 - Enterprise software
 - Backend API or database
-- DevOps or infrastructure
+- Infrastructure/DevOps as the paid deliverable
+- General-purpose VPS/hosting administration with no game deliverable
 - Graphic design or UI/UX (non-game)
 - Education or tutoring
+- A freelancer service ad / self-promotion
 - Another non-game deliverable
 
 TESTING/QA IS A TESTING SERVICE EVEN INSIDE THE GAME LIFECYCLE
@@ -96,16 +112,87 @@ NON-GAME PRIMARY DELIVERABLES
 
 Reject when the PRIMARY DELIVERABLE is:
 - A website or web application
+- A full-stack web product spanning frontend + backend + database
 - A mobile app (non-game)
 - A desktop application
 - Data analysis or business intelligence
 - Machine learning or AI model
 - Enterprise software (ERP, CRM, SaaS)
 - Backend API or database
-- DevOps or infrastructure
+- Infrastructure/DevOps as the paid deliverable
+- General-purpose VPS/hosting administration with no game deliverable
 - Graphic design or UI/UX (non-game)
 - Education or tutoring
+- A freelancer service ad / self-promotion
 - Any other non-game deliverable
+
+==================================================
+HIRING, ONGOING, AND RECURRING POSTS ARE LEADS
+==================================================
+
+A posting that engages a developer on a recurring/part-time/
+month-to-month basis to develop, maintain, and evolve an existing game
+-- adding features, fixing bugs, refactoring, keeping the codebase
+aligned with current Unity/Unreal/library versions, and producing
+iterative builds/releases -- IS genuine game development with real
+deliverables. Select this category rather than "none", even when worded
+like an employment role ("part-time game developer", "ongoing game
+maintenance", Arabic مطلوب مطوّر ألعاب).
+
+Hiring/staffing posts are LEADS when the advertised role belongs to this
+category's scope (game developer or maintainer): select this category
+even with no concrete project spec. Answer "none" only when the role
+falls outside this category's scope.
+
+==================================================
+NOT-A-JOB SELF-PROMOTION / SERVICE AD
+==================================================
+
+A posting where a freelancer advertises their OWN availability and
+services ("I'm available for live projects, freelance contracts, and
+mentorship", portfolio/experience pitches, "I deliver clean
+production-ready code", "What I bring", "recent work", "hire me") is
+NOT a client project -- there is no client paying for a deliverable.
+Answer "none" even when the self-promotion is stuffed with in-scope
+keywords (Unity, Unreal, Godot, C#, C++).
+
+==================================================
+ALWAYS REJECT -- PROHIBITED DELIVERABLES
+==================================================
+
+These are cross-category policy blocks and override every Game
+Development scope rule above, regardless of any positive keywords.
+Always answer "none" for a candidate whose primary deliverable is any
+of the following:
+
+- Gambling, betting, casino, sports betting, bookmaker/sportsbook,
+  odds or live-odds engines, betting exchanges, binary-options,
+  payout-arbitrage or gambling-signal/prediction platforms, betting
+  bots, and lottery/casino/slot/spin games. ALWAYS REJECT -- do not
+  notify for any gambling-related deliverable, regardless of any
+  positive keywords, including moderation, detection, filtering, or
+  analytics tooling for gambling and any job materially related to
+  gambling.
+- Dating/online-matchmaking apps, sites, or platforms (2026-09-13
+  policy override: same treatment as gambling). ALWAYS REJECT -- do not
+  notify for any dating-app or matchmaking-platform deliverable,
+  regardless of any positive keywords, including moderation, detection,
+  filtering, or analytics tooling for dating and any job materially
+  related to dating. (Game matchmaking systems within a game remain in
+  scope -- this covers dating/matchmaking PLATFORMS only.)
+- Adult/sexually-explicit deliverables: porn/paysite/adult websites or
+  platforms (including adult video-distribution sites), escort or
+  adult-service platforms, sexually-explicit games (including NSFW
+  visual novels), and AI/automation pipelines that create or distribute
+  explicit imagery or video. ALWAYS REJECT -- do not notify for any
+  adult-content deliverable, regardless of any positive keywords,
+  including tooling or services that moderate, detect, filter, classify,
+  or otherwise analyze adult content, and any job materially related to
+  adult content.
+
+Judge these by the posting's actual primary purpose, not by the presence
+or absence of specific words. Gambling and adult/NSFW roles remain HARD
+GLOBAL REJECTIONS regardless of how they are framed as employment.
 
 ==================================================
 UNTRUSTED JOB POSTING CONTENT
@@ -222,6 +309,8 @@ If the client's primary goal is:
 - VR/AR Games
 - Game Optimization
 - Game Publishing
+- Game Server Setup
+- Game Modding
 
 ACCEPT.
 
@@ -245,6 +334,9 @@ ACCEPT
 - AR Game
 - Game Optimization
 - Game Publishing
+- Minecraft Paper/Spigot Server for a Minigame Mode
+- Game Mod / Mod Loader Development
+- Ongoing part-time game build/maintenance engagement
 
 REJECT
 
@@ -262,9 +354,13 @@ REJECT
 - ERP System
 - Admin Panel
 - Mobile Application (non-game)
+- Full-Stack Multi-Layer Web Product (route to full_stack)
 - Data Analysis Dashboard
 - Machine Learning Model
 - Backend API
+- Game playtest / QA report as the paid deliverable
+- General VPS/hosting administration with no game deliverable
+- Freelancer service ad / self-promotion
 
 ==================================================
 IMPORTANT
@@ -280,17 +376,11 @@ These alone DO NOT make a project relevant.
 
 Focus on the PRIMARY DELIVERABLE.
 
-If Game Development is only a supporting feature of a larger application,
-
-REJECT.
+If Game Development is only a supporting feature of a larger application whose primary deliverable belongs to another category, route it to that category. A build where a game, game system, or game tool IS the primary deliverable stays here.
 
 Accept ONLY if the freelancer could realistically complete at least 70% of the requested work independently using the configured skills.
 
-Be conservative.
-
-When uncertain, prefer rejecting the project rather than accepting it.
-
-False positives are worse than false negatives.
+If the description is ambiguous after this analysis, lean toward rejecting only when the deliverable clearly falls outside game development, game tooling, or interactive media; otherwise accept this category.
 
 ==================================================
 CONFIDENCE

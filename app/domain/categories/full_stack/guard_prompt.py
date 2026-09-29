@@ -11,8 +11,10 @@ IMPORTANT SCOPE RULES:
 1. This freelancer is focused ONLY on FULL STACK WEBSITES / WEB
    APPLICATIONS: building complete new websites/web applications that
    span frontend + backend + database + deployment.
-2. Mobile applications, mobile-first products (even with a companion web
-   version), and desktop applications are NOT acceptable deliverables.
+2. A mobile or desktop application as the SOLE or PRIMARY deliverable is
+   NOT acceptable. A complete platform (web + API + database + mobile
+   app) as one integrated system IS acceptable, because then the web
+   application is the primary deliverable, not the app.
 
 Approve only when the actual work requested is primarily full stack
 website / web application development, such as:
@@ -39,94 +41,76 @@ rule below): do_not_notify.
 Hiring/staffing posts are LEADS when the advertised role belongs to this
 category's scope (full-stack web developer or web app developer): approve
 them even with no concrete project spec. Only do_not_notify when the role
-is outside this category's scope.
+is outside this category's scope. Hard rejects apply even when framed as
+employment or hiring.
 
-NOT-A-JOB SELF-PROMOTION / SERVICE AD (2026-09-24 run 1, rowid 4930):
-A posting where a freelancer advertises their OWN availability and services
-("I'm available for live projects, freelance contracts, and mentorship",
-portfolio/experience pitches, "I deliver clean production-ready code",
-"What I bring", "recent work", "hire me") is NOT a client project -- there
-is no client paying for a deliverable. do_not_notify even when the
-self-promotion is stuffed with in-scope keywords (MERN, React, Node,
-MongoDB, JWT, CI/CD). No freelancer-less client = no deliverable = no
-notification.
+NOT-A-JOB SELF-PROMOTION / SERVICE AD, and the ALWAYS REJECT prohibited
+deliverables (gambling; dating/online-matchmaking; adult/sexually-explicit
+NSFW content including porn/paysite platforms) - including services that
+moderate, detect, filter or classify them, and any job
+materially related to them - are stated in full by the paired category
+section of this same prompt. Apply them here identically; they are not
+restated below in order to keep the composed prompt inside the guard
+token budget.
+
 
 REJECT when the PRIMARY DELIVERABLE is:
 
-- Gambling, betting, casino, sports betting, bookmaker/sportsbook,
-  odds or live-odds engines, betting exchanges, binary-options,
-  payout-arbitrage or gambling-signal/prediction platforms, betting
-  bots, and lottery/casino/slot games. ALWAYS REJECT -- do not notify
-  for any gambling-related deliverable, regardless of any positive
-  keywords, including moderation, detection, filtering, or analytics
-  tooling for gambling and any job materially related to gambling.
-- Dating/online-matchmaking apps, sites, or platforms (2026-09-13
-  policy override: same treatment as gambling). ALWAYS REJECT -- do not
-  notify for any dating-app or matchmaking-platform deliverable,
-  regardless of any positive keywords, including moderation, detection,
-  filtering, or analytics tooling for dating and any job materially
-  related to dating.
-- Adult/sexually-explicit deliverables: porn/paysite/adult websites or
-  platforms (including adult video-distribution sites), escort or
-  adult-service platforms, sexually-explicit games (including NSFW
-  visual novels), and AI/automation pipelines that create or distribute
-  explicit imagery or video. ALWAYS REJECT -- do not notify for any
-  adult-content deliverable, regardless of any positive keywords,
-  including tooling or services that moderate, detect, filter, classify,
-  or otherwise analyze adult content, and any job materially related to
-  adult content.
-- Frontend-only development (websites, web apps, landing pages, UI implementation) — but note: e-commerce sites with custom payment integration, order management, and deployment are NOT frontend-only
+- Frontend-only development (websites, web apps, landing pages, UI
+  implementation) — including e-commerce sites with payment
+  processing, checkout, order management, and deployment: when the
+  deliverable is the SITE ITSELF that is the specialist web/frontend
+  option, not full_stack. Choose full_stack only when custom business
+  logic genuinely spans frontend + backend + database as one integrated
+  system.
 - Backend-only development (APIs, databases, server-side logic without frontend)
-- Mobile-only app development where the web component is just an admin panel or afterthought — but a complete platform (web + API + database + mobile app as one integrated system) IS acceptable
+- Mobile-only app development where the web component is just an admin panel
+  or afterthought (a complete integrated platform is NOT mobile-only -- see
+  scope rule 2 above).
 - Desktop application development (Electron or native)
-- Game development
-- Data analysis or business intelligence
-- Machine learning or AI model development
+- Game development; data analysis or business intelligence; machine
+  learning or AI model development
 - Enterprise software configuration (ERP, CRM, SaaS configuration)
 - Simple integrations (connecting existing systems via API/webhooks)
-- Basic platform setup (installing WordPress, configuring Shopify themes, setting up Firebase/Supabase defaults) — but building custom business logic on a platform (custom booking systems, real-time features, payment flows, multi-role dashboards) IS development
+- Basic platform setup (installing WordPress, configuring Shopify themes,
+  setting up Firebase/Supabase defaults) — but building custom business
+  logic on a platform (booking systems with their own scheduling backend,
+  real-time features with server-side state, multi-role dashboards backed
+  by a real data model) IS development
 - Customization (theming, plugin configuration, no-code/low-code)
-- Maintenance (bug fixes, updates, monitoring)
-- Migration (moving between hosts, platforms, databases)
-- Support (helpdesk, operations)
+- Maintenance, migration, or support (bug fixes, updates, monitoring,
+  moving hosts/platforms/databases, helpdesk, operations)
 - Data entry (manual entry, transcription)
 - Marketing (SEO, ads, lead generation, content)
 - Testing, QA, manual testing, beta testing, or test automation of any kind
 
 The distinction is the PRIMARY DELIVERABLE:
 - Building a complete new WEBSITE / WEB APPLICATION spanning frontend + backend + database + deployment = ACCEPT.
-- A complete platform with web dashboard + API + database + mobile app as integrated components = ACCEPT (the mobile app is part of the platform, not the sole deliverable).
+- A complete platform with web dashboard + API + database + mobile app as integrated components = ACCEPT.
 - Building only one layer (frontend, backend, mobile) where that layer is the SOLE deliverable = REJECT.
-- Building a mobile or desktop product where it is the ONLY deliverable = REJECT.
 - Basic platform configuration or theme setup = REJECT.
-- Building custom business logic on a platform (booking systems, payment flows, multi-role dashboards) = ACCEPT.
+- Building custom business logic on a platform that genuinely spans
+  frontend + backend + database (booking systems with their own
+  scheduling backend, real-time features with server-side state,
+  multi-role dashboards backed by a real data model) = ACCEPT.
 
-A job does NOT become acceptable merely because it mentions:
-- React, Vue, Next.js, Node.js, Python, Django, FastAPI
-- PostgreSQL, MongoDB, Redis
-- Docker, Kubernetes, AWS, CI/CD
-- Authentication, API, REST, GraphQL
+A job does NOT become acceptable merely because it mentions React, Vue,
+Next.js, Node.js, Python, Django, FastAPI, PostgreSQL, MongoDB, Redis,
+Docker, Kubernetes, AWS, CI/CD, or an API/GraphQL mention. But it IS
+acceptable when the description shows the freelancer must BUILD custom
+features spanning multiple layers, even if the stack is simple
+(HTML/CSS/JS + PHP + MySQL) or the platform is WordPress/Shopify.
 
-But a job IS acceptable when the description shows the freelancer must
-BUILD custom features spanning multiple layers (frontend + backend +
-database), even if the tech stack is simple (HTML/CSS/JS + PHP + MySQL)
-or the platform is WordPress/Shopify.
-
-Always identify the MAIN OUTCOME the client is paying for.
-
-Ask yourself:
-"What will the freelancer ultimately deliver to the client?"
-
-If the answer is a complete new website/web application spanning frontend,
-backend, database and deployment, approve it.
-
-If the answer includes custom payment integration, booking systems,
-real-time features, multi-role dashboards, or custom business logic
-—even if built on WordPress, Shopify, or another platform—approve it.
-
-If the answer is a single layer, a mobile or desktop application as the
-sole deliverable, basic platform configuration, theme setup, maintenance,
-or any non-web-product task, reject it.
+Always identify the MAIN OUTCOME the client is paying for: "What will the
+freelancer ultimately deliver to the client?" Approve a complete new
+web application spanning frontend, backend, database and deployment, or
+custom business logic genuinely spanning those layers even on
+WordPress/Shopify. Reject a single layer, a mobile/desktop app as the
+sole deliverable, basic platform configuration, theme setup,
+maintenance, or any non-web-product task. A website or store whose
+deliverable is the SITE ITSELF — pages, product pages, checkout, payment
+processing, a custom theme — is the specialist web/frontend option, not
+full_stack.
 
 Tools and platforms mentioned do not determine the category by
 themselves. Judge the actual work and final deliverable.

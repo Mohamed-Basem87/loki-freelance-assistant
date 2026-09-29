@@ -74,7 +74,8 @@ even when worded like an employment role ("part-time Android developer",
 "ongoing app maintenance"). Hiring/staffing posts are LEADS when the
 advertised role belongs to this category's scope (Android/iOS/mobile app
 developer or maintainer): approve them even with no concrete project spec.
-Only do_not_notify when the role is outside this category's scope.
+Only do_not_notify when the role is outside this category's scope. Hard rejects apply even when framed as employment or
+hiring.
 
 HARD RULE AGAINST MISSED IN-SCOPE MONETIZATION/RELEASE WORK
 (2026-09-02 run 31):
@@ -93,6 +94,16 @@ Account Holder) with no app-level deliverable, and -- per the
 2026-09-24 run 1 ruling -- upload-only/publish-only store work with no
 app configuration or development at all.
 
+NOT-A-JOB SELF-PROMOTION / SERVICE AD (2026-09-24 run 1, rowid 4930):
+A posting where a freelancer advertises their OWN availability and services
+("I'm available for live projects, freelance contracts, and mentorship",
+portfolio/experience pitches, "I deliver clean production-ready code",
+"What I bring", "recent work", "hire me") is NOT a client project -- there
+is no client paying for a deliverable. do_not_notify even when the
+self-promotion is stuffed with in-scope keywords (Flutter, React Native,
+Swift, Kotlin, Firebase, IAP). No freelancer-less client = no deliverable
+= no notification.
+
 REJECT when the PRIMARY DELIVERABLE is:
 
 - Gambling, betting, casino, sports betting, bookmaker/sportsbook,
@@ -107,17 +118,11 @@ REJECT when the PRIMARY DELIVERABLE is:
   notify for any dating-app or matchmaking-platform deliverable,
   regardless of any positive keywords, including moderation, detection,
   filtering, or analytics tooling for dating and any job materially
-  related to dating.
-  KEYWORD-CONTEXT NOTE (2026-09-24 run 1, rowid 4330): the blocklist
-  target is work whose deliverable IS a dating/matchmaking product.
-  A job whose scope REMOVES dating functionality -- e.g. "remove the
-  dating layer (discovery, swipe, likes, matches) from an existing
-  social app; keep auth/IAP/push/users; apply a Figma redesign;
-  upgrade chat with admin roles" -- is NOT a dating deliverable and the
-  mere word "dating" in the description must not trigger a blanket
-  reject. Judge the primary deliverable: ACTUALLY building dating/
-  matchmaking features = reject; REMOVING dating features and building
-  general social/chat/UI work = approve if otherwise in scope.
+  related to dating. The word "dating" alone is enough: work that
+  removes, disables, or deletes dating functionality is still a dating
+  deliverable and is rejected on the same basis (2026-09-24 run 1,
+  rowid 4330 reversal). Game matchmaking systems WITHIN a game remain in
+  scope -- this covers dating/matchmaking PLATFORMS only.
 - Adult/sexually-explicit deliverables: porn/paysite/adult websites or
   platforms (including adult video-distribution sites), escort or
   adult-service platforms, sexually-explicit games (including NSFW
@@ -171,6 +176,9 @@ The distinction is the PRIMARY DELIVERABLE:
 - Mobile-responsive web design = REJECT (that's web development).
 - Any testing, QA, beta testing, manual testing, or test automation (mobile, web, or other) = REJECT — testing services are not development.
 - Web testing/automation = REJECT.
+
+Do not approve a job merely because it mentions a tool or platform; judge
+the deliverable.
 
 ACCOUNT-ADMIN vs DEPLOYMENT: renewing/repairing the developer-account
 membership, fixing its payment, or changing its Account Holder / team ID is

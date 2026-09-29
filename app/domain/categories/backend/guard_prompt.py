@@ -9,8 +9,8 @@ work relevant to this freelancer.
 
 IMPORTANT SCOPE RULE:
 This freelancer is focused on BACKEND DEVELOPMENT, including API
-design and implementation, database management, server-side logic,
-authentication/authorization, and infrastructure.
+design and implementation, database management, server-side logic, and
+authentication/authorization.
 
 Approve only when the actual work requested is primarily backend
 development, such as:
@@ -24,15 +24,30 @@ development, such as:
 - Message queues and event-driven systems
 - Caching and performance optimization
 - Security implementation
-- DevOps and deployment
-- Cloud infrastructure (AWS, GCP, Azure)
+- Custom tooling and automation scripts whose engineered code IS the
+  deliverable: importers/migrators (e.g. moving spreadsheet rows into a web
+  form), API-to-feed pipelines, and utility tools such as file/image
+  deduplication or data-cleaning scripts. Rejecting these as "general
+  software development" is wrong; they are server-side data and
+  integration work. MANUAL data entry and copy-paste stay rejected.
 
-IMPORTANT FULL-STACK DISTINCTION:
+INFRASTRUCTURE / DEVOPS IS NOT A BACKEND DELIVERABLE:
+CI/CD pipelines, Kubernetes, Terraform, Linux/VPS administration,
+server sizing, cache/CDN toggles, and config-only tuning are not
+backend work. Docker, Kubernetes, AWS, GCP and CI/CD are supporting
+skills used inside backend builds; on their own they never justify
+approving a DevOps-only posting. Reject performance/optimization posts
+that are purely operational with no code-level engineering requested,
+but approve code-level diagnosis, refactor, and measurable improvement
+of server-side logic.
 
-A full-stack or web platform build whose deliverable includes
-substantial server-side work -- databases, APIs, business logic,
-payments, user accounts, admin panels -- IS a genuine backend job and
-MUST be approved even when the posting also mentions frontend work.
+IMPORTANT BACKEND vs FULL-STACK BOUNDARY:
+
+A deliverable FOCUSED ON SERVER-SIDE engineering is a genuine backend
+job and MUST be approved even when the posting also mentions or
+includes frontend work. The presence of a UI does not disqualify
+these jobs; judge whether real server-side engineering is part of
+what the client is paying for.
 
 For example:
 
@@ -41,15 +56,8 @@ ACCEPT:
 accounts, cart, and payment processing."
 
 ACCEPT:
-"Develop an automated voucher/gift-card platform that splits purchased
-cards into denominations and emails codes."
-
-ACCEPT:
 "Build an administrative and collections system for our financing
 business: clients, installments, overdue tracking, reports."
-
-The presence of a UI does not disqualify these jobs; judge whether
-real server-side engineering is part of what the client is paying for.
 
 ACCEPT:
 "Wire my support@business.com address, hosted on a custom domain,
@@ -82,80 +90,74 @@ in code, it MUST be approved. Do not let operational-sounding words in
 the title ("deployment", "setup", "configuration", a hosting brand)
 override what the description actually asks you to build.
 
+The boundary is where the CLIENT'S PRIMARY DELIVERABLE sits. Only when
+the deliverable is a genuinely balanced multi-layer web product -- a
+complete new frontend AND backend AND database build with no single
+layer dominant -- is it not backend work; that belongs to the
+full_stack option rather than to this category.
+
 ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
-A posting that engages a developer on a recurring/part-time/month-to-month
-basis to develop, maintain, and evolve an existing backend application --
-adding features, fixing bugs, refactoring, keeping dependencies/libraries
-current, and producing iterative builds/releases -- IS genuine backend
-development work with real deliverables. Approve it even when worded like
+A posting engaging a developer recurring/part-time/month-to-month to
+develop, maintain, and evolve an existing backend application -- adding
+features, fixing bugs, refactoring, updating dependencies, producing
+iterative builds/releases -- IS genuine backend development work with
+real deliverables. Approve it even when worded like
 an employment role ("part-time backend developer", "ongoing system
 maintenance"). Hiring/staffing posts are LEADS when the advertised role
 belongs to this category's scope (backend/API/ERP developer or maintainer):
 approve them even with no concrete project spec. Only do_not_notify when
-the role is outside this category's scope.
+   the role is outside this category's scope. Hard rejects apply even when
+   framed as employment.
 
-RPA / SCRIPTED AUTOMATION ON THE CLIENT'S OWN ACCOUNT IS BACKEND WORK
-(2026-09-04 run 33, rowid 13132; settled precedent runs 31 & 32):
-A posting that asks the freelancer to BUILD a scripted/RPA automation bot
--- UiPath, Automation Anywhere, Power Automate, Python + Selenium, or
-similar -- that logs into the CLIENT'S OWN account (a bank/payment portal,
-admin console, etc.), polls/pulls a data status on a schedule, detects
-changes, and fires Email/SMS alerts with transaction details IS genuine
-backend/automation engineering worth notifying. This is scripted
-data-pulling + notification logic built in code for the client's own
-credentials -- not credential misuse or malicious access -- and is the
-established Backend class after runs 31 (12576/12768) and 32 (12936).
-Approve it even though it is "automation" rather than a REST API or web
-app. The "pure automation" REJECT below applies to unattended
-screen-scraping / mass-funnel / scrape-for-scraping jobs or third-party
-tool configuration with no code construction on the client's own account
--- NOT to building an automation robot itself. When in doubt about a
-scripted-automation build with real engineering (scheduling, change
-detection, dual-channel alerting, session/2FA handling), approve it.
+RPA / SCRIPTED AUTOMATION ON THE CLIENT'S OWN ACCOUNT IS BACKEND WORK:
+A posting asking the freelancer to BUILD a scripted/RPA automation bot --
+UiPath, Automation Anywhere, Power Automate, Python + Selenium -- that
+logs into the CLIENT'S OWN account, polls a data status on a schedule,
+detects changes, and fires Email/SMS alerts IS genuine backend
+engineering. This is scripted data-pulling + notification logic in code
+for the client's own credentials, not credential misuse. The "pure
+automation" REJECT below applies to unattended screen-scraping /
+mass-funnel / scrape-for-scraping jobs or third-party tool configuration
+with no code construction -- NOT to building the automation robot itself.
+When in doubt about a scripted build with real engineering (scheduling,
+change detection, alerting, session/2FA), approve it.
 
-PIPELINE PERFORMANCE/OPTIMIZATION ENGINEERING IS BACKEND WORK
-(2026-09-24 run 1, rowid 4987):
+PIPELINE PERFORMANCE/OPTIMIZATION ENGINEERING IS BACKEND WORK:
 Diagnosing and fixing bottlenecks in an EXISTING server-side application
 -- profiling a Python/FastAPI video pipeline, refining FFmpeg filter
-graphs, making async calls smarter, improving asset-matching logic,
-reducing redundant downloads, and delivering before/after benchmarks -- is
-genuine backend performance engineering worth notifying, not clerical
-"optimization" maintenance. The client pays for code-level diagnosis,
-refactor, and measurable improvement of server-side logic. Only reject
-performance/optimization postings that are purely operational (cache/CDN
-toggles, server resource sizing, config-only tuning) with no code-level
-engineering requested.
+graphs, smarter async calls, better asset-matching logic, fewer redundant
+downloads, with before/after benchmarks -- is genuine backend performance
+engineering, not clerical "optimization" maintenance. Reject only purely
+operational performance work (cache/CDN toggles, server sizing,
+config-only tuning) with no code-level work requested.
 
-HARD RULE AGAINST MISSED IN-SCOPE BUILDS (2026-09-25 run 2 gate review;
-rowids 5259/5591/5711): the following were wrongly suppressed at the guard
-and MUST be approved whenever the actual work is as described:
+HARD RULE AGAINST MISSED IN-SCOPE BUILDS -- wrongly suppressed, MUST be
+approved whenever the work is as described:
 
-- SaaS/CRM integration WIRING between two business systems (e.g. Zoho
-  CRM/Books <-> other SaaS, Smartflo/telephony <-> CRM, Notion/M365/
-  Airtable, Harvest <-> FreeAgent, WhatsApp/Telegram business flows,
-  payment-gateway production wiring incl. sandbox->live) via native
-  plug-ins, workflow platforms (Make.com, Zapier, n8n), webhooks, or API/
-  tokens -- including constructing the automation flow itself -- so records
-  sync and data actually flows IS backend integration engineering and must
-  be approved, even when the client casually calls it "setup" or
-  "maintenance" (5259). Distinguish from pure point-and-click third-party
-  tool configuration with no wiring, custom automation, or API work (e.g.
-  enabling a virtual terminal), which stays rejected.
-- A REPRODUCIBLE scripted data-collection PIPELINE the client can re-run --
-  pulling a defined set of records with a script or public API (product
-  listings, prices, public catalog data), normalizing them, and delivering
-  CSV/Sheets -- optionally with change-detection/monitoring/alerting on the
-  collected data -- plus a documented technique -- IS genuine
-  backend/data-pipeline engineering and must be approved (5591). It is NOT
-  clerical data entry or manual data copying. Distinguish from unauthorized
-  scraping of personal or paywalled data, anti-bot/captcha evasion, and
-  one-off manual data collection, which stay rejected.
-- Google Sheets / spreadsheet AUTOMATION built in Apps Script or equivalent
-  -- triggers, arrayFormula, pivot tables, regex cleanup, scheduled report
-  generation, and reusable templates -- IS scripted automation engineering
-  and must be approved (5711). The "clean the data" / "data entry" language
+- SaaS/CRM integration WIRING between two business systems (Zoho CRM/
+  Books, Smartflo/telephony, Notion/M365/Airtable, Harvest <->
+  FreeAgent, WhatsApp/Telegram business flows, payment-gateway
+  production wiring incl. sandbox->live) via native plug-ins, workflow
+  platforms (Make.com, Zapier, n8n), webhooks, or API/tokens --
+  including constructing the automation flow itself -- so records sync
+  and data actually flows IS backend integration engineering, even when
+  the client calls it "setup" or "maintenance". Distinguish from pure
+  point-and-click third-party tool configuration with no wiring, custom
+  automation, or API work (e.g. enabling a virtual terminal), which
+  stays rejected.
+- A REPRODUCIBLE scripted data-collection PIPELINE the client can re-run
+  -- pulling defined records by script or public API, normalizing them,
+  delivering CSV/Sheets, optionally with change-detection/alerting --
+  plus a documented technique IS genuine backend/data-pipeline
+  engineering, NOT clerical data entry. Distinguish from unauthorized
+  scraping of personal/paywalled data, anti-bot/captcha evasion, and
+  one-off manual collection, which stay rejected.
+- Google Sheets / spreadsheet AUTOMATION built in Apps Script or
+  equivalent -- triggers, arrayFormula, pivot tables, regex cleanup,
+  scheduled report generation, reusable templates -- IS scripted
+  automation engineering. The "clean the data" / "data entry" language
   describes the DATA the automation processes, not the deliverable; the
-  deliverable is the working automation. Manual data entry / copy-paste
+  deliverable is the working automation. Manual entry / copy-paste
   population with no automation stays rejected.
 
 An ACCEPT carve-out above (full-stack distinction, integration WIRING,
@@ -165,6 +167,15 @@ matching reject keyword or phrase below: "setup", "configuration",
 "migration", "automation", "data entry", "integration", "design",
 "maintenance", or "staffing/hiring" do not remove an approval the rules
 above already grant.
+
+NOT-A-JOB SELF-PROMOTION / SERVICE AD (2026-09-24 run 1, rowid 4930):
+A posting where a freelancer advertises their OWN availability and
+services ("I'm available for live projects, freelance contracts, and
+mentorship", portfolio/experience pitches, "I deliver clean
+production-ready code", "What I bring", "recent work", "hire me") is
+NOT a client project -- there is no client paying for a deliverable.
+do_not_notify even when the self-promotion is stuffed with in-scope
+keywords (MERN, React, Node, MongoDB, JWT, CI/CD).
 
 REJECT when the PRIMARY DELIVERABLE is operational or clerical rather
 than engineering. Common patterns:
@@ -220,6 +231,11 @@ Also REJECT when the PRIMARY DELIVERABLE is:
   adult content.
 - Frontend-only development (UI implementation, responsive design,
   CMS site builds with no custom server-side work)
+- Full-stack multi-layer web products with no dominant server-side
+  deliverable (those belong to the full_stack option)
+- Infrastructure/DevOps-only work with no backend development
+  (CI/CD, Kubernetes, Terraform, Linux/VPS administration, server
+  sizing, cache/CDN toggles, config-only tuning)
 - Mobile app development (iOS/Android)
 - Game development
 - Data analysis or business intelligence
@@ -229,6 +245,12 @@ Also REJECT when the PRIMARY DELIVERABLE is:
 - Testing, QA, manual testing, beta testing, or test automation of any kind
 - Data entry, manual data copying, product entry, or store population (including `إدخال بيانات`)
 - Any other non-backend-related task
+
+An educational BUILD is not tutoring: a real, implementable server-side
+build with concrete deliverables (a student records portal, a course
+platform backend) is development work. Only pure homework help, "do my
+assignment for me", or coursework with no real implementation stays
+rejected.
 
 A job does NOT become acceptable merely because it mentions APIs,
 databases, Python, cloud, automation, "platform", or "system".

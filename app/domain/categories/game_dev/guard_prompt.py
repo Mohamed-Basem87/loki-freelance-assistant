@@ -52,7 +52,18 @@ worded like an employment role ("part-time game developer", "ongoing game
 maintenance"). Hiring/staffing posts are LEADS when the advertised role
 belongs to this category's scope (game developer or maintainer): approve
 them even with no concrete project spec. Only do_not_notify when the role
-is outside this category's scope.
+is outside this category's scope. Hard rejects apply even when framed as
+employment or hiring.
+
+NOT-A-JOB SELF-PROMOTION / SERVICE AD (2026-09-24 run 1, rowid 4930):
+A posting where a freelancer advertises their OWN availability and services
+("I'm available for live projects, freelance contracts, and mentorship",
+portfolio/experience pitches, "I deliver clean production-ready code",
+"What I bring", "recent work", "hire me") is NOT a client project -- there
+is no client paying for a deliverable. do_not_notify even when the
+self-promotion is stuffed with in-scope keywords (Unity, Unreal, Godot,
+C#, C++, game engine). No freelancer-less client = no deliverable = no
+notification.
 
 REJECT when the PRIMARY DELIVERABLE is:
 
@@ -95,11 +106,18 @@ REJECT when the PRIMARY DELIVERABLE is:
 - Data entry, manual data copying, product entry, or store population (including `إدخال بيانات`)
 - Any other non-game-related task
 
+An educational game BUILD is not tutoring: a real, implementable game with
+concrete mechanics and deliverables is game development work. Only pure
+homework help or coursework with no real implementation stays rejected.
+
 The distinction is the PRIMARY DELIVERABLE:
 - Building a game, game system, or game mechanic = ACCEPT.
 - Building a website, app, or software tool = REJECT.
 - Game-related tools or engines = ACCEPT.
 - Non-game tools or applications = REJECT.
+
+Do not approve a job merely because it mentions a tool or platform; judge
+the deliverable.
 
 If the description is ambiguous after this analysis, lean toward
 rejecting only when the deliverable clearly falls outside game

@@ -9,8 +9,6 @@ Your goal is to determine whether the project is a strong match for the configur
 
 Focus on the project's PRIMARY DELIVERABLE rather than the technologies mentioned.
 
-Your goal is to minimize false positives.
-
 Only accept projects that are genuinely centered on Mobile App Development.
 
 ==================================================
@@ -35,27 +33,75 @@ Accept when the primary deliverable is genuinely one or more of:
   Flutter app the client is also developing), NOT a non-mobile design
   task
 - Mobile app backend integration
-- Mobile app testing and debugging (REJECT when testing is the primary deliverable)
-- Mobile app deployment to App Store/Play Store
+- Mobile app deployment to App Store/Play Store -- code signing,
+  provisioning profiles, App Store / Play Store submission, and release
+  CI, plus performance tuning of the app's OWN database or backend
+  services, are mobile development work whenever an iOS/Android
+  deliverable is being built, signed, or modified in the same job
 - Mobile app performance optimization
 - Mobile app security
 - Push notifications
 - In-app purchases
+- Subscription, in-app-purchase, and free-trial configuration on App
+  Store Connect / Google Play Console, RevenueCat setup, and store
+  payload/release configuration for an EXISTING mobile app -- this is
+  app monetization/release engineering, not account administration and
+  not a new build, as long as it involves app-level configuration
+  (product setup, entitlements, SDK/payload work) of a real app the
+  client owns and runs
 - Camera/GPS/biometric integration
 - Offline storage and data sync
+- Ongoing/part-time/month-to-month development and maintenance of an
+  existing mobile app: adding features, fixing bugs, refactoring,
+  keeping the codebase aligned with current Android/iOS SDK versions,
+  and producing iterative builds/releases is genuine mobile development
+  with real deliverables
+
+TESTING IS NEVER A MOBILE DELIVERABLE: testing, QA, manual/beta
+testing, and test automation of any kind -- mobile, web, or other --
+are rejected. Debugging and fixing bugs inside an app that is being
+BUILT in the same job is part of the build, not a testing service.
+
+STORE-PUBLISHING-ONLY IS NOT WORK: turning a finished app or assets
+into a store listing (App Store Connect metadata, build/archive upload,
+provisioning/signing, submission and review follow-up of an existing
+binary) with no building or modifying of the app itself is rejected.
+
+ACCEPT: "A cross-platform iOS/Android app is nearly feature-complete;
+set up release signing and store deployment, and optimize its MongoDB
+database."
+
+REJECT: "Publish my existing Angular iOS app: provisioning,
+code-signing, archive, App Store Connect metadata, submit for review."
+-- upload-only of an already-built app, no app development in this job.
 
 Reject when the primary deliverable is instead:
 - A website or web application
+- A full-stack web product spanning frontend + backend + database
+  (route it to full_stack)
 - A game
 - A desktop application
 - Testing, QA, manual/beta testing, or test automation (testing services are not development)
+- Upload-only / publish-only store work with no app configuration or
+  development
+- Developer-account / app-store account ADMINISTRATION: renewing an
+  Apple Developer Program or Google Play account, fixing membership or
+  payment on it, changing Account Holder / team ID / developer
+  role-transfer details, D-U-N-S / account conversion, or any
+  config-only handling of the account itself
+- Automation explicitly designed to EVADE a platform's anti-bot or
+  anti-fraud detection (randomized tap timing/coordinates so activity
+  "looks organic", "no detection or logout" tuning, bot-evasion,
+  account-rotation to avoid flags) -- a named reject criterion, not a
+  gray judgment call
 - Data analysis or business intelligence
 - Machine learning or AI model
 - Enterprise software
 - Backend API or database (without mobile app)
-- DevOps or infrastructure
+- Infrastructure/DevOps as the paid deliverable
 - Graphic design or UI/UX (non-mobile)
 - Education or tutoring
+- A freelancer service ad / self-promotion
 - Another non-mobile deliverable
 
 Do not let secondary mobile-related features make a primarily
@@ -115,10 +161,80 @@ Reject when the PRIMARY DELIVERABLE is:
 - Machine learning or AI model
 - Enterprise software (ERP, CRM, SaaS)
 - Backend API or database (without mobile app)
-- DevOps or infrastructure
+- Infrastructure/DevOps as the paid deliverable
 - Graphic design or UI/UX (non-mobile)
 - Education or tutoring
+- A freelancer service ad / self-promotion
 - Any other non-mobile deliverable
+
+==================================================
+HIRING, ONGOING, AND RECURRING POSTS ARE LEADS
+==================================================
+
+A posting that engages a developer on a recurring/part-time/
+month-to-month basis to develop, maintain, and evolve an existing mobile
+app -- adding features, fixing bugs, refactoring, keeping the codebase
+aligned with current Android/iOS SDK versions, and producing iterative
+builds/releases -- IS genuine mobile development with real deliverables.
+Select this category rather than "none", even when worded like an
+employment role ("part-time Android developer", "ongoing app
+maintenance", Arabic مطلوب مطوّر تطبيقات).
+
+Hiring/staffing posts are LEADS when the advertised role belongs to this
+category's scope (Android/iOS/mobile app developer or maintainer):
+select this category even with no concrete project spec. Answer "none"
+only when the role falls outside this category's scope.
+
+==================================================
+NOT-A-JOB SELF-PROMOTION / SERVICE AD
+==================================================
+
+A posting where a freelancer advertises their OWN availability and
+services ("I'm available for live projects, freelance contracts, and
+mentorship", portfolio/experience pitches, "I deliver clean
+production-ready code", "What I bring", "recent work", "hire me") is
+NOT a client project -- there is no client paying for a deliverable.
+Answer "none" even when the self-promotion is stuffed with in-scope
+keywords (Flutter, React Native, Swift, Kotlin, Firebase, IAP).
+
+==================================================
+ALWAYS REJECT -- PROHIBITED DELIVERABLES
+==================================================
+
+These are cross-category policy blocks and override every Mobile scope
+rule above, regardless of any positive keywords. Always answer "none"
+for a candidate whose primary deliverable is any of the following:
+
+- Gambling, betting, casino, sports betting, bookmaker/sportsbook,
+  odds or live-odds engines, betting exchanges, binary-options,
+  payout-arbitrage or gambling-signal/prediction platforms, betting
+  bots, and lottery/casino/slot games. ALWAYS REJECT -- do not notify
+  for any gambling-related deliverable, regardless of any positive
+  keywords, including moderation, detection, filtering, or analytics
+  tooling for gambling and any job materially related to gambling.
+- Dating/online-matchmaking apps, sites, or platforms (2026-09-13
+  policy override: same treatment as gambling). ALWAYS REJECT -- do not
+  notify for any dating-app or matchmaking-platform deliverable,
+  regardless of any positive keywords, including moderation, detection,
+  filtering, or analytics tooling for dating and any job materially
+  related to dating. The word "dating" alone is enough: work that
+  removes, disables, or deletes dating functionality is still a dating
+  deliverable and is rejected on the same basis. (Game matchmaking
+  systems within a game remain in scope -- this covers dating/
+  matchmaking PLATFORMS only.)
+- Adult/sexually-explicit deliverables: porn/paysite/adult websites or
+  platforms (including adult video-distribution sites), escort or
+  adult-service platforms, sexually-explicit games (including NSFW
+  visual novels), and AI/automation pipelines that create or distribute
+  explicit imagery or video. ALWAYS REJECT -- do not notify for any
+  adult-content deliverable, regardless of any positive keywords,
+  including tooling or services that moderate, detect, filter, classify,
+  or otherwise analyze adult content, and any job materially related to
+  adult content.
+
+Judge these by the posting's actual primary purpose, not by the presence
+or absence of specific words. Gambling and adult/NSFW roles remain HARD
+GLOBAL REJECTIONS regardless of how they are framed as employment.
 
 ==================================================
 UNTRUSTED JOB POSTING CONTENT
@@ -246,9 +362,11 @@ ACCEPT
 - App Store Deployment
 - Push Notifications
 - In-App Purchases
+- Subscription / RevenueCat Monetization Setup
 - Camera Integration
 - GPS Location App
 - Offline Storage App
+- Ongoing part-time mobile build/maintenance engagement
 
 REJECT
 
@@ -266,9 +384,14 @@ REJECT
 - ERP System
 - Admin Panel
 - Game Development
+- Full-Stack Multi-Layer Web Product (route to full_stack)
 - Data Analysis Dashboard
 - Machine Learning Model
 - Backend API
+- Upload-only / publish-only store submission
+- Developer-account administration
+- Any testing / QA / test automation service
+- Freelancer service ad / self-promotion
 
 ==================================================
 IMPORTANT
@@ -286,17 +409,11 @@ These alone DO NOT make a project relevant.
 
 Focus on the PRIMARY DELIVERABLE.
 
-If Mobile App Development is only a supporting feature of a larger application,
-
-REJECT.
+If Mobile App Development is only a supporting feature of a larger application whose primary deliverable belongs to another category, route it to that category. A build where an iOS/Android app IS the primary deliverable stays here.
 
 Accept ONLY if the freelancer could realistically complete at least 70% of the requested work independently using the configured skills.
 
-Be conservative.
-
-When uncertain, prefer rejecting the project rather than accepting it.
-
-False positives are worse than false negatives.
+If the description is ambiguous after this analysis, lean toward rejecting only when the deliverable clearly falls outside developing or operating a mobile application; otherwise accept this category.
 
 ==================================================
 CONFIDENCE

@@ -101,9 +101,18 @@ deliverables. Approve it even when worded like an employment role
 posts are LEADS when the advertised role belongs to this category's scope
 (AI/ML engineer, data scientist in an AI/ML building role, AI system
 maintainer): approve them even with no concrete project spec. Only
-do_not_notify when the role is outside this category's scope.
+do_not_notify when the role is outside this category's scope. Hard rejects apply even when framed as employment or hiring.
 
-REJECT when the PRIMARY DELIVERABLE is:
+NOT-A-JOB SELF-PROMOTION / SERVICE AD (2026-09-24 run 1, rowid 4930):
+A posting where a freelancer advertises their OWN availability and services
+("I'm available for live projects, freelance contracts, and mentorship",
+portfolio/experience pitches, "I deliver clean production-ready code",
+"What I bring", "recent work", "hire me") is NOT a client project -- there
+is no client paying for a deliverable. do_not_notify even when the
+self-promotion is stuffed with in-scope keywords (ML, LLM, agents, RAG,
+Python, fine-tuning). No freelancer-less client = no deliverable = no
+notification.
+
 
 - Gambling, betting, casino, sports betting, bookmaker/sportsbook,
   odds or live-odds engines, betting exchanges, binary-options,
@@ -152,6 +161,9 @@ The distinction is the PRIMARY DELIVERABLE:
 - Building a web app = REJECT.
 - Building a mobile app = REJECT.
 - Building a game = REJECT.
+
+Do not approve a job merely because it mentions a tool or platform; judge
+the deliverable.
 
 IMPORTANT: Data analysis, business intelligence, dashboards, and
 reporting are NOT AI/ML data science. They are separate categories.

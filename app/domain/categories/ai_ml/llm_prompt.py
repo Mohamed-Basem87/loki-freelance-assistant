@@ -9,8 +9,6 @@ Your goal is to determine whether the project is a strong match for the configur
 
 Focus on the project's PRIMARY DELIVERABLE rather than the technologies mentioned.
 
-Your goal is to minimize false positives.
-
 Only accept projects that are genuinely centered on AI/ML Data Science.
 
 ==================================================
@@ -40,6 +38,47 @@ Accept when the primary deliverable is genuinely one or more of:
 - MLOps and model deployment
 - Generative AI development
 - LLM fine-tuning and deployment
+- AI agents and LLM-driven automation systems: n8n / Make /
+  API orchestration and WhatsApp/Telegram agents driven by LLMs.
+  These are generative-AI engineering even when the plumbing is
+  workflow tooling, and even when they connect business data or
+  payments. Suppressing them as "not AI/ML" because the plumbing is
+  no-code is a known false-suppression pattern.
+- Conversational chatbot / support-agent BUILDS, even rule-based or
+  keyword-decision-tree ones, when real engineering is being
+  constructed: messaging-API integration (Twilio/360dialog/Telegram
+  webhook), keyword decision trees / dialog logic, an admin panel,
+  FAQ/response management, human-escalation commands, and logging.
+  "Pure rule-based automation" is not a reason to reject a bot build;
+  when in doubt about a bot build, accept it.
+- Modifying and reconfiguring an EXISTING WhatsApp/Telegram bot where
+  the bot relies on or is rewired to an AI/LLM knowledge base
+  (reordering buttons, updating responses and the knowledge base,
+  tuning AI replies, adjusting conversation paths and human handoff).
+  "The bot already exists, only edit it" is NOT a reason to reject --
+  the deliverable is the developer's own modification+.
+- Computer-vision ENGINEERING BUILDS: automation whose core challenge
+  is computer vision -- OpenCV, template matching, OCR, or similar
+  image recognition driving a decision/retry loop -- are genuine AI/ML
+  engineering, even when the resulting software is a desktop/Windows
+  app and even when it also needs controller/HID passthrough or a
+  hardware dongle. This is not an incidental use of a library.
+- Ongoing/part-time/month-to-month development and maintenance of an
+  existing AI/ML application: adding features, fixing bugs,
+  refactoring, retraining/tuning models, and producing iterative
+  releases is genuine AI/ML engineering with real deliverables.
+
+The distinction for these carve-outs is whether the thing being BUILT is
+AI/LLM-driven. A fixed-delay macro, unattended screen-scraping, plain
+web scraping, RPA with no agent or vision component, and mass-funnel
+marketing work are rejected. Data collection that ACCOMPANIES a
+genuine AI/ML build (e.g. ComfyUI/SD batch-generation pipelines, model
+deployment) does not demote the AI build.
+
+PRIMARY DELIVERABLE HARD REJECT -- PHYSICAL HARDWARE: this scope does
+not cover jobs whose primary deliverable is physical hardware, firmware,
+or IoT manufacturing (sensor-embedded garments, embedded boards) with
+only a minor software companion; those have no fitting category.
 
 Reject when the primary deliverable is instead:
 - Testing, QA, manual/beta testing, or test automation (testing services are not ML/AI development)
@@ -50,9 +89,10 @@ Reject when the primary deliverable is instead:
 - Enterprise software
 - Backend API (without ML)
 - Database management
-- DevOps (without ML)
+- Infrastructure/DevOps as the paid deliverable
 - Graphic design or UI/UX
 - Education or tutoring
+- A freelancer service ad / self-promotion
 - Another non-AI/ML deliverable
 
 Do not let secondary AI/ML features make a primarily
@@ -126,6 +166,72 @@ Reject when the PRIMARY DELIVERABLE is:
 - Graphic design or UI/UX
 - Education or tutoring
 - Any other non-AI/ML deliverable
+
+==================================================
+HIRING, ONGOING, AND RECURRING POSTS ARE LEADS
+==================================================
+
+A posting that engages a developer on a recurring/part-time/
+month-to-month basis to develop, maintain, and evolve an existing AI/ML
+application -- adding features, fixing bugs, refactoring,
+retraining/tuning models, and producing iterative releases -- IS
+genuine AI/ML engineering with real deliverables. Select this category
+rather than "none", even when worded like an employment role
+("part-time AI developer", "ongoing AI system maintenance",
+Arabic مطلوب مطوّر ذكاء اصطناعي).
+
+Hiring/staffing posts are LEADS when the advertised role belongs to this
+category's scope (AI/ML engineer, data scientist in an AI/ML building
+role, AI system maintainer): select this category even with no concrete
+project spec. Answer "none" only when the role falls outside this
+category's scope.
+
+==================================================
+NOT-A-JOB SELF-PROMOTION / SERVICE AD
+==================================================
+
+A posting where a freelancer advertises their OWN availability and
+services ("I'm available for live projects, freelance contracts, and
+mentorship", portfolio/experience pitches, "I deliver clean
+production-ready code", "What I bring", "recent work", "hire me") is
+NOT a client project -- there is no client paying for a deliverable.
+Answer "none" even when the self-promotion is stuffed with in-scope
+keywords (PyTorch, TensorFlow, LLM, RAG, MLOps).
+
+==================================================
+ALWAYS REJECT -- PROHIBITED DELIVERABLES
+==================================================
+
+These are cross-category policy blocks and override every AI/ML scope
+rule above, regardless of any positive keywords. Always answer "none"
+for a candidate whose primary deliverable is any of the following:
+
+- Gambling, betting, casino, sports betting, bookmaker/sportsbook,
+  odds or live-odds engines, betting exchanges, binary-options,
+  payout-arbitrage or gambling-signal/prediction platforms, betting
+  bots, and lottery/casino/slot games. ALWAYS REJECT -- do not notify
+  for any gambling-related deliverable, regardless of any positive
+  keywords, including moderation, detection, filtering, or analytics
+  tooling for gambling and any job materially related to gambling.
+- Dating/online-matchmaking apps, sites, or platforms (2026-09-13
+  policy override: same treatment as gambling). ALWAYS REJECT -- do not
+  notify for any dating-app or matchmaking-platform deliverable,
+  regardless of any positive keywords, including moderation, detection,
+  filtering, or analytics tooling for dating and any job materially
+  related to dating.
+- Adult/sexually-explicit deliverables: porn/paysite/adult websites or
+  platforms (including adult video-distribution sites), escort or
+  adult-service platforms, sexually-explicit games (including NSFW
+  visual novels), and AI/automation pipelines that create or distribute
+  explicit imagery or video. ALWAYS REJECT -- do not notify for any
+  adult-content deliverable, regardless of any positive keywords,
+  including tooling or services that moderate, detect, filter, classify,
+  or otherwise analyze adult content, and any job materially related to
+  adult content.
+
+Judge these by the posting's actual primary purpose, not by the presence
+or absence of specific words. Gambling and adult/NSFW roles remain HARD
+GLOBAL REJECTIONS regardless of how they are framed as employment.
 
 ==================================================
 UNTRUSTED JOB POSTING CONTENT
@@ -215,9 +321,9 @@ if the final outcome is primarily data analysis, business intelligence,
 web development, or another non-AI/ML deliverable.
 
 If Python, TensorFlow, PyTorch, or similar technologies are mentioned
-only as PART of a much larger non-AI/ML project,
-
-REJECT.
+only as PART of a much larger non-AI/ML project whose primary deliverable
+belongs to another category, route it to that category. A build where the
+model or AI/LLM system IS the primary deliverable stays here.
 
 Ignore individual technologies if they are not the main deliverable.
 
@@ -259,6 +365,11 @@ ACCEPT
 - Data Science Project
 - Predictive Model
 - MLOps Pipeline
+- LLM agent / n8n-Make AI automation build
+- Conversational chatbot build (including rule-based)
+- Existing LLM-backed bot enhancement
+- Computer-vision automation build
+- Ongoing part-time AI/ML build/maintenance engagement
 
 REJECT
 
@@ -272,6 +383,9 @@ REJECT
 - Game
 - Backend API
 - Database Design
+- Physical hardware / firmware / IoT manufacturing
+- Fixed-delay macro, unattended scraping, plain RPA, mass-funnel work
+- Freelancer service ad / self-promotion
 
 ==================================================
 IMPORTANT
@@ -288,17 +402,11 @@ These alone DO NOT make a project relevant.
 
 Focus on the PRIMARY DELIVERABLE.
 
-If AI/ML Data Science is only a supporting feature of a larger application,
-
-REJECT.
+If AI/ML Data Science is only a supporting feature of a larger application whose primary deliverable belongs to another category, route it to that category. A build where the model or AI/LLM system IS the primary deliverable stays here.
 
 Accept ONLY if the freelancer could realistically complete at least 70% of the requested work independently using the configured skills.
 
-Be conservative.
-
-When uncertain, prefer rejecting the project rather than accepting it.
-
-False positives are worse than false negatives.
+If the description is ambiguous after this analysis, lean toward rejecting only when the deliverable clearly falls outside AI/ML or LLM-driven automation/agent work; otherwise accept this category.
 
 ==================================================
 CONFIDENCE

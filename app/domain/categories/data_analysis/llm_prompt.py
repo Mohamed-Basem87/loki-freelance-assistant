@@ -9,8 +9,6 @@ Your goal is to determine whether the project is a strong match for the configur
 
 Focus on the project's PRIMARY DELIVERABLE rather than the technologies mentioned.
 
-Your goal is to minimize false positives.
-
 Only accept projects that are genuinely centered on Data Analysis or Business Intelligence.
 
 ==================================================
@@ -167,6 +165,28 @@ A project does NOT become acceptable merely because it also includes:
 If the PRIMARY DELIVERABLE is a trained/evaluated predictive model or
 AI/ML system, REJECT.
 
+EXCEPTION -- MODELING THAT FEEDS AN ANALYTICAL DELIVERABLE (run-32
+ruling): a job whose PRIMARY DELIVERABLE is a data pipeline plus
+interactive dashboards and operational KPI/reporting IS a genuine Data
+Analysis / BI build and MUST be accepted -- even when the description
+also says to run "predictive" or "prescriptive" modeling. When the
+client is paying for an automated, well-documented pipeline that feeds
+self-refreshing Tableau/Power BI dashboards and KPI/bottleneck
+analytics, the modeling is a supporting component of the analytical
+deliverable, not a trained-model artifact. The model is NOT the
+delivered product; the analysis, dashboards, and operational insights
+ARE.
+
+ACCEPT: "Clean mining sensor/log data into a documented pipeline, run
+predictive modeling to surface KPIs and bottlenecks, and build
+Tableau/Power BI dashboards that refresh without manual intervention."
+-- the deliverable is dashboards + operational analytics; the modeling
+feeds the BI.
+
+REJECT: "Train and evaluate an XGBoost regression model and report
+accuracy, precision, and ROC-AUC." -- a trained-model artifact is the
+deliverable.
+
 Example:
 
 ACCEPT:
@@ -215,12 +235,87 @@ Reject when the PRIMARY DELIVERABLE is:
 - QA/testing/automation (testing services, QA, or test automation are not data analysis)
 - Power Apps / Power Automate development
 - Web/backend/mobile/software development unrelated to data analysis
+  -- but a genuine full-stack/platform BUILD whose deliverable is the
+  application itself is not a data-analysis job; deliver it through the
+  full_stack option rather than suppressing it
+- Out-of-category operations/logistics coordination roles (transport
+  planning, shipment tracking, port/export operations,
+  warehouse/dispatch management) even when they use Excel tracking
+  tools or "support data analysis"
 - Graphic/UI/UX design
 - Marketing/SEO
 - CAD/engineering
 - Education/tutoring
-- Documents/forms/templates
+- A freelancer service ad / self-promotion
 - Any other non-analytical task
+
+==================================================
+HIRING, ONGOING, AND RECURRING POSTS ARE LEADS
+==================================================
+
+A posting that engages a freelancer on a recurring/part-time/
+month-to-month basis to develop, maintain, and evolve an existing
+data-analysis/BI deliverable -- building new dashboards/reports, adding
+metrics, automating transformation, fixing formulas/models, and keeping
+pipelines current -- IS genuine analytical/BI development work with real
+deliverables. Select this category rather than "none", even when worded
+like an employment role ("part-time BI analyst", "ongoing reporting
+maintenance", Arabic مطلوب محلل بيانات).
+
+Hiring/staffing posts are LEADS when the advertised role belongs to this
+category's scope (data/BI analyst, reporting or dashboard maintainer,
+data-prep specialist): select this category even with no concrete
+project spec. Answer "none" only when the role falls outside this
+category's scope. A posting that builds an analytical system FOR an
+educational purpose is a build, not tutoring.
+
+==================================================
+NOT-A-JOB SELF-PROMOTION / SERVICE AD
+==================================================
+
+A posting where a freelancer advertises their OWN availability and
+services ("I'm available for live projects, freelance contracts, and
+mentorship", portfolio/experience pitches, "I deliver clean
+production-ready code", "What I bring", "recent work", "hire me") is
+NOT a client project -- there is no client paying for a deliverable.
+Answer "none" even when the self-promotion is stuffed with in-scope
+keywords (Power BI, SQL, Python, dbt, dashboards).
+
+==================================================
+ALWAYS REJECT -- PROHIBITED DELIVERABLES
+==================================================
+
+These are cross-category policy blocks and override every Data Analysis
+scope rule above, regardless of any positive keywords. Always answer
+"none" for a candidate whose primary deliverable is any of the
+following:
+
+- Gambling, betting, casino, sports betting, bookmaker/sportsbook,
+  odds or live-odds engines, betting exchanges, binary-options,
+  payout-arbitrage or gambling-signal/prediction platforms, betting
+  bots, and lottery/casino/slot games. ALWAYS REJECT -- do not notify
+  for any gambling-related deliverable, regardless of any positive
+  keywords, including moderation, detection, filtering, or analytics
+  tooling for gambling and any job materially related to gambling.
+- Dating/online-matchmaking apps, sites, or platforms (2026-09-13
+  policy override: same treatment as gambling). ALWAYS REJECT -- do not
+  notify for any dating-app or matchmaking-platform deliverable,
+  regardless of any positive keywords, including moderation, detection,
+  filtering, or analytics tooling for dating and any job materially
+  related to dating.
+- Adult/sexually-explicit deliverables: porn/paysite/adult websites or
+  platforms (including adult video-distribution sites), escort or
+  adult-service platforms, sexually-explicit games (including NSFW
+  visual novels), and AI/automation pipelines that create or distribute
+  explicit imagery or video. ALWAYS REJECT -- do not notify for any
+  adult-content deliverable, regardless of any positive keywords,
+  including tooling or services that moderate, detect, filter, classify,
+  or otherwise analyze adult content, and any job materially related to
+  adult content.
+
+Judge these by the posting's actual primary purpose, not by the presence
+or absence of specific words. Gambling and adult/NSFW roles remain HARD
+GLOBAL REJECTIONS regardless of how they are framed as employment.
 
 ==================================================
 UNTRUSTED JOB POSTING CONTENT
@@ -387,7 +482,9 @@ REJECT projects whose PRIMARY DELIVERABLE is:
 - Spreadsheet formatting when no analytical work is required
 - Form filling
 - Clerical spreadsheet work
-- Data collection without subsequent analysis
+- Data collection without subsequent analysis, when the collection is
+  manual and is itself the deliverable (a scripted, re-runnable
+  collection pipeline that feeds analysis is a different job)
 - Building a database/list of people, companies, influencers, products, leads, or contacts
 - Collecting records into Excel/CSV without analytical processing
 - Converting documents into spreadsheets
@@ -439,7 +536,7 @@ collecting, or formatting data, REJECT even if the final deliverable is
 an Excel workbook.
 
 ==================================================
-ANALYSIS VS TRANSCRIPTION
+ANALYSIS vs TRANSCRIPTION
 ==================================================
 
 A project should only be considered Data Analysis when it requires
@@ -459,12 +556,85 @@ meaningful analytical work such as:
 - SQL analysis that answers analytical questions
 - Python analysis using pandas/numpy or similar analytical workflows
 
-Data cleaning by itself can still be acceptable when it is clearly part
-of an analytical deliverable.
+Data cleaning by itself IS acceptable -- it does not need downstream
+analysis, dashboards, or reports to qualify, as established above.
+What separates it from clerical work is the analytical
+transformation itself, not the presence of a downstream report.
 
 However, simple clerical cleanup such as correcting, copying, renaming,
 formatting, or entering records without analytical purpose should be
-REJECTED.
+REJECTED. The test is whether the client is paying for ANALYSIS or
+DATA PREPARATION (as opposed to MOVING, COPY-PASTEING, or ENTERING
+data).
+
+==================================================
+EXCEL TOOL-BUILDING, DATABASE SUPPORT, REUSABLE AUTOMATION
+==================================================
+
+Building a FUNCTIONAL Excel application/tool -- a scheduling system,
+tracker, calculator, dashboard, or workbook with real formulas, logic,
+dynamic behavior, and validation that end users actively operate -- IS
+a genuine Data Analysis / BI deliverable and MUST be accepted. It is
+not data entry and not a passive static document.
+
+ACCEPT: "Create a customizable scheduling spreadsheet for 2-10 users:
+customizable templates, color-coded schedules, dynamic behavior, and
+formulas."
+
+Excel forecasting/financial-modeling workbooks (driver/assumption
+sheets, formula-driven projections, charts, dashboards) are functional
+Excel tools and are accepted; the "Forecasting models" reject above
+applies to ML/statistical predictive-model builds, not formula-driven
+Excel models.
+
+REJECT only when the deliverable is a static/passive one: "Produce a
+blank invoice or form template with formulas and formatting, with no
+operating tool logic or dynamic behavior."
+
+DATABASE DESIGN THAT SERVES THE ANALYSIS: Excel/spreadsheet analysis
+supported by database design work (schema, ERD, tables, keys, indexing)
+is Data Analysis when the analytical outcome is the primary deliverable
+and the database exists to serve that analysis.
+
+ACCEPT: "Pull raw data into Excel and shape it for analysis, and design
+a clean SQL Server database (ERD, tables, keys, indexing) so the
+downstream Excel analysis stays fast and reliable. Deliverables: the
+schema script and a working analytical workbook."
+
+What still rejects is a software product whose deliverable is the
+application itself rather than an analytical output -- e.g. a React
+dashboard for managing users, a Django application with analytics
+pages, or a Python API serving dashboards, where building the analytics
+is not the primary objective.
+
+REUSABLE EXTRACTION/ETL SCRIPTS ARE DATA-PROCESSING ENGINEERING: a
+script that automates future PDF/image-to-Excel conversions, normalizes
+a recurring feed, or transforms files on a schedule IS an approved
+data-processing deliverable, even though one-off extraction of the same
+files is rejected as clerical transcription. The re-runnable, reusable
+automation is the deliverable.
+
+A client explicitly DECLINING features (e.g. "no heavy VBA automation,
+no fancy dashboards, just number crunching") does not make the job
+non-analytical -- plain analysis/number-crunching as the deliverable is
+still accepted.
+
+==================================================
+HARD RULE AGAINST INCIDENTAL-EXCEL OUT-OF-CATEGORY OPERATIONS ROLES
+==================================================
+
+A genuine full-time operations role whose primary deliverable is
+operations/logistics coordination -- transportation planning, shipment
+tracking, export/port operations, warehouse/dispatch management -- does
+NOT become a Data Analysis deliverable merely because it uses
+"Excel-based tracking tools", compiles operational reports, or "supports
+data analysis". The Excel/reporting there is incidental record-keeping
+inside an out-of-category operations job, not an analytical deliverable.
+REJECT, even when the posting matches data_analysis or excel keywords.
+
+Accept only when the PRIMARY DELIVERABLE is analytical output (a
+dashboard, report, cleaned dataset, BI solution, or functional Excel
+tool) that the client is paying for as the product itself.
 
 ==================================================
 EXCEL DELIVERABLE RULE
@@ -484,6 +654,8 @@ Excel used for:
 - Reporting
 - Dashboarding
 - Analytical automation
+- Building a functional operating tool (schedulers, trackers,
+  calculators, formula-driven workbooks users operate)
 
 may support ACCEPT.
 
@@ -526,7 +698,9 @@ ACCEPT.
 
 "Collect 1,000 records from websites and deliver them in Excel."
 
-REJECT.
+REJECT when the records are collected MANUALLY or the collection is
+the whole deliverable. A re-runnable SCRIPTED collection pipeline
+whose output is then analyzed is a different job and is accepted.
 
 "Scrape sales data, clean it, analyze trends, calculate KPIs, and build a
 Power BI dashboard."
@@ -627,17 +801,11 @@ These alone DO NOT make a project relevant.
 
 Focus on the PRIMARY DELIVERABLE.
 
-If Data Analysis is only a supporting feature of a larger application,
-
-REJECT.
+If Data Analysis is only a supporting feature of a larger application whose primary deliverable belongs to another category, route it to that category. A build where the analytical output IS the primary deliverable stays here.
 
 Accept ONLY if the freelancer could realistically complete at least 70% of the requested work independently using the configured skills.
 
-Be conservative.
-
-When uncertain, prefer rejecting the project rather than accepting it.
-
-False positives are worse than false negatives.
+If the description is ambiguous after this analysis, lean toward rejecting only when the deliverable clearly falls outside analytical, reporting, BI, data-processing, cleaning, or Excel-tool work; otherwise accept this category.
 
 ==================================================
 CONFIDENCE

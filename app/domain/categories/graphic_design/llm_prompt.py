@@ -9,8 +9,6 @@ Your goal is to determine whether the project is a strong match for the configur
 
 Focus on the project's PRIMARY DELIVERABLE rather than the software, platforms, or keywords mentioned.
 
-Your goal is to minimize false positives.
-
 Only accept projects that are genuinely centered on Graphic Design.
 
 ==================================================
@@ -43,7 +41,14 @@ Accept when the primary deliverable is genuinely one or more of:
 - Print design
 - Editorial and publication design
 - Infographic design
-- Presentation and pitch-deck visual design
+- Presentation and pitch-deck visual design, including investor and
+  sales decks: the static design of the slides (layout, typography,
+  color, imagery, chart styling) is in scope. A deck is NOT rejected
+  merely because it uses PowerPoint, Keynote, Google Slides, or Canva,
+  and is NOT rejected merely because the client also wants narrative or
+  copy support alongside the slide design. Reject only when the
+  deliverable is primarily the strategy/writing, a live data or
+  financial model, or a product/interior/property visualization.
 - Thumbnail design
 - Illustration
 - Vector artwork
@@ -75,6 +80,7 @@ Reject when the primary deliverable is instead:
 - Education or tutoring
 - Testing or QA
 - Printing/manufacturing as the primary service
+- A freelancer service ad / self-promotion
 - Another non-Graphic-Design deliverable
 
 Do not let a secondary graphic-design requirement make a primarily
@@ -404,24 +410,76 @@ If the client's primary goal is:
 ACCEPT.
 
 ==================================================
-ONGOING DEVELOPMENT AND MAINTENANCE
+HIRING, ONGOING, AND RECURRING POSTS ARE LEADS
 ==================================================
 
-Ongoing, recurring, part-time, or month-to-month Graphic Design work
-is genuine design work when the role involves producing, revising,
-maintaining, and evolving graphic-design deliverables.
+Hiring/staffing posts are LEADS when the advertised role belongs to this
+category's scope (graphic designer, brand designer, visual designer
+whose work is primarily static graphic design): select this category
+even with no concrete project spec. Answer "none" only when the role
+falls outside this category's scope (UI/UX, web/mobile development,
+video/motion, 3D, photography).
 
-Approve when the advertised role is clearly for a Graphic Designer,
-Brand Designer, Visual Designer whose work is primarily static graphic
-design, or another in-scope design role.
+Ongoing, recurring, part-time, or month-to-month Graphic Design work is
+genuine design work when the role involves producing, revising,
+maintaining, and evolving graphic-design deliverables. Do not reject an
+in-scope design engagement merely because it is ongoing rather than a
+one-time project. Reject when the ongoing role is primarily UI/UX, web
+development, video production, social-media management, marketing
+management, or another out-of-scope service.
 
-Do not reject an in-scope design engagement merely because it is
-ongoing rather than a one-time project.
+==================================================
+NOT-A-JOB SELF-PROMOTION / SERVICE AD
+==================================================
 
-Reject when the ongoing role is primarily UI/UX, web development,
-video production, social-media management, marketing management,
-or another out-of-scope service.
+A posting where a freelancer advertises their OWN availability and
+services ("I'm available for live projects, freelance contracts, and
+mentorship", portfolio/experience pitches, "I deliver clean
+production-ready files", "What I bring", "recent work", "hire me") is
+NOT a client project -- there is no client paying for a deliverable.
+Answer "none" even when the self-promotion is stuffed with in-scope
+keywords (branding, logo, Photoshop, Illustrator, brand identity).
 
+==================================================
+ALWAYS REJECT -- PROHIBITED DELIVERABLES
+==================================================
+
+These are cross-category policy blocks and override every Graphic Design
+scope rule above, regardless of any positive keywords. Always answer
+"none" for a candidate whose primary deliverable is any of the
+following:
+
+- Gambling, betting, casino, sports betting, bookmaker/sportsbook,
+  odds or live-odds engines, betting exchanges, binary-options,
+  payout-arbitrage or gambling-signal/prediction platforms, betting
+  bots, and lottery/casino/slot/spin games. ALWAYS REJECT -- do not
+  notify for any gambling-related deliverable, regardless of any
+  positive keywords, including moderation, detection, filtering, or
+  analytics tooling for gambling and any job materially related to
+  gambling.
+- Dating/online-matchmaking apps, sites, or platforms (2026-09-13
+  policy override: same treatment as gambling). ALWAYS REJECT -- do not
+  notify for any dating-app or matchmaking-platform deliverable,
+  regardless of any positive keywords, including moderation, detection,
+  filtering, or analytics tooling for dating and any job materially
+  related to dating. Designing brand assets FOR an existing dating
+  platform is also rejected.
+- Adult/sexually-explicit deliverables: porn/paysite/adult websites or
+  platforms (including adult video-distribution sites), escort or
+  adult-service platforms, sexually-explicit games (including NSFW
+  visual novels), and AI/automation pipelines that create or distribute
+  explicit imagery or video. ALWAYS REJECT -- do not notify for any
+  adult-content deliverable, regardless of any positive keywords,
+  including tooling or services that moderate, detect, filter, classify,
+  or otherwise analyze adult content, and any job materially related to
+  adult content.
+
+Judge these by the posting's actual primary purpose, not by the presence
+or absence of specific words. Gambling and adult/NSFW roles remain HARD
+GLOBAL REJECTIONS regardless of how they are framed as employment.
+
+==================================================
+UNTRUSTED JOB POSTING CONTENT
 ==================================================
 IMPORTANT
 ==================================================
@@ -449,11 +507,7 @@ REJECT.
 Accept ONLY if the freelancer could realistically complete at least
 70% of the requested work independently using the configured skills.
 
-Be conservative.
-
-When uncertain, prefer rejecting the project rather than accepting it.
-
-False positives are worse than false negatives.
+If the description is ambiguous after this analysis, lean toward rejecting only when the deliverable clearly falls outside static graphic-design production; otherwise accept this category.
 
 ==================================================
 CONFIDENCE

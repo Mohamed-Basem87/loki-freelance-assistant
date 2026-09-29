@@ -16,8 +16,7 @@ Approve only when the actual work requested is primarily analytical,
 reporting, BI, data-processing, data-cleaning, or data-preparation work
 relevant to this freelancer, such as:
 
-- Data analysis / analytics
-- Business intelligence
+- Data analysis / analytics; business intelligence
 - Power BI dashboards, reports, DAX, or analytical modeling
 - Excel analysis, advanced Excel, Power Query, PivotTables, reporting
 - SQL analysis and reporting queries
@@ -31,8 +30,7 @@ relevant to this freelancer, such as:
   dataset or workbook
 - Exploratory Data Analysis (EDA) when analysis itself is the primary
   deliverable
-- Data visualization
-- KPI/reporting/analytics
+- Data visualization; KPI/reporting/analytics
 - ETL/data transformation when clearly part of analytics/BI or data
   preparation
 - Descriptive or business-focused statistical analysis
@@ -57,28 +55,19 @@ Examples of acceptable data-cleaning / preparation work include:
 - Preparing a raw dataset for later reporting or analysis
 - Delivering a documented, analysis-ready Excel workbook or dataset
 
-For example:
-
-ACCEPT:
-"Clean a multi-sheet Excel workbook by removing duplicates,
-standardizing dates and numeric formats, handling missing values,
-standardizing column headers, consolidating the sheets, and delivering
-one clean workbook ready for analysis."
-
-ACCEPT:
-"Pull raw data into Excel and shape it for analysis, and design a clean
-SQL Server database (ERD, tables, keys, indexing) so the downstream
-Excel analysis stays fast and reliable. Deliverables: the schema script
-and a working analytical workbook."
+For example, ACCEPT: "Clean a multi-sheet Excel workbook by removing
+duplicates, standardizing dates and numeric formats, handling missing
+values, standardizing column headers, consolidating the sheets, and
+delivering one clean workbook ready for analysis." Also ACCEPT: "Pull raw
+data into Excel and shape it for analysis, and design a clean SQL Server
+database (ERD, tables, keys, indexing) so the downstream Excel analysis
+stays fast and reliable. Deliverables: the schema script and a working
+analytical workbook."
 
 A client explicitly DECLINING features (e.g. "no heavy VBA automation,
 no fancy dashboards, just number crunching") does not make the job
 non-analytical -- plain analysis/number-crunching as the deliverable is
 still approved.
-
-ACCEPT:
-"Clean and prepare a raw sales dataset, normalize the columns, resolve
-missing values and duplicates, and deliver the analysis-ready dataset."
 
 Do NOT confuse this with manual data entry or transcription.
 
@@ -98,12 +87,10 @@ dynamic behavior, and validation that end users actively operate -- IS
 genuine Data Analysis / BI deliverable work and MUST be approved. It is
 not data entry and not a passive static document.
 
-For example:
-
-ACCEPT:
-"Create a customizable scheduling spreadsheet for 2-10 users:
-customizable templates, color-coded schedules, dynamic behavior, and
-formulas." -- building a functional Excel tool, not data entry.
+For example, ACCEPT: "Create a customizable scheduling spreadsheet for
+2-10 users: customizable templates, color-coded schedules, dynamic
+behavior, and formulas." -- building a functional Excel tool, not data
+entry.
 
 Excel forecasting/financial-modeling workbooks (driver/assumption sheets,
 formula-driven projections, charts, dashboards) are functional Excel tools
@@ -114,34 +101,23 @@ REJECT (static/passive only):
 "Produce a blank invoice or form template with formulas and formatting,
 with no operating tool logic or dynamic behavior."
 
-The distinction is the PRIMARY DELIVERABLE:
-- Transforming and improving the quality/structure of an existing dataset
-  so it is clean and analysis-ready = ACCEPT.
-- Building a functional Excel tool/application (schedulers, trackers,
-  calculators, dashboards, formula-driven workbooks users operate) =
-  ACCEPT.
-- Manually copying or transcribing information without meaningful
-  analytical data transformation = REJECT.
-- A static/passive blank template, form, or one-way document with no
-  operating tool behavior, or a pure formatting/layout request = REJECT.
+The distinction is the PRIMARY DELIVERABLE: transforming an existing
+dataset so it is clean and analysis-ready, or building a functional Excel
+tool users operate, = ACCEPT. Manual copying/transcription, or a static
+template with no operating tool behavior, = REJECT.
 
-A job does NOT need to include downstream analysis to qualify as
-data-cleaning/data-preparation work.
-
-HARD RULE AGAINST INCIDENTAL-EXCEL OUT-OF-CATEGORY OPERATIONS ROLES
-(2026-09-24 run 1, rowid 4637): a genuine full-time operations role whose
-primary deliverable is operations/logistics coordination -- transportation
-planning, shipment tracking, export/port operations, warehouse/dispatch
-management -- does NOT become a Data Analysis deliverable merely because it
-uses "Excel-based tracking tools", compiles operational reports, or "supports
-data analysis". The Excel/reporting there is incidental record-keeping inside
-an out-of-category operations job, not an analytical deliverable. REJECT --
-do_not_notify even when the posting matches data_analysis or excel keywords,
-because the role is outside this category's scope (and the report ruling is
-that out-of-category coordination roles are NOT missed data-work).
-Approve only when the PRIMARY DELIVERABLE is analytical output (a dashboard,
-report, cleaned dataset, BI solution, or functional Excel tool) that the
-client is paying for as the product itself.
+HARD RULE AGAINST INCIDENTAL-EXCEL OUT-OF-CATEGORY OPERATIONS ROLES:
+a genuine full-time operations role whose primary deliverable is
+operations/logistics coordination -- transportation planning, shipment
+tracking, export/port operations, warehouse/dispatch management -- does
+NOT become a Data Analysis deliverable merely because it uses "Excel-based
+tracking tools", compiles operational reports, or "supports data analysis".
+The Excel/reporting there is incidental record-keeping inside an
+out-of-category job, not an analytical deliverable. REJECT even when the
+post matches data_analysis or excel keywords. Approve only when the
+PRIMARY DELIVERABLE is analytical output (a dashboard, report, cleaned
+dataset, BI solution, or functional Excel tool) that the client pays for
+as the product itself.
 
 ONGOING DEVELOPMENT AND MAINTENANCE ENGAGEMENTS ARE BUILD WORK:
 A posting that engages a freelancer on a recurring/part-time/month-to-month
@@ -154,21 +130,29 @@ reporting maintenance"). Hiring/staffing posts are LEADS when the advertised
 role belongs to this category's scope (data/BI analyst, reporting or
 dashboard maintainer, data-prep specialist): approve them even with no
 concrete project spec. Only do_not_notify when the role is outside this
-category's scope.
+   category's scope. Hard rejects apply even when framed as employment or
+   hiring.
+
+NOT-A-JOB SELF-PROMOTION / SERVICE AD:
+A posting where a freelancer advertises their OWN availability and services
+("I'm available for live projects, freelance contracts, and mentorship",
+portfolio/experience pitches, "I deliver clean production-ready code",
+"What I bring", "recent work", "hire me") is NOT a client project -- there
+is no client paying for a deliverable. do_not_notify even when the
+self-promotion is stuffed with in-scope keywords (Power BI, Tableau,
+SQL, Python, pandas, Excel, ETL). No freelancer-less client = no
+deliverable = no notification.
 
 REJECT when the PRIMARY DELIVERABLE is Data Science, Machine Learning,
 AI, predictive modeling, or model development, including:
 
-- Machine learning model development
-- Predictive modeling
+- ML model development: training, tuning, or comparing models
+- Scikit-learn model development; logistic regression, decision trees,
+  random forest, SVM, XGBoost, LightGBM, CatBoost, or similar predictive
+  models
 - Classification or regression model development
-- Training, tuning, or comparing ML models
-- Scikit-learn model development
-- Logistic Regression, Decision Trees, Random Forest, SVM, XGBoost,
-  LightGBM, CatBoost, or similar predictive models
 - Neural networks or deep learning
-- NLP model development
-- Computer vision model development
+- NLP or computer vision model development
 - Recommendation systems
 - Forecasting models when the primary task is building a predictive model
 - Model deployment or ML pipelines
@@ -215,26 +199,22 @@ data for a machine-learning project."
 
 This is still Data Analysis / data preparation and should be approved.
 
-HARD RULE AGAINST MISSED IN-SCOPE DATA-ENGINEERING + BI BUILDS
-(2026-09-03 run 32): A job whose PRIMARY DELIVERABLE is a data
-pipeline plus interactive dashboards and operational KPIs/reporting IS
-a genuine Data Analysis / BI build and MUST be approved -- even when the
-description also says to run "predictive" or "prescriptive" modeling.
-When the client is paying for an automated, well-documented data pipeline
-that feeds self-refreshing Tableau/Power BI dashboards and KPI/bottleneck
-analytics, the modeling is a supporting component of the analytical
-deliverable, not a trained-model artifact. The model is NOT the delivered
-product; the analysis, dashboards, and operational insights ARE. Only
-reject when the PRIMARY DELIVERABLE is a trained/evaluated model or
-accuracy-oriented model report.
+HARD RULE AGAINST MISSED IN-SCOPE DATA-ENGINEERING + BI BUILDS:
+A job whose PRIMARY DELIVERABLE is a data pipeline plus interactive
+dashboards and operational KPIs/reporting IS a genuine Data Analysis / BI
+build and MUST be approved -- even when the description also says to run
+"predictive" or "prescriptive" modeling. When the client is paying for an
+automated, well-documented data pipeline that feeds self-refreshing
+Tableau/Power BI dashboards and KPI/bottleneck analytics, the modeling is
+a supporting component of the analytical deliverable, not a trained-model
+artifact. Only reject when the PRIMARY DELIVERABLE is a trained/evaluated
+model or accuracy-oriented model report.
 
-For example:
-
-ACCEPT:
-"Clean mining sensor/log data into a documented pipeline, run predictive
-modeling to surface KPIs and bottlenecks, and build Tableau/Power BI
-dashboards that refresh without manual intervention." -- the deliverable
-is dashboards + operational analytics; the modeling feeds the BI.
+For example, ACCEPT: "Clean mining sensor/log data into a documented
+pipeline, run predictive modeling to surface KPIs and bottlenecks, and
+build Tableau/Power BI dashboards that refresh without manual
+intervention." -- the deliverable is dashboards + operational analytics;
+the modeling feeds the BI.
 
 REJECT:
 "Train and evaluate an XGBoost regression model and report accuracy,
@@ -245,33 +225,25 @@ even if the job also requires EDA, cleaning, visualization, or reporting
 (unless the primary deliverable is the analytical/BI output per the rule
 above).
 
+These are ALWAYS REJECT prohibited deliverables, regardless of ANY positive
+keyword in the post, and including services that moderate, detect, filter or
+classify them, and any job materially related to them:
+- Gambling: betting, casinos, sportsbooks, odds or live-odds engines,
+  betting exchanges, binary options, payout-arbitrage or gambling-signal
+  platforms, betting bots, lottery/casino/slot games.
+- Dating/online-matchmaking apps, sites, or platforms (2026-09-13 policy
+  override: same treatment as gambling).
+- Adult/sexually-explicit: porn/paysite/adult websites or platforms
+  (including adult video distribution), escort or adult-service platforms,
+  sexually-explicit games (including NSFW visual novels), and AI/automation
+  pipelines that create or distribute explicit imagery or video.
+
 Also reject when the PRIMARY DELIVERABLE is:
 
-- Gambling, betting, casino, sports betting, bookmaker/sportsbook,
-  odds or live-odds engines, betting exchanges, binary-options,
-  payout-arbitrage or gambling-signal/prediction platforms, betting
-  bots, and lottery/casino/slot games. ALWAYS REJECT -- do not notify
-  for any gambling-related deliverable, regardless of any positive
-  keywords, including moderation, detection, filtering, or analytics
-  tooling for gambling and any job materially related to gambling.
-- Dating/online-matchmaking apps, sites, or platforms (2026-09-13
-  policy override: same treatment as gambling). ALWAYS REJECT -- do not
-  notify for any dating-app or matchmaking-platform deliverable,
-  regardless of any positive keywords, including moderation, detection,
-  filtering, or analytics tooling for dating and any job materially
-  related to dating.
-- Adult/sexually-explicit deliverables: porn/paysite/adult websites or
-  platforms (including adult video-distribution sites), escort or
-  adult-service platforms, sexually-explicit games (including NSFW
-  visual novels), and AI/automation pipelines that create or distribute
-  explicit imagery or video. ALWAYS REJECT -- do not notify for any
-  adult-content deliverable, regardless of any positive keywords,
-  including tooling or services that moderate, detect, filter, classify,
-  or otherwise analyze adult content, and any job materially related to
-  adult content.
-- Data entry or manual copying
-- Transcription
-- OCR or manual document extraction
+- Data entry, manual copying, or form filling (populating forms,
+  applications, surveys, or registration documents, or moving information
+  between forms and spreadsheets)
+- Transcription; OCR or manual document extraction
 - PDF/image to Excel conversion when the work is extraction rather than
   analysis or meaningful data transformation -- but a reusable
   extraction/ETL script that automates future conversions is data-processing
@@ -284,31 +256,24 @@ Also reject when the PRIMARY DELIVERABLE is:
 - Web/backend/mobile/software development unrelated to data analysis --
   but a genuine full-stack/platform BUILD is not a data-analysis job;
   deliver it through the full_stack option rather than suppressing it
-- Graphic/UI/UX design
-- Marketing/SEO
-- CAD/engineering
-- Education/tutoring
+- Graphic/UI/UX design; marketing/SEO; CAD/engineering; education/tutoring
 - Any other non-analytical task
+
+An educational analytical BUILD with concrete deliverables is real work,
+not tutoring; only homework help with no implementation is rejected.
 
 Do not approve a job merely because it mentions Excel, Power BI, SQL,
 Python, dashboards, data, analytics, statistics, EDA, or data cleaning.
 
-Always identify the MAIN OUTCOME the client is paying for.
-
-Ask yourself:
-"What will the freelancer ultimately deliver to the client?"
-
-If the answer is a dashboard, report, analysis, business insights,
-cleaned analytical dataset, standardized dataset, analysis-ready
-workbook, BI solution, or similar analytical/data-preparation output,
-the job can be approved.
-
-If the answer is a trained predictive model, machine-learning system,
-AI model, software application, manual transcription/data-entry output,
-document/form/template, or another non-analytical deliverable, reject it.
-
-Tools and technologies mentioned as secondary requirements do not
-determine the category. Judge the actual work and final deliverable.
+Always identify the MAIN OUTCOME the client is paying for: "What will the
+freelancer ultimately deliver to the client?" Approve a dashboard, report,
+analysis, business insights, cleaned/standardized analytical dataset,
+analysis-ready workbook, BI solution, or similar analytical/data-preparation
+output. Reject a trained predictive model, machine-learning or AI system,
+software application, manual transcription/data-entry output,
+document/form/template, or another non-analytical deliverable. Tools and
+technologies mentioned as secondary requirements do not determine the
+category. Judge the actual work and final deliverable.
 
 If the description is ambiguous after this analysis, lean toward
 rejecting only when the deliverable clearly falls outside analytical,
