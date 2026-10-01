@@ -84,15 +84,17 @@ REJECT when the PRIMARY DELIVERABLE is:
 - Marketing (SEO, ads, lead generation, content)
 - Testing, QA, manual testing, beta testing, or test automation of any kind
 
-The distinction is the PRIMARY DELIVERABLE:
-- Building a complete new WEBSITE / WEB APPLICATION spanning frontend + backend + database + deployment = ACCEPT.
-- A complete platform with web dashboard + API + database + mobile app as integrated components = ACCEPT.
-- Building only one layer (frontend, backend, mobile) where that layer is the SOLE deliverable = REJECT.
-- Basic platform configuration or theme setup = REJECT.
-- Building custom business logic on a platform that genuinely spans
-  frontend + backend + database (booking systems with their own
-  scheduling backend, real-time features with server-side state,
-  multi-role dashboards backed by a real data model) = ACCEPT.
+SPECIALIST CATEGORY PRIORITY:
+A viable specialist category ALWAYS beats full_stack. Judge the PRIMARY
+DELIVERABLE first: if this job is genuinely the specialist's own work,
+select the specialist -- even when the project also spans frontend,
+backend, or database. Spanning layers is NOT by itself a reason to pick
+full_stack; specialist work routinely includes APIs, a database, and a
+web interface. Choose full_stack ONLY when no specialist owns the
+deliverable and building the web application itself, end to end across
+layers, is what the client is paying for. When the evidence is genuinely
+split between the specialist and a multi-layer web build, prefer the
+specialist.
 
 A job does NOT become acceptable merely because it mentions React, Vue,
 Next.js, Node.js, Python, Django, FastAPI, PostgreSQL, MongoDB, Redis,
