@@ -856,7 +856,14 @@ async def process_job(job: dict, job_id: str, identity_source: str = None):
                         original_decision="do_not_notify",
                         guard_decision="notify",
                         provider="rescue-arbitration",
-                        model=arbitration.get("provider", ""),
+                        # This row records a GUARD decision, not an arbitration
+                        # model, so Model stays empty. The answering provider is
+                        # already carried by Provider above, and writing it to
+                        # Model as well mixed provider names into the guard
+                        # model share (43 rows), making that column look like a
+                        # model distribution when it was part provider, part
+                        # model.
+                        model="",
                         response_time_ms=arbitration_time,
                         guard_category=selected,
                         save=False,
