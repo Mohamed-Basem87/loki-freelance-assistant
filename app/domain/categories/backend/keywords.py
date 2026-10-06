@@ -1040,6 +1040,31 @@ HARD_REJECT_KEYWORDS = {
     # 'it systems administrator' also converts rowid 3198 (already rejected).
     "sales development representative", "it systems administrator",
     "billing executive",
+    # Bookkeeping / accounting-operations SERVICE, not integration build
+    # (2026-10-05 run 3, rowid 11024 'ادارة المحاسبة لمتاجر الكترونية في منصة
+    # سلة و نظام Zoho Books'). It reached backend on the bare 'zoho' core
+    # positive (weight 7) alone; the engagement is establishing the chart of
+    # accounts, advising on automating accounting operations, and reconciling
+    # a month of books. 'zoho' itself stays a valid core positive -- real
+    # Zoho API integration work is still backend. Only the Arabic bookkeeping
+    # collocations are hard-rejected.
+    "شجرة الحسابات",
+    # Self-promotion / product sale in English (2026-10-05 run 3, rowid 11160
+    # 'Next-Level E-Commerce Complete System'): 'I am offering a complete,
+    # production-ready full-stack e-commerce system ... suitable for any brand,
+    # startup, or market worldwide' + a WHAT'S INCLUDED feature list. Acceptance
+    # policy 3: not a job at all. The guard ran and returned notify; the
+    # Arabic self-promotion hard rejects above already cover the other side.
+    "i am offering a complete", "suitable for any brand",
+
+    # Growth / conversion analytics for an existing product (2026-10-05 run 3,
+    # rowid 11162 'Mobile App Sales Boost'). Blocking mobile_app alone was not
+    # enough -- the posting re-routed here and was still delivered. Acceptance
+    # policy 2 excludes analysing someone else's existing software. Same
+    # narrow-phrase discipline as the mobile_app 'lead generation' /
+    # 'digital marketing' notes: backend work that merely mentions a funnel or
+    # an A/B test must still reach arbitration.
+    "conversion funnel", "a/b test",
 }
 
 

@@ -269,6 +269,19 @@ POSITIVE_KEYWORDS = {
             "creating a website": 6,
             "build a website": 7,
             "building a website": 7,
+            # Changes/functionality work on an EXISTING site (2026-10-05 run 3,
+            # rowid 11049 'Website Functionality & Text Enhancements' -- fn_det).
+            # 11049 and 11065 are the same posting by the same client; 11065
+            # matched 'website development'/'web design' and was delivered,
+            # 11049 used different wording for identical work and matched
+            # nothing at all -> 'insufficient_signal'. These two collocations
+            # cover that wording gap. Window screen at word boundary: each
+            # hits exactly 2 of 242 jobs -- 11049 and 11065 -- so there is no
+            # correct-reject exposure. Bare 'existing website' was deliberately
+            # NOT added: it also hits 11109 and is far more likely to appear in
+            # content/SEO work, which is out of scope per policy 2.
+            "improve my existing website": 7,
+            "website functionality": 6,
             "make a website": 6,
             # Indonesian info-platform build (2026-09-13 run 2): rowid 18999
             # 'Proyek Informasi 10jt' (custom info-platform build: content
@@ -923,6 +936,22 @@ HARD_REJECT_KEYWORDS = {
     # collateral budget counts any accepted-job change. Flagged for separate
     # operator review.
     "تقييم المطورين",
+
+    # Run-3 audit (2026-10-05). frontend had NO self-promotion hard rejects at
+    # all, so a freelancer advertising their own product was deliverable here:
+    # rowid 11160 'Next-Level E-Commerce Complete System' -- 'I am offering a
+    # complete, production-ready full-stack e-commerce system ... suitable for
+    # any brand, startup, or market worldwide' plus a WHAT'S INCLUDED feature
+    # list. Acceptance policy 3: not a job at all. backend received the same
+    # pair the same day; both are needed because a hard reject is evaluated
+    # per-category against that category's own vocabulary.
+    "i am offering a complete", "suitable for any brand",
+    # Bookkeeping / accounting-operations SERVICE is not a web build
+    # (rowid 11024, Arabic: Salla stores + Zoho Books chart of accounts).
+    # Arabic collocation only; the same token was added to backend the same
+    # day. Real Zoho API integration work remains a valid backend core
+    # positive.
+    "شجرة الحسابات",
 }
 
 

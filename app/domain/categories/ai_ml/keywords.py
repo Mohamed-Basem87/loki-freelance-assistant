@@ -779,6 +779,14 @@ HARD_REJECT_KEYWORDS = {
     # as mobile_app).  Rowid 13128 reached ai_ml via guard; hard-rejecting
     # at keyword layer avoids wasting Gemini API calls.
     "wearable electronics", "embedded firmware",
+    # Desktop / standalone application packaging (2026-10-05 run 3, rowid
+    # 11011 'Cross-Platform Data Science Tool'). CONFIRMED category-gap
+    # family in acceptance policy 10.1. The posting is strong on ML core
+    # ('machine learning', 'scikit-learn', 'data science', all weight 9) but
+    # the deliverable is an installable Win/macOS/Linux desktop binary
+    # ('Electron, Qt'). Only the packaging phrases are hard-rejected so a
+    # genuine ML job that merely mentions an OS cannot be caught by accident.
+    "installable packages or binaries", "electron, qt",
     # Arbitration-none sweep (2026-09 run-c audit): deterministic rejects for
     # the 53 single-arb none jobs. Validated via clear_keyword_profile_cache
     # replay over DB-accepted + window-accepted + 5 flip-risk rows: 0 flips,

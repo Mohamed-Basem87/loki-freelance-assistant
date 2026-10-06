@@ -736,6 +736,16 @@ HARD_REJECT_KEYWORDS = {
     "photoshop",
     "illustrator",
     "video editing",
+    # Growth / ASO marketing on an ALREADY-LIVE app (2026-10-05 run 3,
+    # rowid 11162 'Mobile App Sales Boost'). It reaches mobile_app on five
+    # core positives ('mobile app', 'android app', 'ios', 'push notification',
+    # 'firebase') but the deliverable is a funnel audit + A/B tests +
+    # push-campaign calendar: acceptance policy 2 excludes analysing someone
+    # else's existing software. Per the 'lead generation' / 'digital marketing'
+    # notes above, only the unambiguous growth-analytics collocations are
+    # hard-rejected -- mobile app development that merely mentions a funnel or
+    # A/B test must still reach arbitration.
+    "conversion funnel", "a/b test",
     "motion graphics",
     "backlink",
     "backlinks",
@@ -832,6 +842,21 @@ HARD_REJECT_KEYWORDS = {
     "referral fee", "collect your share", "refer clients",
     "pass along opportunities", "partner with my development team",
     "sales partner",
+
+    # Desktop cross-platform packaging is NOT a mobile deliverable (2026-10-05
+    # run 3, rowid 11011 'Cross-Platform Data Science Tool'). Blocking ai_ml and
+    # data_analysis was not enough: the posting re-routed here on its bare
+    # 'cross-platform' supporting positive (weight 3) and was still delivered.
+    # The discriminator is the packaging target, not the word 'cross-platform':
+    # installable Win/macOS/Linux packages, or an Electron/Qt build, cannot ship
+    # to the App Store or Play Store. Flutter / React Native / native Android
+    # work is untouched.
+    "installable packages or binaries", "electron, qt",
+    # Self-promotion is 'not a job at all' (acceptance policy 3) in every
+    # category, not just backend/frontend. Rowid 11160 advertises a
+    # ready-made Expo + React Native e-commerce system for sale and re-routed
+    # here on its own 'Mobile App (iOS & Android)' feature bullet.
+    "i am offering a complete", "suitable for any brand",
 }
 
 

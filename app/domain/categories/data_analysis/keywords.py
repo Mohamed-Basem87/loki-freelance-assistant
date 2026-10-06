@@ -907,7 +907,14 @@ HARD_REJECT_KEYWORDS = {
     "senior property", "foreign procurement", "cost engineer",
     "tender business", "contact scrape", "linkedin company",
     "senior planning engineer", "job overview", "career level",
-    "we are seeking", "senior management specialist",
+    "senior management specialist",
+    # Run-3 audit (2026-10-05): replacing the over-broad "we are seeking",
+    # which hard-rejected accepted data_analysis rowid 11035. Uncovered
+    # collateral: rowid 10969 (Inventory Control Specialist) then delivered
+    # on an incidental "excel" title core positive with only 2 supporting
+    # negative weight. "inventory control" is the employment-role signal
+    # that separates them; window hits are 10964/10969, both correct rejects.
+    "inventory control",
     "developer representative", "primavera", "primavera p6",
     "master scheduling", "master schedule", "critical path",
     "forensic delay", "delay analysis", "extension of time",
@@ -922,6 +929,16 @@ HARD_REJECT_KEYWORDS = {
     "tendering procurement engineer", "head of financial planning and analysis",
     "administrative assistant", "human resources director",
     "senior bid manager", "lead generation specialist",
+
+    # Desktop / standalone application packaging (2026-10-05 run 3, rowid
+    # 11011 'Cross-Platform Data Science Tool'). Confirmed category-gap family
+    # in acceptance policy 10.1. Blocking ai_ml alone was not enough: the same
+    # posting re-routed here on its 'data science' core positive and was still
+    # delivered. A packaged desktop binary is out of scope for data analysis
+    # too, so the packaging phrases are repeated in this vocabulary. Only the
+    # packaging collocations are hard-rejected -- analysis work that merely
+    # names an operating system must still reach arbitration.
+    "installable packages or binaries", "electron, qt",
 }
 
 

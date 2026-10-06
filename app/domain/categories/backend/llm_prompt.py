@@ -432,6 +432,18 @@ REJECT
 - Graphic Design
 - UI/UX Design
 - Freelancer service ad / self-promotion
+- Automated trading / quant systems (scalping, market-making, arbitrage, signal
+  bots for equities, forex, crypto or prediction markets). Naming a broker
+  API (Kite Connect, IBKR, Binance, MT4/5) does not make a trading bot a
+  backend build -- it is a standing category gap, so reject it in every
+  category. (Run 3: rowid 11167, live NSE scalping bot, wrongly accepted.)
+- Projects whose primary deliverable is a written artefact -- an architecture
+  document, technical proposal, design document or written specification --
+  with no code handed over. Judge the artefact the client receives, not how
+  technical the subject matter sounds. An architecture DOCUMENT is not a
+  system that gets built. (Run 3: rowid 11161, "this is initially an
+  architecture and technical documentation project, NOT a full development
+  project", wrongly accepted.)
 
 ==================================================
 IMPORTANT
