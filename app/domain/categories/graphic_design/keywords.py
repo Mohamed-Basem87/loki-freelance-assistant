@@ -247,8 +247,24 @@ POSITIVE_KEYWORDS = {
             "تصميم برزنتيشن": 7,
             "تصميم برزنتيشنز": 6,
             "تصميم عرض تقديمي": 7,
+            # 2026-10-08 run-4 audit: rowid 11972 interactive presentation
+            # ('عرض تقديمي تفاعلي للشركة') — the bare collocation was stuck
+            # in supporting (w4), below the direct-match bar for a genuine
+            # slides deliverable. Promoted to core.
+            "عرض تقديمي": 7,
             "تصميم ايقونات": 6,
             "تصميم استيكر": 7,
+            # 2026-10-08 run-4 audit, rowid 11522: مصمم ملفات (Illustrator
+            # promo-file/brochure for a shop).
+            "مصمم ملفات": 7,
+            "تصميم ملف": 6,
+            # 2026-10-08 run-4 audit (missed graphic deliverables): 11390
+            # رسم قصة مصورة (storyboard), 11476 تصميم علب (box/pack
+            # mockups), 11886 بروفايل design, 12084 اعادة تصميم (redesign).
+            "قصة مصورة": 7,
+            "تصميم علب": 7,
+            "بروفايل": 7,
+            "اعادة تصميم": 7,
         },
         "supporting": {
             # Demoted from core (simulation-verified zero notification loss).
@@ -272,7 +288,6 @@ POSITIVE_KEYWORDS = {
             "استيكر": 3,
             "انفوجرافيك": 4,
             "برزنتيشن": 4,
-            "عرض تقديمي": 4,
         },
     },
 

@@ -13,7 +13,11 @@ PROFILE = CategoryProfile(
         "business-focused statistical analysis. Reject when the primary "
         "deliverable is machine learning, predictive modeling, AI model "
         "development, general software development, manual data entry, "
-        "transcription, or another non-analytical task."
+        "transcription, or another non-analytical task. "
+        "Reject outreach-list / lead-generation deliverables ('marketing "
+        "leads', 'contact lists', prospecting for sales teams): those are "
+        "marketing operations, not analysis. Reject HR/staffing roles "
+        "(talent management, recruitment coordinators)."
     ),
     positive_keywords=POSITIVE_KEYWORDS,
     negative_keywords=NEGATIVE_KEYWORDS,

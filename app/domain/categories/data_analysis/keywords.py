@@ -661,6 +661,11 @@ NEGATIVE_KEYWORDS = {
             "data entry": 6,
             "ادخال بيانات": 6,
             "إدخال بيانات": 6,
+            # 2026-10-08 run-4 audit: 11348 Excel hypermarket data file
+            # ('اعداد ملف'), 12092 'تفريغ ملفات' (dumping to Excel) —
+            # manual data prep delivered as analysis via the 'excel' core.
+            "اعداد ملف": 7,
+            "تفريغ ملفات": 7,
             "وإدخال بيانات": 6,
             "بإدخال بيانات": 6,
             "لإدخال بيانات": 6,
@@ -785,6 +790,13 @@ NEGATIVE_KEYWORDS = {
             "lead generators": 7,
             "generación de leads": 7,
             "جلب العملاء": 7,
+            # 2026-10-08 run-4 audit: 12191 'Sanitized USA Marketing Leads'
+            # outreach-lists deliverable, 12117 'Talent Management
+            # Specialist' HR role — lead/contact-list stuffing and HR
+            # staffing are not analysis work.
+            "marketing leads": 7,
+            "contact lists": 7,
+            "talent management": 7,
             "content creator": 6,
             "content creators": 6,
             "influencer": 6,

@@ -132,6 +132,12 @@ POSITIVE_KEYWORDS = {
             # recovered job). Extends the voice-chat family to text chat.
             "تطبيق دردشة": 8,
             "دردشة جماعية": 7,
+            # 2026-10-08 run-4 audit: 11279 Free Fire top-up / 11954 Free
+            # Fire wallet-integration app (Indonesian game-app class), 11724
+            # Indonesian 'aplikasi obrolan' private-chat app.
+            "free fire": 7,
+            "aplikasi obrolan": 7,
+            "chat pribadi": 7,
             # Arabic transliteration "mobile application" (2026-08-31):
             # mostaql:1273183 'تصميم واجهة موبايل ابلكيشن لمشاركة وتأجير
             # السيارات' (XRide car-sharing app) was rejected for missing
@@ -237,6 +243,29 @@ POSITIVE_KEYWORDS = {
 # Negative evidence: other software domains to avoid overlap.
 NEGATIVE_KEYWORDS = {
 
+    # Voice-chat / social-economy class routing (2026-10-08 run-4 audit,
+    # rowid 12346): live voice-chat clients with paid coins/gifts/wallet
+    # monetization must reach arbitration and be REJECTED under
+    # LOKI_ACCEPTANCE_POLICY §10.6 (dating-adjacent paid chat). Positive
+    # 'دردشة صوتية' still serves genuine voice-room builds; this negative
+    # flips monetized social-chat posts to mixed_core_signals.
+    "voice_chat_economy": {
+        "core": {
+            "غرف دردشة": 8,
+        },
+        "supporting": {},
+    },
+
+    # UI/UX-only design engagements (2026-10-08 run-4 audit, rowid 11267
+    # 'تصميم واجهات' with no development) — graphic/UI work, not app
+    # builds; routes to arbitration where the llm rejects design-only.
+    "design_only": {
+        "core": {
+            "تصميم واجهات": 8,
+        },
+        "supporting": {},
+    },
+
     # App-store review/rating manipulation gigs (buying reviews and
     # ratings) -- not development work. Kept as a negative core rather
     # than hard reject so a genuine build that legitimately mentions a
@@ -320,6 +349,13 @@ NEGATIVE_KEYWORDS = {
             # console names + standalone submission phrases route to
             # arbitration; the mobile guard still approves build+release jobs.
             "app store connect": 8,
+            # 2026-10-08 run-4 audit, rowid 11211: '6amMart IOS Configuration
+            # and Submission for Flutter Apps' — configuration + account
+            # admin with an app-store verb, no development — reached
+            # arbitration and the LLM accepted. Explicit collocation tips
+            # mixed_core_signals harder against it.
+            "configuration and submission": 8,
+            "store submission": 8,
             "google play console": 8,
             "store submission": 8,
             "play submission": 8,

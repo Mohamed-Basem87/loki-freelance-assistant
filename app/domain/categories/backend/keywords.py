@@ -24,6 +24,19 @@ POSITIVE_KEYWORDS = {
             "golang": 6,
             "rust": 6,
             "java": 6,
+            # 2026-10-08 run-4 audit: 11563 'Medior Full Stack JS Developer'
+            # (Node/JS API + web app + code-review engagement).
+            "full stack js": 7,
+            # 2026-10-08 run-4 audit: rowids 11221 '.Net Developer' and
+            # 11524 '.NET Technical Lead' kept missing backend — '.net'
+            # sits only in supporting w4 (".net" surface ".Net Developer"
+            # today). .NET 6/8, EF, Blazor are backend stacks.
+            "net developer": 8,
+            # 2026-10-08 run-4 audit (missed .NET titles): 'Full Stack .NET
+            # Technical Lead' (11524), '.Net Developer' (11221) and 'Medior
+            # Full Stack JS Developer' often includes .NET/JS backend.
+            ".net technical lead": 8,
+            ".net developer": 8,
         },
         "supporting": {
             "express": 3,
@@ -583,6 +596,12 @@ POSITIVE_KEYWORDS = {
             "سيستم ادارة": 7,
             "نظام إدارة": 7,
             "نظام ادراه": 7,
+            # 2026-10-08 run-4 audit: rowid 11281 (نظام مراقبة كاميرات بواجهة
+            # ويب مع تسجيل/متابعة) and 11318 (نظام حضور وانصراف مع كشف وجه)
+            # missed backend; monitoring/attendance admin systems are server
+            # build work.
+            "نظام مراقبة": 7,
+            "نظام حضور": 7,
         },
         "supporting": {
             "لوحة تحكم": 4,
@@ -593,11 +612,50 @@ POSITIVE_KEYWORDS = {
             "ربط دومين": 6,
         },
     },
+
+    # 2026-10-08 run-4 audit: English admin/business-platform cores mirror
+    # arabic_admin_systems for English postings. Rowid 11334 'Store
+    # Management System' was rejected No-Matching-Keywords across the board.
+    "admin_business_systems": {
+        "core": {
+            "store management": 7,
+            "loan management": 7,
+            # 2026-10-08 run-4 audit: 11539 'ربط متجر الكتروني في مواقع خارجية'
+            # (ecom API integration/linking store) — API/backend integration.
+            "ربط متجر الكتروني": 7,
+            # 2026-10-08 run-4 audit: 12172 campus placement recruitment
+            # platform, 12285 WhatsApp appointment/booking system with
+            # reports ('Gestor de Citas').
+            "recruitment platform": 7,
+            "gestor de citas": 7,
+            "booking system": 6,
+            "appointment system": 6,
+            # 2026-10-08 run-4 audit: 11876 create/configure Telegram bot with
+            # forwarding/FAQ — backend logic, persistence, webhook/router.
+            "telegram bot": 8,
+        },
+        "supporting": {},
+    },
 }
 
 
 # Negative evidence: other software domains to avoid overlap.
 NEGATIVE_KEYWORDS = {
+
+    # Self-promotion / service-advertising posts (2026-10-08 run-4 audit,
+    # rowid 11488): a backend freelancer ad ("looking for freelance
+    # projects", AI app development) notify_directly'd because it stuffed
+    # backend vocabulary. Freelancer-marketing phrases are not client
+    # requests; the negative tips the post to arbitration, where
+    # profile.py rejects absent a concrete client deliverable.
+    "self_promotion": {
+        "core": {
+            "looking for freelance projects": 8,
+            "i specialize in": 6,
+            "my portfolio": 6,
+        },
+        "supporting": {},
+    },
 
     # Recruitment/staffing ads are employment offers, not project gigs.
     "recruitment": {
@@ -625,6 +683,12 @@ NEGATIVE_KEYWORDS = {
             # notify path (guard happened to suppress it, but the classifier
             # should not have accepted deterministically).
             "adalo": 8,
+            # 2026-10-08 run-4 audit, rowid 11855 (Zoho Deluge order-entry
+            # for a kiosk): pure low-code configuration that direct-selected
+            # backend via zoho/booking cores. Deluge is a proprietary
+            # low-code language; the negative forces arbitration so the
+            # profile rejects config-only work.
+            "deluge": 8,
         },
         "supporting": {},
     },
@@ -919,7 +983,12 @@ HARD_REJECT_KEYWORDS = {
     # data_analysis. Arabic protection kept via the إدخال بيانات family in
     # data_analysis negatives.
     "graphic design",
-    "photoshop",
+    # 'photoshop' removed (2026-10-08 run-4 audit, rowid 12143): a
+    # Laravel/Firebase employee platform post that ENUMERATED a
+    # Photoshop-retoucher target user hard-rejected in every category
+    # before arbitration could see the real backend deliverable. Platform
+    # builds name target-user roles; role tokens must reach arbitration
+    # (see the data-entry/illustrator note at the top of this block).
     "video editing",
     "motion graphics",
     "backlink",

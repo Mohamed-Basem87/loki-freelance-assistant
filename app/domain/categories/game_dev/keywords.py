@@ -182,6 +182,17 @@ POSITIVE_KEYWORDS = {
             "minecraft plugin": 8,
             "minecraft plugins": 8,
             "modding": 7,
+            # 2026-10-08 run-4 audit: 12154 Baldur's Gate 3 custom-mod
+            # refinement (.FBX items, spell-effect edits) — 'modding' had
+            # no surface on 'Custom Mod Refinement'.
+            "custom mod": 7,
+            # 2026-10-08 run-4 audit: 11234 Giant Nuke Mod for 'From the
+            # Depths' (game-title missed card-game/asset searches), 11802
+            # mud-based world 'mud simulation', 12115 Visual Novel game 2D
+            # assets.
+            "from the depths": 8,
+            "mud simulation": 7,
+            "visual novel": 7,
         },
         "supporting": {
             "steam": 3,

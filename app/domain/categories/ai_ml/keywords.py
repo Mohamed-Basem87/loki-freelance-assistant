@@ -125,6 +125,9 @@ POSITIVE_KEYWORDS = {
     "computer_vision": {
         "core": {
             "computer vision": 8,
+            # 2026-10-08 run-4 audit: 12089 camera-based vision/detection
+            # ('camera vision') service missed.
+            "camera vision": 7,
             "image classification": 7,
             "object detection": 7,
             "image segmentation": 7,
@@ -327,8 +330,17 @@ POSITIVE_KEYWORDS = {
             "qlora": 6,
             "prompt engineering": 7,
             "prompt design": 6,
+            # 2026-10-08 run-4 audit: 11185 image-generation service
+            # (توليد صور) — generative-image delivery missed.
+            "توليد صور": 7,
             "ai agent": 7,
             "ai agents": 7,
+            # 2026-10-08 run-4 audit (Arabic ML/advisory builds missed):
+            # 11197 وكيل ذكاء اصطناعي (AI agent), 11477 نموذج ذكاء اصطناعي,
+            # 11663/11695 نموذج تعلم آلة (ML model builds).
+            "وكيل ذكاء اصطناعي": 7,
+            "نموذج ذكاء اصطناعي": 7,
+            "نموذج تعلم آلة": 7,
             "autonomous agent": 7,
             # fn_llm recovery (2026-09-25 run 2, row 5193) and its
             # none->deterministic-accept justification. 5193 recorded arbitration
@@ -358,6 +370,9 @@ POSITIVE_KEYWORDS = {
         },
         "supporting": {
             "lora": 3,
+            # 2026-10-08 run-4 audit: 11207 bilingual MCQ PDF extraction/OCR
+            # — document-AI supporting signal routing to ai_ml arbitration.
+            "pdf extraction": 6,
             "fine-tuning": 3,
             "fine tuning": 3,
             "fine-tune": 3,

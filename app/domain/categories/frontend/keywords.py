@@ -232,6 +232,11 @@ POSITIVE_KEYWORDS = {
             "موقع إلكتروني": 6,
             "مواقع إلكترونية": 6,
             "تصميم موقع": 6,
+            # 2026-10-08 run-4 audit: rowid 12339 digital-library web
+            # prototype ('مكتبة رقمية'), rowid 12342 Turkish product
+            # catalog site ('Web Sitesi').
+            "مكتبة رقمية": 7,
+            "web sitesi": 7,
             # Arabic 'design & program a website' collocation (2026-08-31):
             # cafe site FNs (11501/11522), contractor, restaurant-with-menu
             # (6019/6020), WordPress 8534 sister of accepted 8532.
@@ -240,12 +245,26 @@ POSITIVE_KEYWORDS = {
             # Arabic 'design & develop a website' collocation (2026-08-31):
             # FNs: 1857/2425/2991 (company/corp sites), 1405 (tourism).
             "تصميم وتطوير موقع": 7,
+            # 2026-10-08 run-4 audit: rowid 11527 'تطوير وتصميم موقع إلكتروني
+            # احترافي ومتجاوب' — swapped word order missed existing
+            # 'تصميم وتطوير موقع' core (exact collocation reversed).
+            "تطوير وتصميم موقع": 7,
+            # 2026-10-08 run-4 audit: rowid 11186 360° virtual-tour website
+            # (تجوال افتراضي / جولة افتراضية) missed frontend.
+            "تجوال افتراضي": 7,
+            "جولة افتراضية": 7,
             "تطوير مواقع": 6,
             # Arabic singular 'develop a website' (2026-09-13 run 1): the
             # plural-only 'تطوير مواقع' cannot match 'تطوير موقع'. run-1
             # siblings 18897/18903 'تطوير موقع ويب' (both rejected; 18903
             # scoped to website development) now route to frontend.
             "تطوير موقع": 7,
+            # 2026-10-08 run-4 audit: rowid 11270 frontend UI refinement
+            # (تحسين واجهة/تحسين الواجهة) and rowid 11300 (نسخة طبق الأصل
+            # من موقع) missed frontend for lack of collocation.
+            "تحسين الواجهة": 7,
+            "تحسين واجهة": 6,
+            "نسخة طبق الأصل": 7,
             "تصميم مواقع": 6,
             "مطور مواقع": 6,
             # Arabic 'website designer' (2026-09-13 run 1): singular
@@ -269,6 +288,16 @@ POSITIVE_KEYWORDS = {
             "creating a website": 6,
             "build a website": 7,
             "building a website": 7,
+            # 2026-10-08 run-4 audit: un-collocated build intents missed
+            # frontend: 11566 'Need to create website', 11760 TXT novel
+            # editing 'web tool', 12017 German 'Webseite', 11587 Spanish
+            # 'aplicación web', 11182 Joomla site build.
+            "create website": 6,
+            "web tool": 6,
+            "webseite": 6,
+            "aplicacion web": 7,
+            "aplicación web": 7,
+            "joomla": 6,
             # Changes/functionality work on an EXISTING site (2026-10-05 run 3,
             # rowid 11049 'Website Functionality & Text Enhancements' -- fn_det).
             # 11049 and 11065 are the same posting by the same client; 11065
@@ -783,6 +812,18 @@ NEGATIVE_KEYWORDS = {
         },
         "supporting": {},
     },
+    # Website duplication + rebranding reskins (2026-10-08 run-4 audit,
+    # rowid 11383 'Site Duplication and Rebranding' — WordPress rebuild of
+    # an existing brand site) are not new builds; the negative routes them
+    # to arbitration, where the llm/guard reject clone/rebrand reskins.
+    "clone_rebrand": {
+        "core": {
+            "rebranding": 7,
+            "rebrand": 6,
+        },
+        "supporting": {},
+    },
+
     "marketing": {
         # Negative-core placement (not HARD_REJECT): these phrases occur
         # inside genuine build scopes; pure-marketing gigs still reject.
@@ -904,7 +945,7 @@ HARD_REJECT_KEYWORDS = {
     "hyip", "hyiplab", "high yield investment",
     "high yield investment website", "high yield investment program",
     "high yield investment plan",
-    "اليكم اخر ابداعات", "معرض اعمالي", "اعمالي السابقة", "اعمال السابقة",
+    "اليكم اخر ابداعات", "معرض اعمالي", "اعمالي السابقة", "اعمال السابقة", "أعمال السابقة", "نماذج اعمال",
     # 6N single-arb none -> deterministic reject (2026-09-25 run 2). A
     # meeting-host support role, an outlet brand supervisor posting, and a
     # Google Business Profile verification service -- none is a web build.
