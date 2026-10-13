@@ -276,6 +276,20 @@ POSITIVE_KEYWORDS = {
             "web designer": 6,
             "web design": 6,
             "website development": 7,
+            # Run 7 (2026-10-12): rowid 15161 'Professional Business Website
+            # for Ball Electronics' (freelance website developer required ...
+            # design a modern professional and responsive website) was an FN.
+            # The noun 'website developer' and the adjective 'responsive
+            # website' were uncovered. Both are unambiguous frontend build
+            # context; the window screen shows each adds no correct-reject
+            # exposure (14994 stays hard-rejected on WordPress/SEO).
+            "website developer": 7,
+            "responsive website": 6,
+            # Run 7 (2026-10-12): rowid 15239 'ELD Tech Website & Portfolio
+            # Development' ("create tech company website portfolio") matched
+            # nothing; the swapped-order collocation 'website portfolio' was
+            # uncovered. Window screen: only 15239 hits it.
+            "website portfolio": 6,
             "website design": 6,
             "website build": 6,
             "website redesign": 7,
@@ -910,7 +924,18 @@ HARD_REJECT_KEYWORDS = {
     "commission only",
     "عمولة فقط",
     "volunteer",
-    "unpaid",
+    # Run 7 (2026-10-12): the bare "unpaid" token was narrowed to explicit
+    # unpaid-work phrasings. It hard-rejected rowid 14984 (a genuine SaaS
+    # build) via the incidental phrase "unpaid custom development work", and
+    # it also defeated the policy 10.4 internship carve-out. A job that merely
+    # says "unpaid internship" now reaches the decision table.
+    "unpaid work",
+    "unpaid role",
+    "unpaid position",
+    "unpaid job",
+    "unpaid vacancy",
+    "unpaid opportunity",
+    "work without pay",
     "متطوع",
     "بدون مقابل",
     # Recurring SMM-reseller storefront spam (8 corpus occurrences,
@@ -945,7 +970,13 @@ HARD_REJECT_KEYWORDS = {
     "hyip", "hyiplab", "high yield investment",
     "high yield investment website", "high yield investment program",
     "high yield investment plan",
-    "اليكم اخر ابداعات", "معرض اعمالي", "اعمالي السابقة", "اعمال السابقة", "أعمال السابقة", "نماذج اعمال",
+    # Self-promotion / "my portfolio" phrases. Run 7 (2026-10-12): the
+    # definite third-person "اعمال السابقة"/"أعمال السابقة" ("the previous
+    # works") was REMOVED -- it fired on CLIENT postings that reference a
+    # portfolio or ask for work samples (rowids 15122, 15317, 15321), while
+    # the first-person "اعمالي السابقة" and "معرض اعمالي" still catch genuine
+    # self-promo posts.
+    "اليكم اخر ابداعات", "معرض اعمالي", "اعمالي السابقة", "نماذج اعمال",
     # 6N single-arb none -> deterministic reject (2026-09-25 run 2). A
     # meeting-host support role, an outlet brand supervisor posting, and a
     # Google Business Profile verification service -- none is a web build.

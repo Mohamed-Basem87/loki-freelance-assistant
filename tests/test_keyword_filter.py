@@ -183,17 +183,22 @@ def test_keyword_filter_returns_well_formed_result(case):
 def test_hard_reject_wins_over_positive_keywords():
     """
     Regression case for the hard-reject bypass bug: a hard-reject
-    keyword ("unpaid"/"internship") alongside genuine positive
-    keywords used to silently disable the reject entirely.
+    keyword ("volunteer") alongside genuine positive keywords used to
+    silently disable the reject entirely.
+
+    (Was "unpaid"; the bare `unpaid` token was narrowed in run 7 to
+    explicit unpaid-work phrasings per policy 10.4's internship
+    carve-out -- an unpaid internship is now accepted, so it can no
+    longer serve as the hard-reject example here.)
     """
     result = keyword_filter(
         """
-Unpaid internship opportunity.
+Volunteer opportunity.
 
 Help us build Power BI dashboards and Excel reports.
 No pay, but great learning experience!
 """,
-        title="Unpaid Internship - Power BI",
+        title="Volunteer - Power BI",
         profile=DATA_ANALYSIS_PROFILE,
     )
 

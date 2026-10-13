@@ -596,6 +596,14 @@ POSITIVE_KEYWORDS = {
             "سيستم ادارة": 7,
             "نظام إدارة": 7,
             "نظام ادراه": 7,
+            # Run 7 (2026-10-12): rowids 15387/15391 (إنشاء نظام إداري مصغر
+            # لمحل صيانة جوالات ... لوحة تحكم/قاعدة بيانات/ربط الطابعة
+            # والواتساب) were FNs -- 'نظام اداري' (administrative system,
+            # the adjective form) was uncovered while only the nominal
+            # 'نظام ادارة'/'نظام إدارة' existed. Same admin/business-system
+            # build class.
+            "نظام اداري": 7,
+            "نظام إداري": 7,
             # 2026-10-08 run-4 audit: rowid 11281 (نظام مراقبة كاميرات بواجهة
             # ويب مع تسجيل/متابعة) and 11318 (نظام حضور وانصراف مع كشف وجه)
             # missed backend; monitoring/attendance admin systems are server
@@ -998,7 +1006,18 @@ HARD_REJECT_KEYWORDS = {
     "commission only",
     "عمولة فقط",
     "volunteer",
-    "unpaid",
+    # Run 7 (2026-10-12): the bare "unpaid" token was narrowed to explicit
+    # unpaid-work phrasings. It hard-rejected rowid 14984 (a genuine SaaS
+    # build) via the incidental phrase "unpaid custom development work", and
+    # it also defeated the policy 10.4 internship carve-out. A job that merely
+    # says "unpaid internship" now reaches the decision table.
+    "unpaid work",
+    "unpaid role",
+    "unpaid position",
+    "unpaid job",
+    "unpaid vacancy",
+    "unpaid opportunity",
+    "work without pay",
     "متطوع",
     "بدون مقابل",
     # Recurring SMM-reseller storefront spam (8 corpus occurrences,

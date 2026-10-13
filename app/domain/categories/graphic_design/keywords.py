@@ -716,7 +716,19 @@ HARD_REJECT_KEYWORDS = {
     "1xbet", "dragon tiger", "dragon vs tiger",
     "quotex", "iq option", "binary options", "olymptrade", "pocket option",
     "commission only", "عمولة فقط",
-    "volunteer", "unpaid", "متطوع", "بدون مقابل",
+    "volunteer",
+    # Run 7 (2026-10-12): bare "unpaid" narrowed to explicit unpaid-work
+    # phrasings; see the other categories. Keeps the policy 10.4 internship
+    # carve-out and unblocks rowid 14984 ("unpaid custom development work").
+    "unpaid work",
+    "unpaid role",
+    "unpaid position",
+    "unpaid job",
+    "unpaid vacancy",
+    "unpaid opportunity",
+    "work without pay",
+    "متطوع",
+    "بدون مقابل",
     "backlink", "backlinks", "link building",
     "letter writing", "request letter",
     "خدمات smm",

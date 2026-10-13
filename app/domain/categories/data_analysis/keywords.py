@@ -840,7 +840,18 @@ HARD_REJECT_KEYWORDS = {
     "commission only",
     "عمولة فقط",
     "volunteer",
-    "unpaid",
+    # Run 7 (2026-10-12): the bare "unpaid" token was narrowed to explicit
+    # unpaid-work phrasings. It hard-rejected rowid 14984 (a genuine SaaS
+    # build) via the incidental phrase "unpaid custom development work", and
+    # it also defeated the policy 10.4 internship carve-out. A job that merely
+    # says "unpaid internship" now reaches the decision table.
+    "unpaid work",
+    "unpaid role",
+    "unpaid position",
+    "unpaid job",
+    "unpaid vacancy",
+    "unpaid opportunity",
+    "work without pay",
     "متطوع",
     "بدون مقابل",
     "data entry",
