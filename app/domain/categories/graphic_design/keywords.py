@@ -26,7 +26,7 @@
 #   brand identity, branding systems/guidelines, visual identity, marketing &
 #   advertising graphics, social media graphics, banners/posters/flyers/
 #   brochures, business cards/stationery, packaging & label design, print
-#   design, editorial/publication, infographics, presentation/pitch-deck,
+#   design, editorial/publication, infographics,
 #   thumbnails, illustration, vector artwork, icons/assets, typography-focused
 #   work, photo manipulation/retouching/compositing, apparel graphics.
 # * Out-of-scope negatives (UI/UX, product design, web/frontend/mobile apps,
@@ -244,14 +244,8 @@ POSITIVE_KEYWORDS = {
             "graphic asset": 6,
             # Arabic digital assets.
             "تصميم انفوجرافيك": 7,
-            "تصميم برزنتيشن": 7,
-            "تصميم برزنتيشنز": 6,
-            "تصميم عرض تقديمي": 7,
-            # 2026-10-08 run-4 audit: rowid 11972 interactive presentation
-            # ('عرض تقديمي تفاعلي للشركة') — the bare collocation was stuck
-            # in supporting (w4), below the direct-match bar for a genuine
-            # slides deliverable. Promoted to core.
-            "عرض تقديمي": 7,
+            # 2026-10-15 run-9: presentation/deck phrases moved to
+            # HARD_REJECT_KEYWORDS (out of scope by user decision).
             "تصميم ايقونات": 6,
             "تصميم استيكر": 7,
             # 2026-10-08 run-4 audit, rowid 11522: مصمم ملفات (Illustrator
@@ -287,7 +281,6 @@ POSITIVE_KEYWORDS = {
             "visual assets": 3,
             "استيكر": 3,
             "انفوجرافيك": 4,
-            "برزنتيشن": 4,
         },
     },
 
@@ -697,6 +690,19 @@ NEGATIVE_KEYWORDS = {
 }
 
 HARD_REJECT_KEYWORDS = {
+    # Run 9 (2026-10-15, user decision): presentation / PowerPoint deck design
+    # is out of scope. Mirrored into every deterministic category so a deck job
+    # cannot be delivered by whichever category claims it first. DB-wide
+    # word-boundary screen: flips only 4 accepted graphic_design deck jobs
+    # (rowids 15455, 15359, 6317, 4993). These phrases previously sat in the
+    # digital_assets POSITIVE vocabulary and are removed from it below.
+    "عرض تقديمي",
+    "عروض تقديمي",
+    "برزنتيشن",
+    "برزينتيشن",
+    "بوربنت",
+    "تصميم عرض تقديمي",
+    "تصميم برزنتيشن",
     # Shared policy blocks, mirrored from the other categories so blocked
     # content never burns a GD keyword match or an arbitration call.
     "gambling", "casino", "igaming", "jackpot", "poker", "roulette",

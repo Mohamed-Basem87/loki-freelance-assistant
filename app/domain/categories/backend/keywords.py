@@ -981,6 +981,18 @@ NEGATIVE_KEYWORDS = {
 
 # Hard rejects: unrelated work rejected when no positive signal exists.
 HARD_REJECT_KEYWORDS = {
+    # Run 9 (2026-10-15, user decision): presentation / PowerPoint deck design
+    # is out of scope. Mirrored into every deterministic category so a deck job
+    # cannot be delivered by whichever category claims it first. DB-wide
+    # word-boundary screen: flips only 4 accepted graphic_design deck jobs
+    # (rowids 15455, 15359, 6317, 4993). See LOKI_ACCEPTANCE_POLICY.md.
+    "عرض تقديمي",
+    "عروض تقديمي",
+    "برزنتيشن",
+    "برزينتيشن",
+    "بوربنت",
+    "تصميم عرض تقديمي",
+    "تصميم برزنتيشن",
     # Data-entry/illustrator TOKENS intentionally NOT hard-rejected here:
     # platform builds enumerate them as target-user roles
     # (freelancer:40676186 Perancangan Aplikasi Freelancer listed Data
