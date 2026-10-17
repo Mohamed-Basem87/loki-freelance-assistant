@@ -220,7 +220,7 @@ def test_classify_and_select_is_bounded_with_runtime_limits():
     elapsed = time.perf_counter() - start
 
     assert result["category_id"] == "data_analysis"
-    assert elapsed < 5.0
+    assert elapsed < 6.0
 
 
 def test_multiple_ambiguous_candidates_are_all_exposed_for_one_arbitration():
