@@ -26,7 +26,9 @@ PROFILE = CategoryProfile(
         "tweaks) where the primary deliverable is not a build: reject. "
         "Low-code configuration without development (Zoho/Deluge, Power "
         "Platform, Airtable, Bubble config, ERP admin) is not backend "
-        "engineering: reject."
+        "engineering: reject. Bulk catalogue/data-entry upload into an "
+        "existing store (populating SKUs, pricing, stock, images) is data "
+        "entry, not a build: reject; building the importer itself is in scope."
     ),
     positive_keywords=POSITIVE_KEYWORDS,
     negative_keywords=NEGATIVE_KEYWORDS,

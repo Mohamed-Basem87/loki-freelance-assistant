@@ -146,6 +146,18 @@ POSITIVE_KEYWORDS = {
             "تحليل مالي": 9,
             "تابلو": 8,
             "analisis data": 9,
+            # Indonesian sales-data extraction/reporting from an ERP system
+            # (2026-10-20 run 12): rowid 19682 'Optimalisasi Data Penjualan
+            # di ERP' was rejected title_core_negative_no_body_positive --
+            # the 'erp' enterprise core negative fired while no body
+            # positive existed for the extraction/dashboard deliverable.
+            # Indonesian-language DA vocabulary gap. 'data penjualan' is
+            # word-boundary exclusive (1 window hit = 19682); no accepted
+            # collateral. ERP ADMINISTRATION still rejects via the 'erp'
+            # negative (only the analysis-specific collocation is added).
+            "data penjualan": 8,
+            "ekstraksi data": 8,
+            "mengolah dan menganalisis data": 8,
             # Arabic prefix variants: و/ب/ل/ك attached to word root
             "وتحليل بيانات": 9,
             "بتحليل بيانات": 9,
@@ -964,6 +976,17 @@ HARD_REJECT_KEYWORDS = {
     "tendering procurement engineer", "head of financial planning and analysis",
     "administrative assistant", "human resources director",
     "senior bid manager", "lead generation specialist",
+    # Accounting/finance EMPLOYMENT ROLE postings are zero-overlap (policy
+    # 10.2): the deliverable is the role, not an analysis build (2026-10-20
+    # run 12). rowid 19471 'Senior Cost Accountant' was DELIVERED as
+    # data_analysis (fp_delivered) via the cost/budget supporting family.
+    # Full-corpus screen: 'accountant' hits 8 window jobs, of which the
+    # accepted 19441/19471/19472/19661/19804 are all accountant/accounting-
+    # manager ROLE postings (pre-existing FPs of the identical class) and
+    # the rejected 19568/19569/19824 are already rejects -- so hard-rejecting
+    # the role token is a consistent prevention, not collateral. 'cost
+    # accountant'/'senior accountant' kept as explicit phrase cores too.
+    "accountant", "cost accountant", "senior accountant",
 
     # Desktop / standalone application packaging (2026-10-05 run 3, rowid
     # 11011 'Cross-Platform Data Science Tool'). Confirmed category-gap family

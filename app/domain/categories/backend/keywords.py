@@ -345,6 +345,64 @@ POSITIVE_KEYWORDS = {
         "supporting": {},
     },
 
+    # Medical-imaging system builds (2026-10-20 run 12): rowid 19678
+    # 'Sistema PACS y DICOM para Radiología' (PACS/radiology system
+    # intercommunicating equipment-patient, full DICOM tooling) rejected
+    # No-Matching-Keywords -- backend had ZERO medical-imaging vocabulary.
+    # DICOM/PACS are unambiguous server-side imaging-system cores. Window
+    # word-boundary screen: 'dicom'/'pacs' each hit exactly 1 job (19678
+    # itself), no accepted collateral.
+    "medical_imaging": {
+        "core": {
+            "dicom": 8,
+            "pacs": 8,
+        },
+        "supporting": {},
+    },
+
+    # Point-of-sale system builds (2026-10-20 run 12): rowid 19801
+    # 'Develop Grocery POS System' (inventory/barcode/reports/loyalty)
+    # rejected insufficient_signal. 'pos' alone is NOISE-broad, so only the
+    # explicit system-collocations are cores. 'pos system' hits exactly 1
+    # window job (19801, via 'point-of-sale' normalized); no accepted
+    # collateral. 'point of sale' kept for the hyphenated/expanded writing.
+    "pos_systems": {
+        "core": {
+            "point of sale": 7,
+            "pos system": 7,
+        },
+        "supporting": {},
+    },
+
+    # IoT/energy-flow automation builds (2026-10-20 run 12): rowid 19713
+    # 'Victron PV Automation with Node-RED' rejected core_negative_no_core
+    # (the data_analysis 'energyplus'-adjacent negative fired). Node-RED
+    # flow engineering is backend integration work. 'node-red' hits exactly
+    # 1 window job (19713); no accepted collateral.
+    "iot_automation": {
+        "core": {
+            "node-red": 7,
+            "node red": 7,
+        },
+        "supporting": {},
+    },
+
+    # Arabic Chrome-extension / browser-extension builds (2026-10-20 run 12):
+    # rowid 19514/19520 'برمجة إضافة كروم للتنقل التلقائي ... مع نظام اشتراك
+    # وتفعيل' (Chrome extension + licence-code server + admin panel,
+    # cross-posted on مستقل/Mostaql) rejected insufficient_signal. Mirrored
+    # CORE here (and the browser-extension family lives in data_analysis
+    # NEGATIVE), so the build reaches arbitration instead of a silent reject.
+    # 'إضافة كروم' hits exactly 2 window jobs (19514/19520); 'إضافات كروم'
+    # hits 1 (19514). No accepted collateral.
+    "browser_extension_build": {
+        "core": {
+            "إضافة كروم": 7,
+            "إضافات كروم": 7,
+        },
+        "supporting": {},
+    },
+
     # Email-infrastructure/automation builds. Build vocabulary only:
     # pure tool-onboarding / cold-email-service gigs reach arbitration
     # (lone 'email deliverability' < supporting minimum) and reject.
@@ -1165,6 +1223,44 @@ HARD_REJECT_KEYWORDS = {
     # 'digital marketing' notes: backend work that merely mentions a funnel or
     # an A/B test must still reach arbitration.
     "conversion funnel", "a/b test",
+
+    # Self-promotion / seller-pitch posts delivered as jobs (2026-10-20 run
+    # 12, fp_delivered). Three window jobs were freelancer ads, not client
+    # requests:
+    #   - 19714 'Sales-focused Web Application Development' ("I can help you
+    #     design and develop... My recommendation is to begin with...") --
+    #     a seller's pitch, delivered full_stack.
+    #   - 19706 'BharatGram.live: India's Social Media Site Development' --
+    #     a company description with no request/deliverable, delivered.
+    #   - 19511 'Text Classifier Deployment...' ("I recently built a
+    #     decoder-only Transformer classifier...") -- a portfolio write-up,
+    #     delivered ai_ml (same phrases mirrored there).
+    # Phrase screen (window): each phrase hits exactly its 1 target job;
+    # 0 accepted collateral. Mirrored into frontend + ai_ml.
+    "i can help you design", "my recommendation is to begin",
+    "i recently built",
+    # REMOVED run 12 (collateral/dead weight): 'catalogue of automotive
+    # parts' (19669) -- the backend hard-reject let pre-existing frontend
+    # shopify/woocommerce positives win, turning a correct arbitration
+    # block into a new false delivery; and 'twitch drops'/'claimdroprewards'/
+    # 'dropinstanceid' (19598) -- the backend reject only drifted the job to
+    # data_analysis (still delivered), so the suppressors achieved nothing.
+    # Both reverted to preserve the arbitration block / baseline behavior.
+    # Single bug-fix in an existing codebase = maintenance, excluded by
+    # policy 10.9 (2026-10-20 run 12, rowid 19572 'Fix Safari Camera WebRTC
+    # bug for PHP site' delivered backend). Exact phrase only; 1 window hit;
+    # 0 accepted collateral.
+    "fix safari camera", "webrtc bug",
+    # Mirrored frontend WordPress/Elementor maintenance+bug-fix phrases
+    # (run 12) so a maintenance job re-routing to backend still rejects.
+    # 'compatibility fix' REMOVED run 12: collateral on 19475 (a genuine
+    # legal-app build whose text reads '...security and compatibility fix
+    # critical issues...'); the exact WordPress case (19698) is still caught
+    # by 'plugin compatibility'.
+    "plugin compatibility",
+    "quote form without", "wordpress fixes",
+    "not a complete redesign", "small maintenance",
+    "تسريع الموقع", "حل مشاكل", "وقف تحديث",
 }
 
 

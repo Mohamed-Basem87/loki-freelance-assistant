@@ -190,7 +190,15 @@ zero page work; theme-install or theme-configuration only; setup-only
 store gigs with no build or customization; manual product entry even in
 bulk; pure deployment with no development remaining; Google Merchant
 Center feed fixes and other platform configuration/marketing ops;
-SEO/link-building/banner-ads/rank-guarantee spam.
+SEO/link-building/banner-ads/rank-guarantee spam. Also reject ongoing
+maintenance / support / retainer engagements whose scope is keeping a
+site running, patching, monitoring, or general troubleshooting with no
+defined build deliverable, and reject briefs whose stated first
+deliverable is an AUDIT, assessment, or fix-PROPOSAL (a report of what
+might be done) rather than implemented work. A retainer or audit is
+rejected only when no concrete build/implementation deliverable is
+contracted; a one-off build, rebuild, or defined feature with
+acceptance criteria stays accepted.
 
 Custom product-import PIPELINES built in code -- importing a very large
 catalog via custom mapping, cleansing, or scripted import logic -- are

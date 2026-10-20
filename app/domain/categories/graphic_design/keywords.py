@@ -248,6 +248,20 @@ POSITIVE_KEYWORDS = {
             # HARD_REJECT_KEYWORDS (out of scope by user decision).
             "تصميم ايقونات": 6,
             "تصميم استيكر": 7,
+            # Arabic icon-set design (2026-10-20 run 12): rowid 19675
+            # 'تطوير وتحسين متجر سلة' delivers 'إنشاء أيقونات للبكجات
+            # والصواني' (create icons for packages/trays) plus banner/hero
+            # image creation. Stored in NORMALIZED form: the earlier token
+            # 'أيقونات لل' could never fire because normalize() folds
+            # alef-hamza -> alef ('ايقونات') AND the \b after 'لل' fails
+            # against the joined 'للبكجات'. Bare normalized 'ايقونات' matches;
+            # word-boundary screen: 1 window hit (19675); no collateral.
+            "ايقونات": 6,
+            # Vector decal reproduction from artwork (2026-10-20 run 12):
+            # rowid 19784 'Decal Reproduction in .eps Format' rejected
+            # No-Matching-Keywords. 'decal' is word-boundary exclusive
+            # (1 window hit = 19784); no accepted collateral.
+            "decal": 7,
             # 2026-10-08 run-4 audit, rowid 11522: مصمم ملفات (Illustrator
             # promo-file/brochure for a shop).
             "مصمم ملفات": 7,

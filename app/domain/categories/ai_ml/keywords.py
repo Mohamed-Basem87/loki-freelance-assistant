@@ -839,6 +839,13 @@ HARD_REJECT_KEYWORDS = {
     # (report Fix #2). 0 collateral. 'excel data'/'entry cleanup' kept.
     "excel data",
     "entry cleanup",
+    # Self-promotion / portfolio write-up delivered as a job (2026-10-20 run
+    # 12, fp_delivered): rowid 19511 'Text Classifier Deployment via
+    # Decoder-Only Transformer' is a freelancer's own project write-up
+    # ("I recently built a decoder-only Transformer classifier..."), not a
+    # client brief, and was delivered ai_ml. Phrase screen: 1 window hit
+    # (19511), 0 accepted collateral. Mirrored from backend/frontend.
+    "i recently built",
 }
 
 

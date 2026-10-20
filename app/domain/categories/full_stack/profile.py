@@ -24,7 +24,10 @@ PROFILE = CategoryProfile(
         "developer role are LEADS - select this category; reject hiring "
         "only for roles outside the full-stack web domain. Only select it "
         "when no specialist owns the deliverable; a viable specialist "
-        "ALWAYS beats full_stack."
+        "ALWAYS beats full_stack. Portfolio/self-promotion showcases (the "
+        "author's OWN product/website link, 'My Role'/'I can help you "
+        "design' framing) with no client deliverables or requirements: "
+        "reject. A real client brief with stated deliverables stays in scope."
     ),
     positive_keywords=POSITIVE_KEYWORDS,
     negative_keywords=NEGATIVE_KEYWORDS,

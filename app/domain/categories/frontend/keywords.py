@@ -427,6 +427,31 @@ POSITIVE_KEYWORDS = {
             "افلام ومسلسلات": 6,
             "منصة كاملة": 7,
             "منصه كامله": 7,
+            # Arabic 'portfolio site' build (2026-10-20 run 12): rowid 19576
+            # 'مطلوب مطور ويب لإنشاء بورتفوليو ...' (build a professional
+            # portfolio site from a CV) rejected No-Matching-Keywords.
+            # 'بورتفوليو' is a data_analysis supporting NEGATIVE, so this
+            # positive produces a mixed signal -> needs_gemini -> arbitration
+            # rather than a lone direct notify. Window hits: 19576 + sibling
+            # 19579 (both rejected); no accepted collateral.
+            "بورتفوليو": 6,
+            # Arabic 'smart video-meetings platform' build (2026-10-20 run 12):
+            # rowid 19803 'تطوير منصة اجتماعات مرئية ذكية شبيهة بـ Zoom'
+            # rejected insufficient_signal. Mirrors backend 'موقع اجتماعات'
+            # (CORE in both) so the build reaches full_stack arbitration.
+            "اجتماعات مرئية": 7,
+            # English UI 'Hero Banner' redesign inside an existing app
+            # (2026-10-20 run 12): rowid 19917/19924 'برمجة وتصميم واجهة Hero
+            # Banner' rejected No-Matching-Keywords. Exact phrase is
+            # word-boundary exclusive (2 window hits, both the FN pair);
+            # bare 'hero' kept OUT (8 hits, mostly marketing/landing copy).
+            "hero banner": 6,
+            # Indonesian 'sales-improvement web/app build' (2026-10-20 run 12):
+            # rowid 19710 'Pengembangan Aplikasi Peningkat Penjualan' rejected
+            # insufficient_signal (body: catalog/cart/checkout/dashboard build).
+            # 'meningkatkan penjualan' is word-boundary exclusive (1 window hit
+            # = 19710); no accepted collateral.
+            "meningkatkan penjualan": 7,
         },
         "supporting": {
             # Store mention alone is not web-dev evidence (customer service,
@@ -1036,6 +1061,30 @@ HARD_REJECT_KEYWORDS = {
     # day. Real Zoho API integration work remains a valid backend core
     # positive.
     "شجرة الحسابات",
+    # Self-promotion / seller-pitch posts (2026-10-20 run 12, fp_delivered):
+    # 19714 ('I can help you design...' pitch) and 19706 (BharatGram company
+    # description, no request). Mirrored from backend; phrase screen 0
+    # accepted collateral.
+    "i can help you design", "my recommendation is to begin",
+    # WordPress/Elementor maintenance + bug-fix FPs delivered frontend
+    # (2026-10-20 run 12): 19659 ('Fix Embedded Quote Form' publish error),
+    # 19698 ('Elementor Plugin Compatibility Fix'), 19806 ('WordPress Fixes
+    # and Small Design Improvements' -- body: 'small maintenance task, not a
+    # complete redesign'), 19910 (Arabic 'تسريع حل مشاكل موقع'). Fix-only
+    # contracts and speed/maintenance tuning are excluded by policy 10.9. The
+    # existing maintenance NEGATIVES are supporting-weight and under-fired;
+    # these exact phrase cores bite. Phrase screen: each hits exactly its 1
+    # target window job (elementor plugin hits 19659+19698, both FPs);
+    # 0 accepted collateral. Genuine Elementor/WordPress BUILDS that name the
+    # platform in a build context are not caught (these are 'fix'/'maintenance'
+    # collocations, not the platform name alone).
+    # 'compatibility fix' REMOVED run 12 (collateral on backend 19475:
+    # '...security and compatibility fix critical issues...'); the exact
+    # WordPress case (19698) is still caught by 'plugin compatibility'.
+    "plugin compatibility",
+    "quote form without", "wordpress fixes",
+    "not a complete redesign", "small maintenance",
+    "تسريع الموقع", "حل مشاكل", "وقف تحديث",
 }
 
 
