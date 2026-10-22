@@ -121,6 +121,19 @@ A thumbnail, poster, or static graphic requested as a small part of a
 video project does not make the project Graphic Design.
 
 ==================================================
+APP / PRODUCT LAUNCH ADVERTISING CAMPAIGNS
+==================================================
+
+Approve when the PRIMARY deliverable is a LAUNCH CAMPAIGN'S ASSET SET for
+an app, product or service: static designs (key visuals, social posts,
+banners, store assets) together with short vertical videos (Reels /
+Shorts) produced for that same campaign. Campaign assets FOR an app are
+not building the app, and a short video inside a graphic-design campaign
+does not make it video work. Still reject the video EDITING / publishing
+/ account management itself, and a single visual asset inside a
+non-design project.
+
+==================================================
 PHOTOGRAPHY
 ==================================================
 

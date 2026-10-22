@@ -59,6 +59,13 @@ Accept when the primary deliverable is genuinely one or more of:
 - Message queues and event-driven systems
 - Caching and performance optimization
 - Security implementation
+- Low-code/no-code application BUILDS delivered on platforms such as
+  Newgen, OutSystems, Mendix, Appian, Zoho Creator/Deluge applications,
+  Power Platform/Power Apps when the deliverable is a working application
+  (workflows, screens, roles/security, integrations, packaging/deployment),
+  Make.com/n8n/Zapier apps and Airtable/Bubble apps when the deliverable
+  is a constructed application/system (not just enabling a setting). The
+  platform is a tool; the test is the engineered solution delivered.
 - ERP/business-system backend development when the deliverable is
   engineered server-side code (custom modules, business rules, database
   and API work -- e.g. Odoo custom modules in Python/PostgreSQL for an
@@ -143,8 +150,10 @@ rejected is: unattended screen-scraping, mass-funnel or
 scrape-for-its-own-sake work, third-party point-and-click tool
 configuration with no wiring or code construction (e.g. enabling a
 virtual terminal), manual data entry or copy-paste population with no
-automation, technical writing, IT consulting/administration, and
-low-code platform configuration with no custom development.
+automation, technical writing, IT consulting/administration.
+Low-code/no-code application BUILDS are in scope when they deliver a
+working application; only platform-enablement with no construction is
+rejected.
 
 ==================================================
 BACKEND vs FULL-STACK BOUNDARY

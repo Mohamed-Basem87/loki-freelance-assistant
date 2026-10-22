@@ -543,6 +543,51 @@ POSITIVE_KEYWORDS = {
             "testing library": 3,
         },
     },
+
+    # Conversion elements: the on-page form/subscription widgets a client
+    # asks for by name (2026-10-22 run 13 fn_deterministic recovery,
+    # rowid 20313 'Lead-Generating Fractional CFO Website'). The job was
+    # rejected title_core_negative_no_body_positive: the lead-generation
+    # wording in the title hit the marketing core negative in every
+    # profile and NO profile had a body core positive, so the whole
+    # marketing-ish landing-page class stayed undeliverable.
+    #
+    # A newsletter sign-up form is a page deliverable, not marketing
+    # operations: the four marketing CORE negatives below ('lead
+    # generation'/'lead gen'/'google ads'/'facebook ads') still keep the
+    # ad-campaign gigs out, and a marketing-brief job that only *asks*
+    # for a newsletter widget lands on the page-build side.
+    #
+    # Corpus (subset of 587 phrase-affected jobs): 'newsletter sign up'
+    # 9 jobs, 'newsletter signup' 19, 'newsletter subscription' 5. All
+    # of them are website-build gigs; the single reviewed miss is 20313.
+    "conversion_elements": {
+        "core": {
+            "newsletter sign up": 7,
+            "newsletter signup": 7,
+            "newsletter subscription": 6,
+        },
+        "supporting": {},
+    },
+
+    # User-facing status/readout features (2026-10-22 run 13
+    # fn_deterministic recovery, rowid 20621 'Crypto Token Review
+    # Portal' -- 'Status tracking so the user can see whether their
+    # request is Under Review or Report Ready'). The portal brief was
+    # rejected insufficient_signal in every profile: it names no
+    # platform, framework or CMS, only the page features it must have.
+    #
+    # 'status tracking' is a front-end readout (a page/section that shows
+    # the current state of a submission), so it belongs here. Corpus:
+    # 2 jobs -- 20621 and freelancer:40722887, which the LLM already
+    # delivered as frontend, so the claim here matches the reviewed
+    # outcome instead of changing it.
+    "public_status_features": {
+        "core": {
+            "status tracking": 7,
+        },
+        "supporting": {},
+    },
 }
 
 

@@ -69,6 +69,26 @@ POSITIVE_KEYWORDS = {
             "excel workbook": 6,
             "excel sheet": 6,
             "excel file": 6,
+            # 2026-10-21 run 13 (P12): functional Excel-VBA tool builds are
+            # in scope for data_analysis (guard_prompt "EXCEL TOOL-BUILDING
+            # DISTINCTION"), but the Arabic briefs hid the build behind
+            # Excel/VBA vocabulary. 20622 'Excel VBA ... نظام اداره مخازن'
+            # was routed to frontend on 'نظام ادارة' and the data_analysis
+            # side died on the 'مبرمج محترف' backend negative.
+            # 'excel vba' is the tool-building marker; 'master file' and
+            # 'ملف رئيسي' are the multi-file workbook pattern; 'ربط الملفات'
+            # is the linked-workbook pattern. Window-verified: these five
+            # tokens only match 20622/20624 (the same Arabic brief).
+            "excel vba": 8,
+            "master file": 6,
+            "ملف رئيسي": 5,
+            "ربط الملفات": 5,
+            # 2026-10-21 run 13 (P8): an analysis-ready dataset delivered as
+            # a populated CSV/XLSX export. 20629/20632 'Address Data
+            # Extraction CSV' died on the 'data extraction' title negative
+            # even though the deliverable is a clean, standardized
+            # 9-column CSV (guard_prompt lines 48-49 already approve it).
+            "csv spreadsheet": 7,
             "شيت اكسل": 6,
             "شيت إكسل": 6,
             "ملف اكسل": 6,
@@ -183,6 +203,16 @@ POSITIVE_KEYWORDS = {
             "statistical test": 6,
             "post-hoc": 6,
             "post hoc": 6,
+            # 2026-10-21 run 13 (P13): machine PDF -> machine-readable text
+            # extraction with the document structure preserved is data work
+            # (2026-10-21 ruling: the output is processed data, not typed
+            # prose). 20471 'Preserve-Layout PDF Text Extraction' was routed
+            # to frontend on the 'html' token and killed by the frontend
+            # guard. The automation negative group holds the reversed
+            # surface form ('extract pdf text'), so the forward collocation
+            # needs its own positive token. Window-verified: 'pdf text
+            # extraction' matches only 20471 in the run-13 window.
+            "pdf text extraction": 7,
         },
         "supporting": {
             "analytics": 2,
@@ -808,6 +838,16 @@ NEGATIVE_KEYWORDS = {
             # staffing are not analysis work.
             "marketing leads": 7,
             "contact lists": 7,
+            # 2026-10-21 run 13 (P3): the same outreach-list family, named
+            # with the two surface forms that appeared in the window --
+            # 20493 'Romanian Sector-Based Company List' (delivered: FP) and
+            # 20433 'Scrape Romanian Company Contacts' (suppressed). These
+            # are negative CORE (not hard reject) on purpose: the harvest
+            # may still feed an analysis, so the deliverable purpose is
+            # decided by the guard, while the deterministic layer stops
+            # treating the list as plain data work.
+            "company list": 7,
+            "company contacts": 7,
             "talent management": 7,
             "content creator": 6,
             "content creators": 6,

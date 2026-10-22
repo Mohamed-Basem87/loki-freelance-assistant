@@ -9,6 +9,17 @@ POSITIVE_KEYWORDS = {
     "frameworks": {
         "core": {
             "laravel": 9,
+            # Arabic spelling of Laravel (2026-10-22 run 13 fn_deterministic
+            # recovery, rowid 20393/20395 'إضافة أزرار تفاعلية لرسائل واتس آب
+            # المرتبطة بنظام حجوزات لارافيل' -- a Laravel + WhatsApp webhook
+            # + booking-database build). The English 'laravel' core could not
+            # match the Arabic spelling, so the profile saw no framework
+            # signal at all and the job died at insufficient_signal.
+            # Normalisation folds the Arabic letters but does not transliterate,
+            # so the Arabic form needs its own entry.
+            # Production phrase count: 1 title / 18 bodies (all Arabic Laravel
+            # gigs) -- see the run-13 probe for the accepted-job collateral.
+            "لارافيل": 8,
             "php": 7,
             "django": 8,
             "flask": 7,
@@ -507,6 +518,74 @@ POSITIVE_KEYWORDS = {
         },
     },
 
+    # Restaurant-operations platform modules (2026-10-22 run 13
+    # fn_deterministic recovery, rowid 20682 'All-in-One Restaurant
+    # Software' -- table reservations, live inventory, staff scheduling,
+    # QR ordering, role-based permissions, multi-location, POS
+    # integration). The brief was rejected insufficient_signal in every
+    # profile: it names a product, not a framework, so no profile had
+    # vocabulary for it.
+    #
+    # The reviewed category is full_stack, which this engine can only
+    # produce through LLM arbitration (full_stack/keywords.py is
+    # intentionally empty). A deterministic specialist claim is still
+    # the honest in-boundary fix: the deliverable is a server-side
+    # operations platform (booking state, rota, stock levels, reorder
+    # triggers), which is backend work.
+    #
+    # Deliberately narrow. 'booking system'/'reservation system' (75+
+    # jobs) and 'staff scheduling'/'pos integration' were measured and
+    # left OUT: they flip genuine website/mobile/employment posts.
+    # 'table reservation(s)' was measured over 7 corpus jobs and keeps
+    # every website/mobile job on its own profile (frontend scores
+    # 26.0/32.4, mobile 3.8/10.0 -- both well clear of the backend
+    # claim), and 'qr based ordering' fires on one job.
+    "restaurant_ops_platform": {
+        "core": {
+            "table reservation": 7,
+            "table reservations": 7,
+            "qr based ordering": 7,
+            "qr code ordering": 7,
+        },
+        "supporting": {},
+    },
+
+    # Crawler/scraper SCRIPT builds (2026-10-22 run 13 fn_deterministic
+    # recovery, rowid 20280 'E-commerce Product Web Scraping' -- a reliable
+    # script that collects product data from e-commerce sites and writes
+    # clean JSON/CSV for a pricing dashboard). The job was rejected
+    # title_core_negative_no_body_positive: data_analysis holds
+    # 'scraping'/'web scraping'/'selenium'/'scraper' as CORE NEGATIVES
+    # (crawling is not analysis), and the backend profile had no crawler
+    # vocabulary at all, so NO profile claimed the job.
+    #
+    # Per LOKI_ACCEPTANCE_POLICY 10.16 the scraping itself is not the reject
+    # criterion, the PURPOSE is (a pricing/BI crawl is in scope, a
+    # sales-contact-list crawl is not), and a crawler SCRIPT is engineering
+    # work, which is the backend category, while a delivered data file is
+    # data_analysis.
+    #
+    # Only the concrete crawler libraries are counted here. The bare words
+    # 'scraping'/'scraper'/'crawler' stay data_analysis negatives on purpose:
+    # adding them here would let the two profiles claim the same job and
+    # would hand the whole scraping class to backend without the policy
+    # check the data_analysis negatives are there to force.
+    #
+    # Supporting tier, not core: a single library name is too thin to claim
+    # a job (a spreadsheet export tool can name one library in passing), but
+    # a brief that names a real library STACK ('Scrapy, BeautifulSoup or
+    # Selenium') is a script build. Two names reach the backend
+    # supporting-positive threshold (12), one does not, which is exactly
+    # the corroboration rule the tier model exists for.
+    "web_scraping": {
+        "core": {},
+        "supporting": {
+            "scrapy": 6,
+            "beautifulsoup": 6,
+            "beautiful soup": 6,
+        },
+    },
+
     # No-code / low-code automation-platform engineering. Certified
     # routing rule (2026-09-04 run 34): Make.com and sibling
     # workflow-automation platforms are BACKEND integration canvases.
@@ -755,6 +834,17 @@ NEGATIVE_KEYWORDS = {
             # low-code language; the negative forces arbitration so the
             # profile rejects config-only work.
             "deluge": 8,
+            # 2026-10-22 run 13 fn_llm recovery, rowid 20513 'Newgen Low-Code
+            # App Specialist Needed' (a Newgen application that ships to
+            # browsers and to the Newgen mobile container). 'Newgen' is the
+            # platform name of the same class as Adalo/Deluge/Power Apps
+            # above, and this group is a NEGATIVE group: a low-code platform
+            # job must never be auto-delivered as backend, it has to reach
+            # arbitration, where profile.py's arbitration_context decides
+            # whether a low-code APPLICATION BUILD is in scope (it is) and
+            # whether the job is really full_stack.
+            # Production phrase count: 1 job (20513 itself).
+            "newgen": 8,
         },
         "supporting": {},
     },

@@ -86,7 +86,12 @@ work described is a real build:
   person) commissioning a PORTFOLIO site BUILD (key pages, CMS, contact
   form, responsive design, SEO/accessibility, deliverables and sign-off)
   is ordinary website development even though the finished site showcases
-  the client's own work.
+  the client's own work. A PERSONAL PORTFOLIO brief whose deliverable is
+  the site with its named sections (about me, previous work, skills,
+  contact) is a small website build too: judge it by the sections the
+  client wants published, not by the word "design" or the price. A brief
+  asking only for a design artefact (logo, mockup, style guide) with no
+  published pages, and a UI/UX design role, stay rejected.
 - Store/site builds delivered from a client mockup with custom
   features (dropdown menus, package selection, checkout) even when
   the title says "setup" or names a platform.
@@ -149,18 +154,10 @@ only installing/configuring a plugin with no custom code is.
 For example, ACCEPT: "I need a developer to build a new site on
 WordPress, comfortable with themes, plugins, and custom PHP tweaks." Also
 ACCEPT: "Build a comprehensive e-commerce store on WooCommerce with product
-search, filters, payment gateway integration, and responsive design." Also
-ACCEPT: "Build a booking platform on WordPress: a custom front-end/business
-layer around the Easy Appointments plugin, extended with hooks/APIs,
-instructor-specific booking pages, custom availability, and calendar
-integration -- build the layer around the existing plugin's booking engine
-rather than rebuilding it."
+search, filters, payment gateway integration, and responsive design."
 
 REJECT: "Set up a new WordPress install on my hosting account" --
 hosting/account setup, no development.
-
-REJECT: "Migrate my existing WordPress site to new hosting, exact copy, no
-changes" -- server administration, no development.
 
 REJECT: "Upload weekly products to my WooCommerce store" -- data entry /
 store operations, not development.
@@ -194,9 +191,8 @@ portfolio/experience pitches, "I deliver clean production-ready code",
 is no client paying for a deliverable. do_not_notify even when stuffed with
 in-scope keywords (React, Next.js, MERN, Tailwind, WordPress, Shopify).
 
-An ACCEPT carve-out above (plain-titled site/store builds, custom code
-integrations/syncs, Salla from-scratch builds, portfolio-site builds, ongoing/LEAD engagements) wins over a matching reject
-keyword below: "design", "setup", "migration", "portfolio", "integration",
+An ACCEPT carve-out above wins over a matching reject keyword below:
+"design", "setup", "migration", "portfolio", "integration",
 "marketing", or "staffing" do not remove an approval the rules above grant.
 
 Also REJECT when the PRIMARY DELIVERABLE is:

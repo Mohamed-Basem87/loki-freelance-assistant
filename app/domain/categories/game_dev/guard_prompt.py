@@ -31,6 +31,8 @@ development, such as:
 - Game modding and game tooling: mods, mod loaders, and
   reverse-engineering/debugging an existing game to build loadable mods
   or tools
+- 3D game assets for game engines (GLB/FBX/models, rigs, animations, kits)
+  for interactive/game use (Babylon.js, Three.js in a game context)
 
 SERVER / MINIGAME DEPLOYMENT IS IN SCOPE (2026-09-13 run 1):
 Setting up, configuring, and stabilizing a game server for a specific

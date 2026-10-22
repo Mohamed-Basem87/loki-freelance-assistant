@@ -146,6 +146,35 @@ POSITIVE_KEYWORDS = {
         },
     },
 
+    # 2026-10-22 run 13 (fn_guard 20381): 'iPhone Supermarket Graphics
+    # (Babylon.js / iPhone)' routed to mobile_app on the 'iphone' token and
+    # was suppressed by the mobile guard. The deliverable is 3D game-asset
+    # production for a Babylon.js simulator: GLB/glTF models, rigged Mixamo
+    # characters, animations, store mechanics, a modular environment kit.
+    # Production evidence (20.8k jobs): babylon.js 5 (3 game/3D jobs),
+    # playcanvas 1, glb 9, gltf 6, mixamo 2, '3d artist' 7, rigged 6 --
+    # every hit is a 3D/game asset or interactive-media brief, none is a
+    # non-3D domain. 'three.js' is NOT added: 28 hits include plain web
+    # work (Next.js/three.js 20557). With these cores the job scores
+    # game_dev 12 + 8*6 - 25 (iphone core negative) = 35 vs mobile_app 23.
+    "web3d_assets": {
+        "core": {
+            "babylon.js": 7,
+            "playcanvas": 7,
+            "glb": 7,
+            "gltf": 7,
+            "mixamo": 7,
+            "3d artist": 7,
+            "rigged": 6,
+        },
+        "supporting": {
+            "3d asset": 3,
+            "3d assets": 3,
+            "pbr": 3,
+            "character rig": 3,
+        },
+    },
+
     "game_specific": {
         "core": {
             "shader": 7,

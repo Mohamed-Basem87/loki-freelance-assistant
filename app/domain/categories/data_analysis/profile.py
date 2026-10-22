@@ -7,17 +7,18 @@ PROFILE = CategoryProfile(
     name="Data Analysis",
     description="Data Analysis and Business Intelligence freelance work.",
     arbitration_context=(
-        "Primary deliverables are data analysis, business intelligence, "
-        "analytical dashboards/reports, KPI reporting, data cleaning and "
-        "preparation, data transformation/ETL for analytics, and "
-        "business-focused statistical analysis. Reject when the primary "
-        "deliverable is machine learning, predictive modeling, AI model "
+        "Primary deliverables are data analysis/BI, dashboards/reports, KPI "
+        "reporting, data cleaning/preparation, ETL for analytics, and "
+        "business statistics. Also in scope: analysis-ready datasets "
+        "(CSV/XLSX), document-text extraction, running the client's script "
+        "and returning the export, and functional Excel/VBA tools. Reject "
+        "when the primary deliverable is ML, predictive modeling, AI model "
         "development, general software development, manual data entry, "
         "transcription, or another non-analytical task. "
-        "Reject outreach-list / lead-generation deliverables ('marketing "
-        "leads', 'contact lists', prospecting for sales teams): those are "
-        "marketing operations, not analysis. Reject HR/staffing roles "
-        "(talent management, recruitment coordinators)."
+        "Reject outreach-list/lead-generation deliverables ('marketing "
+        "leads', 'contact lists', 'company lists', prospecting for sales "
+        "teams): those are marketing operations, not analysis. Reject "
+        "HR/staffing roles (talent management, recruitment)."
     ),
     positive_keywords=POSITIVE_KEYWORDS,
     negative_keywords=NEGATIVE_KEYWORDS,

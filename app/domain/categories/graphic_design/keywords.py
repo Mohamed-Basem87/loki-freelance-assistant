@@ -196,6 +196,19 @@ POSITIVE_KEYWORDS = {
             "تصميم سوشيال ميديا": 7,
             "تصميم منيو": 7,
             "تصميم مينيو": 7,
+            # 2026-10-22 run 13 (fn_guard 20457): Arabic brief for a
+            # professional designer to produce the campaign's advertising
+            # and visual assets (static designs + short social videos) for
+            # an app launch -- it was routed to mobile_app on 'App Store'
+            # and suppressed by the mobile guard. Stored in NORMALIZED form
+            # (normalize() folds alef-hamza and taa-marbuta). Production
+            # evidence: 'مواد اعلانية' 3 (title+body of 20457 only),
+            # 'التصميم الاعلاني' 1, 'المحتوى البصري' 6 (4 of them are
+            # marketing-automation jobs, kept supporting), 'تصاميم ثابته' 1.
+            "مواد اعلانيه": 7,
+            "التصميم الاعلاني": 7,
+            "المحتوى البصري": 6,
+            "تصاميم ثابته": 7,
         },
         "supporting": {
             # Demoted from core (simulation-verified zero notification loss).
@@ -227,6 +240,19 @@ POSITIVE_KEYWORDS = {
             "ad creatives": 4,
             "social media graphic": 5,
             "social media graphics": 5,
+            # 2026-10-22 run 13 (fn_guard 20457): the Arabic brief asks for
+            # "فيديو وتصاميم ثابتة" (video and static designs) for a
+            # campaign, i.e. the deliverable is the design set itself, not
+            # an app build. SUPPORTING only: 'تصاميم' is the generic plural
+            # of "design" and also occurs in web/UI briefs (rowids 20487 /
+            # 20494 / 20587 are Shopify + web work) -- as a supporting
+            # signal it lifts graphic_design to 23 against mobile_app 20
+            # on 20457 (margin 3) while every such web brief stays with
+            # frontend (supporting-only never reaches a candidate:
+            # supporting_positive_min_for_gemini is 12). Production probe:
+            # 13 jobs contain 'تصاميم' together with a graphic_design core
+            # hit, and only 20457 (mostaql:1287170) changes selection.
+            "تصاميم": 5,
         },
     },
 

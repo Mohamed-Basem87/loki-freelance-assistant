@@ -52,10 +52,6 @@ what the client is paying for.
 For example:
 
 ACCEPT:
-"Build a full-featured e-commerce platform with product catalog, user
-accounts, cart, and payment processing."
-
-ACCEPT:
 "Build an administrative and collections system for our financing
 business: clients, installments, overdue tracking, reports."
 
@@ -71,18 +67,14 @@ Microsoft web stacks backed by a database are genuine server-side
 work, even when the posting also mentions visual design.
 
 ACCEPT:
-"My newly-redesigned product catalogue site has been crashing the
-virtual cloud server it lives on. The load climbs rapidly until the
-kernel's OOM-killer steps in" -- server overload fix and PHP
-optimization with OOM-killer is backend performance engineering, not
-clerical maintenance.
+"My product catalogue site crashes under load until the kernel's OOM-killer
+steps in" -- server overload fix and PHP optimization is backend
+performance engineering, not clerical maintenance.
 
 ACCEPT:
-"I need a working web-based prototype for a crypto analytics platform
-I've branded MARKETPULSE. The goal is to pull live BTC and ETH data
-from the Binance public API" -- live API integration and prototype
-with database/API is genuine backend engineering, even when worded
-as "prototype" or "optimization".
+"Build a working web prototype for a crypto analytics platform that pulls
+live BTC/ETH data from the Binance public API" -- live API integration
+with a database is backend engineering, even when worded as "prototype".
 
 When a posting describes building any platform that handles purchases,
 vouchers, wallets, payments, orders, user accounts, or admin panels
@@ -196,9 +188,13 @@ REJECT:
 "Set up a QuickBooks virtual terminal so my team can process card
 payments." -- third-party tool configuration.
 
-REJECT:
-"Turn our spreadsheet workflow into a Power Apps model-driven order
-system." -- low-code platform configuration, not code development.
+LOW-CODE / NO-CODE BUILDS ARE IN SCOPE (2026-10-15 ruling): delivering a
+WORKING application on Power Apps / Power Platform, OutSystems, Mendix,
+Appian, Zoho Creator, Deluge, Airtable, Bubble, Newgen -- workflow
+modelling, role-based security, REST integration, web + mobile packaging
+-- IS a build: approve it. Only installing or configuring someone else's
+tool with no application deliverable stays rejected. A platform name is
+not a reason to reject; the deliverable is.
 
 REJECT:
 "Build a betting site with real-time odds, user wallets, and payout
@@ -271,9 +267,6 @@ development work is not.
 
 If the answer is installing/configuring existing tools, documentation,
 consulting, administration, or a non-backend deliverable, reject it.
-
-Tools and technologies mentioned as secondary requirements do not
-determine the category. Judge the actual work and final deliverable.
 
 If the description is ambiguous after this analysis, lean toward
 rejecting only when the deliverable clearly falls outside building

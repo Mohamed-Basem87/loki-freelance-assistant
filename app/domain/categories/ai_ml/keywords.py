@@ -305,6 +305,27 @@ POSITIVE_KEYWORDS = {
             "slack bot": 3,
             "slack.?bot": 4,
             "بوت واتساب": 6,
+            # AI sales-assistant build (2026-10 run 13 fn_deterministic
+            # recovery, rowid 20460 / freelancer:40779303 'Instagram AI Sales
+            # Assistant Development'). The whole deliverable is an AI
+            # assistant that talks to customers in DMs, reads their catalog
+            # and closes sales; the deterministic pass had no vocabulary for
+            # it, so the job died at 'No Matching Keywords'.
+            #
+            # Deliberately narrow: only the product phrase is a core. The
+            # run-13 analysis rejected the two broader candidates because
+            # each one has production collateral --
+            #   * 'instagram dm' would give 40741695 (cold outreach lead
+            #     gen) and 40758171 (Instagram DM outreach) an ai_ml
+            #     candidate, and 40717598 (Shopify + Instagram DM
+            #     automation) is already delivered as frontend;
+            #   * 'human takeover' would flip 40747561 (WhatsApp lead
+            #     qualification, body states 'AI is NOT required') from
+            #     its delivered backend category to ai_ml.
+            # 'ai sales assistant' is the one safe member of the family:
+            # production phrase count = exactly 1 job (20460 itself), so
+            # the blast radius is zero.
+            "ai sales assistant": 7,
         },
         "supporting": {
             "ذكاء اصطناعي": 4,

@@ -745,6 +745,25 @@ NEGATIVE_KEYWORDS = {
             "students": 2,
         },
     },
+    "copy_content": {
+        # 2026-10-22 run 13 (fn_deterministic 20615 / 20664): the job TITLE
+        # is the platform label "Copywriting" (freelancer.com project
+        # category), while the body is a full mobile-app build brief
+        # ("Pore jete" social app: React Native / Flutter / Swift / Kotlin,
+        # iOS + Android, App Store + Google Play). A hard reject on the
+        # bare word killed a genuine build; a NEGATIVE core keeps the
+        # intent visible: copywriting is not app work. The title-only
+        # mention leaves the body core positives clean (mobile app, react
+        # native, flutter, swift, kotlin, ios, android, app store, google
+        # play) so the job resolves to mobile_app, while a copywriting
+        # gig still rejects on title_core_negative_no_body_positive.
+        "core": {
+            "copywriting": 7,
+            "copy writer": 7,
+            "copywriter": 7,
+        },
+        "supporting": {},
+    },
     "marketing": {
         # Negative-core placement (not HARD_REJECT): these phrases occur
         # inside genuine build scopes; pure-marketing gigs still reject.
@@ -798,7 +817,12 @@ HARD_REJECT_KEYWORDS = {
     "backlink",
     "backlinks",
     "link building",
-    "copywriting",
+    # 2026-10-22 run 13: "copywriting" moved OUT of the hard-reject set
+    # into the NEGATIVE core group "copy_content" (see above). The hard
+    # reject also killed two genuine app-build briefs whose title is the
+    # platform label "Copywriting" (rowids 20615 / 20664). Copy-only work
+    # still rejects: a copywriting title with no app vocabulary in the
+    # body hits title_core_negative_no_body_positive.
     "commission only",
     "عمولة فقط",
     "volunteer",
