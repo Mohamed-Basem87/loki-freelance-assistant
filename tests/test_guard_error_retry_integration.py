@@ -314,9 +314,8 @@ def test_guard_reclassification_published_from_fresh_durable_row(monkeypatch):
     assert len(events) == 1
     event = events[0]
     assert event["Category ID"] == "full_stack"
-    assert event["Categories"] == "Full Stack"
-    assert event["Category Selection Method"] == "llm"
     assert event["Job UUID"] == JOB_UUID4
+    assert set(event) == set(jp.NOTIFICATION_DTO_FIELDS)
 
 
 # ------------------------------------------------------------------

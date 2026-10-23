@@ -1,9 +1,5 @@
-"""Redis Streams adapter: publishes a guard-approved job for the
+"""Redis Streams adapter: publishes a notification DTO for the
 separate notification/delivery service to consume.
-
-Publishes the full job row as stream fields (not just the job_uuid) so
-the consumer never needs its own read back to Postgres to render and
-fan out a notification.
 
 Exceptions are never swallowed here: job_processor.py only marks a job
 "Complete" after publish() returns successfully (see

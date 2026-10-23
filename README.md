@@ -315,9 +315,14 @@ publishes it to the Redis stream `jobs:notify` (default; override with
 `JOB_STREAM_NAME`). The DTO fields are fixed:
 
 ``` text
-Job UUID, Title, Description, Source, URL, Short URL,
-Decision Reason, Categories, Category ID, Category Selection Method
+Job UUID, Title, Description, Source, URL, Short URL, Categories, Category ID
 ```
+
+For Telegram jobs, `Source` is normalized using the channel's `Identity
+Source` when it matches a configured Telegram-to-platform mapping. The current
+database-confirmed mappings are `-1001335768304` → `nafezly`,
+`-1002142292720` → `mostaql`, and `-1001994689105` → `mostaql`. Unmapped
+Telegram sources and non-Telegram sources retain their stored `Source`.
 
 Ordering is the crash-safety invariant: **publish happens before the job
 is marked `Complete`**. If the publish fails, `Notification Status` stays

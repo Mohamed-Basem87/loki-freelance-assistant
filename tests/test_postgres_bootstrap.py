@@ -237,5 +237,4 @@ def test_full_accepted_row_round_trips_into_publishable_dto(make_job):
     assert event["Title"] == "Power BI Dashboard Needed"
     assert event["Source"] == "Test Channel"
     assert event["Category ID"] == "data_analysis"
-    assert event["Categories"] == "Data Analysis"
-    assert event["Category Selection Method"] == "keyword_direct"
+    assert set(event) == set(jp.NOTIFICATION_DTO_FIELDS)

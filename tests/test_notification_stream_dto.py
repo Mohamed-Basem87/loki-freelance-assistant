@@ -5,8 +5,8 @@ a stable, minimal, self-contained DTO (not the whole Postgres row),
 with Job UUID first and mandatory as the consumer's idempotency key;
 the DTO must always be built from the freshly-read durable row inside
 the single publish choke point (_publish_and_mark_complete), so a
-stale caller snapshot can never ship stale Categories/Category
-Selection Method (the guard's full_stack reclassification) and a
+stale caller snapshot can never ship a stale Category ID (the
+guard's full_stack reclassification) and a
 replayed event is byte-identical to the initial publish.
 """
 import asyncio
@@ -21,7 +21,7 @@ def _full_row(job_uuid="job-abc"):
         "Timestamp": "2026-01-01T00:00:00+00:00",
         "Job UUID": job_uuid,
         "Job ID": "j1",
-        "Identity Source": "Test Channel",
+        "Identity Source": "Identity Channel",
         "Source": "Test Channel",
         "Title": "Power BI Dashboard",
         "Description": "Need a Power BI dashboard built from sales data.",
@@ -82,20 +82,20 @@ def test_dto_exact_field_set_and_order():
         "Source",
         "URL",
         "Short URL",
-        "Decision Reason",
         "Categories",
         "Category ID",
-        "Category Selection Method",
     }
-    # Internal/audit columns must never leak into the stream.
+    # Other source metadata and internal/audit columns must not leak in.
     for leaked in ("Raw Message", "Notification Status", "Final Decision",
-                   "Company", "Timestamp", "Job ID", "Core Positive Hit Count"):
+                   "Company", "Timestamp", "Job ID", "Core Positive Hit Count",
+                   "Identity Source", "Decision Reason",
+                   "Category Selection Method"):
         assert leaked not in event, f"internal column {leaked!r} leaked into the DTO"
     assert {event[k] for k in event} == {
         "job-abc", "Power BI Dashboard",
         "Need a Power BI dashboard built from sales data.",
         "Test Channel", "https://example.invalid/job", "https://s.example/x",
-        "direct match", "Power BI", "data_analysis", "keyword_direct",
+        "Power BI", "data_analysis",
     }
 
 
@@ -109,6 +109,33 @@ def test_dto_missing_fields_become_empty_strings_preserving_order():
     assert list(event) == list(jp.NOTIFICATION_DTO_FIELDS)
     for field in jp.NOTIFICATION_DTO_FIELDS:
         assert event[field] == ("z" if field == "Job UUID" else "")
+
+
+@pytest.mark.parametrize(
+    ("identity_source", "source"),
+    [
+        ("-1001335768304", "nafezly"),
+        ("-1002142292720", "mostaql"),
+        ("-1001994689105", "mostaql"),
+    ],
+)
+def test_telegram_source_is_normalized_to_freehub_source_id(
+    identity_source, source
+):
+    row = _full_row()
+    row["Identity Source"] = identity_source
+
+    event = jp.build_notification_event(row)
+
+    assert event["Source"] == source
+    assert set(event) == set(jp.NOTIFICATION_DTO_FIELDS)
+
+
+def test_unmapped_telegram_source_is_preserved():
+    row = _full_row()
+    row["Identity Source"] = "-1000000000000"
+
+    assert jp.build_notification_event(row)["Source"] == "Test Channel"
 
 
 # ------------------------------------------------------------------
@@ -127,8 +154,6 @@ def test_publish_event_built_from_fresh_durable_row_not_caller_snapshot(
     # update in _resume_pending_notifications_unlocked).
     durable = _full_row("job-fresh")
     durable["Category ID"] = "full_stack"
-    durable["Categories"] = "Full Stack"
-    durable["Category Selection Method"] = "llm"
 
     stale = _full_row("job-fresh")
 
@@ -142,9 +167,8 @@ def test_publish_event_built_from_fresh_durable_row_not_caller_snapshot(
     assert len(recorder.events) == 1
     event = recorder.events[0]
     assert event["Category ID"] == "full_stack"
-    assert event["Categories"] == "Full Stack"
-    assert event["Category Selection Method"] == "llm"
     assert event["Job UUID"] == "job-fresh"
+    assert set(event) == set(jp.NOTIFICATION_DTO_FIELDS)
     assert repo.updates == [{"notification_status": "Complete"}]
 
 

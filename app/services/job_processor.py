@@ -118,13 +118,7 @@ def _guard_payload_from_row(job_uuid: str, row: dict) -> dict:
 
 
 # The exact, ordered set of fields the downstream notification service
-# needs to render and fan out a job (the user-facing renderer's inputs:
-# Title, Description, Source, Decision Reason, URL, Categories, Category
-# ID, Category Selection Method, plus the Short URL button target -- and
-# Job UUID, which is what the consumer deduplicates on). Publishing
-# this minimal DTO instead of the whole Postgres row keeps the stream
-# payload stable and self-contained, and replaying the SAME durable row
-# always produces the SAME DTO.
+# needs. Job UUID is the consumer's idempotency key.
 NOTIFICATION_DTO_FIELDS = (
     "Job UUID",
     "Title",
@@ -132,11 +126,17 @@ NOTIFICATION_DTO_FIELDS = (
     "Source",
     "URL",
     "Short URL",
-    "Decision Reason",
     "Categories",
     "Category ID",
-    "Category Selection Method",
 )
+
+# Telegram channel IDs confirmed against the durable Source values. Store
+# source IDs in the event so Telegram and FreeHub jobs share one vocabulary.
+TELEGRAM_SOURCE_IDS = {
+    "-1001335768304": "nafezly",
+    "-1002142292720": "mostaql",
+    "-1001994689105": "mostaql",
+}
 
 
 def build_notification_event(final_job: dict) -> dict:
@@ -161,7 +161,11 @@ def build_notification_event(final_job: dict) -> dict:
             '"Job UUID" -- stream events are keyed by Job UUID so the '
             "consumer can deduplicate replayed events."
         )
-    return {field: (final_job.get(field) or "") for field in NOTIFICATION_DTO_FIELDS}
+    event = {field: (final_job.get(field) or "") for field in NOTIFICATION_DTO_FIELDS}
+    identity_source = str(final_job.get("Identity Source") or "").strip()
+    if identity_source in TELEGRAM_SOURCE_IDS:
+        event["Source"] = TELEGRAM_SOURCE_IDS[identity_source]
+    return event
 
 
 async def _publish_and_mark_complete(job_uuid: str, row: dict):
