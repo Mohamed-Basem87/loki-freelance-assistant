@@ -23,6 +23,11 @@ POSITIVE_KEYWORDS = {
             "cocos creator": 8,
             "phaser": 7,
             "pixi.js": 6,
+            "uefn": 8,
+            "fortnite": 8,
+            "fortnite creative": 9,
+            "zone wars": 7,
+            "unreal editor for fortnite": 9,
         },
         "supporting": {
             # English prose verb ("construct sentences") and generic

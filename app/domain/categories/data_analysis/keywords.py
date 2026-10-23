@@ -213,6 +213,8 @@ POSITIVE_KEYWORDS = {
             # needs its own positive token. Window-verified: 'pdf text
             # extraction' matches only 20471 in the run-13 window.
             "pdf text extraction": 7,
+            "streamlit": 8,
+            "single-page dashboard": 7,
         },
         "supporting": {
             "analytics": 2,
@@ -358,7 +360,11 @@ NEGATIVE_KEYWORDS = {
         "core": {
             "wordpress": 9,
             "woocommerce": 8,
-            "shopify": 8,
+            "shopify store": 8,
+            "shopify website": 8,
+            "shopify development": 8,
+            "shopify theme": 8,
+            "shopify app": 8,
             "webflow": 7,
             "wix": 7,
             "react": 8,
@@ -700,7 +706,6 @@ NEGATIVE_KEYWORDS = {
 
     "automation": {
         "core": {
-            "data entry": 6,
             "ادخال بيانات": 6,
             "إدخال بيانات": 6,
             # 2026-10-08 run-4 audit: 11348 Excel hypermarket data file
@@ -918,7 +923,24 @@ HARD_REJECT_KEYWORDS = {
     "work without pay",
     "متطوع",
     "بدون مقابل",
-    "data entry",
+    "data entry job",
+    "data entry jobs",
+    "data entry work",
+    "data entry role",
+    "data entry position",
+    "data entry specialist",
+    "data entry clerk",
+    "data entry operator",
+    "data entry services",
+    "manual data entry",
+    "invoice data entry",
+    "inventory data entry",
+    "data entry project",
+    "data entry tasks",
+    "data entry into",
+    "data entry from",
+    "high-volume data entry",
+    "excel data entry",
     "مدخل بيانات",
     "ومدخل بيانات",
     "بمدخل بيانات",

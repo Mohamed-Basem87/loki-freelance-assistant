@@ -83,6 +83,8 @@ POSITIVE_KEYWORDS = {
             # corpus hits, predominantly genuine DB builds (445, 4029, 6612
             # accepted; 8148 trucking web-database missed).
             "database development": 7,
+            "profile fields": 7,
+            "user profile fields": 7,
         },
         "supporting": {
             "database design": 4,
@@ -218,6 +220,8 @@ POSITIVE_KEYWORDS = {
             "encryption": 5,
             "hashing": 4,
             "bcrypt": 5,
+            "performance and security audit": 8,
+            "security scan": 7,
         },
         "supporting": {
             "ssl": 3,
@@ -324,6 +328,8 @@ POSITIVE_KEYWORDS = {
             # produce ambiguity -> full_stack arbitration (was ZERO coverage
             # -> silent reject).
             "موقع اجتماعات": 7,
+            "replit": 7,
+            "replit project": 7,
         },
         "supporting": {},
     },
@@ -341,6 +347,10 @@ POSITIVE_KEYWORDS = {
         "core": {
             "بوابة دفع": 7,
             "ربط بوابة": 8,
+            "payment processing": 8,
+            "payment automation": 8,
+            "mobile money": 7,
+            "wallet integration": 7,
         },
         "supporting": {},
     },
@@ -638,6 +648,21 @@ POSITIVE_KEYWORDS = {
             "online auction": 8,
             "مزاد": 7,
             "المزاد": 7,
+            "online marketplace": 8,
+            "booking marketplace": 8,
+            "marketplace development": 7,
+        },
+        "supporting": {},
+    },
+
+    "crypto_exchange": {
+        "core": {
+            "crypto exchange": 8,
+            "token ecosystem": 8,
+            "centralized exchange": 8,
+            "decentralized exchange": 8,
+            "bep-20": 7,
+            "order book": 7,
         },
         "supporting": {},
     },
@@ -707,6 +732,8 @@ POSITIVE_KEYWORDS = {
             "automated.?whatsapp.?reply": 5,
             "whatsapp auto responder": 5,
             "whatsapp.?auto.?responder": 5,
+            "reacciones automáticas": 7,
+            "atención automática": 7,
         },
         "supporting": {
             "whatsapp": 3,
