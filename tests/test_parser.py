@@ -154,6 +154,93 @@ def test_profession_word_inside_description_body_is_kept():
     assert "المطلوب مطور للوحة تحكم بسيطة." in job["description"]
 
 
+def test_mostaql_markerless_profile_header_is_stripped():
+    """
+    Current channel layout: no الوصف marker. The title is followed by
+    the 👤/💼/💵/⌛/✍️/📂 profile block, then the description. The
+    whole block is metadata and must not reach the description (the
+    client profession used to contaminate classification, e.g. a
+    teacher-client's "معلم" on a store-build job).
+    """
+    text = (
+        "\u200f💼 إنشاء متجر إلكتروني لبيع العسل\n"
+        "\u200f👤 Reda T.\n"
+        "\u200f💼 معلم\n"
+        "\u200f💵 $100.00 - $250.00\n"
+        "\u200f⌛ 5 أيام\n"
+        "\u200f✍️ مسجل منذ: 22 أكتوبر 2026\n"
+        "\u200f📂 المشاريع المفتوحة: 2\n"
+        "\u200fمطلوب إنشاء متجر إلكتروني عربي لمنتجات العسل.\n"
+        "\u200f🧩 #برمجة_مواقع #إنشاء_متجر_إلكتروني\n"
+    )
+
+    job = parse_job("مستقل | برمجة، تطوير المواقع والتطبيقات", text)
+
+    # Title behaviour is unchanged: the channel's RLM + 💼 prefix stays.
+    assert job["title"] == "\u200f💼 إنشاء متجر إلكتروني لبيع العسل"
+    for leaked in (
+        "Reda T.", "👤", "💼", "$100.00", "⌛", "مسجل منذ",
+        "المشاريع المفتوحة", "⌛ 5 أيام",
+    ):
+        assert leaked not in job["description"]
+    assert "مطلوب إنشاء متجر إلكتروني عربي لمنتجات العسل." in job["description"]
+    assert "#برمجة_مواقع" in job["description"]
+
+
+def test_mostaql_older_header_with_details_divider_after_blank_is_stripped():
+    """
+    Older variant of the same leak: "✍️ تاريخ التسجيل" + "📊 56.2%"
+    labels, then a blank line, then a "📄 تفاصيل المشروع:" divider and
+    another blank before the body. The divider is metadata, not prose.
+    """
+    text = (
+        "\u200fتعديل الأسعار والضريبة في أودو\n"
+        "\u200f👤 صاحب المشروع: The T.\n"
+        "\u200f💵 $250.00 - $500.00\n"
+        "\u200f⌛ 10 أيام\n"
+        "\u200f✍️ تاريخ التسجيل: 04 مارس 2020\n"
+        "\u200f📊 معدل التوظيف: 56.2%\n"
+        "\n"
+        "\u200f📄 تفاصيل المشروع:\n"
+        "\n"
+        "\u200fتعديل الاسعار والضريبة في odoo حسب المنيو\n"
+    )
+
+    job = parse_job("مستقل | دعم، مساعدة وإدخال بيانات", text)
+
+    assert job["title"] == "\u200fتعديل الأسعار والضريبة في أودو"
+    for leaked in (
+        "صاحب المشروع", "The T.", "$250.00", "⌛", "تاريخ التسجيل",
+        "معدل التوظيف", "📄 تفاصيل المشروع",
+    ):
+        assert leaked not in job["description"]
+    assert "تعديل الاسعار والضريبة في odoo حسب المنيو" in job["description"]
+
+
+def test_mostaql_markerless_body_heading_after_blank_is_kept():
+    """
+    Only the contiguous block right after the title is metadata. A body
+    section heading that happens to start with 💼, separated from the
+    header by a blank line, must survive.
+    """
+    text = (
+        "\u200fتخصيص نظام أودو لمركز خدمي\n"
+        "\u200f👤 Mahmoud A.\n"
+        "\u200f💼 ادارة أعمال\n"
+        "\u200f💵 $250.00 - $500.00\n"
+        "\n"
+        "💼 المؤهلات والشروط المطلوبة\n"
+        "خبرة لا تقل عن 3 سنوات في Odoo.\n"
+    )
+
+    job = parse_job("مستقل | برمجة، تطوير المواقع والتطبيقات", text)
+
+    assert "ادارة أعمال" not in job["description"]
+    assert "Mahmoud A." not in job["description"]
+    assert "💼 المؤهلات والشروط المطلوبة" in job["description"]
+    assert "خبرة لا تقل عن 3 سنوات في Odoo." in job["description"]
+
+
 def test_generic_message_falls_back_to_first_line_and_normalized_body():
     text = (
         "Power BI Dashboard Needed\n\n"
