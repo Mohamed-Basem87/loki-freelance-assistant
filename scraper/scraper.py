@@ -76,6 +76,11 @@ LINKEDIN_DETAIL_CONCURRENCY = 2
 # ------------------------------------------------------------
 # UPWORK
 # ------------------------------------------------------------
+#
+# COMPLIANCE: Upwork's robots.txt disallows /nx/ and /jobs/, and its
+# llms.txt asks automated clients to avoid dynamic search and
+# login-gated pages. Guest scraping is therefore a production risk;
+# prefer Upwork's official API/partner feed where available.
 
 UPWORK_BASE = "https://www.upwork.com"
 UPWORK_SEARCH_ENDPOINT = f"{UPWORK_BASE}/nx/search/jobs/"

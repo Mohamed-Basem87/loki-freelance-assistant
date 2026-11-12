@@ -1,8 +1,7 @@
 """Integrated Upwork scraper tests (scraper/scraper.py).
 
-These exercise the Upwork path that is now part of the unified scraper
-pipeline -- not the standalone dry-run module. They cover the pieces the
-integration actually changed:
+These exercise the Upwork path that is part of the unified scraper
+pipeline. They cover the pieces the integration actually changed:
 
   * search URL building (global, no location filter; per_page clamped)
   * search-card extraction (Upwork identity, stable JobID, description)
