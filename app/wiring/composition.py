@@ -26,6 +26,7 @@ from app.domain.categories.registry import enabled_categories
 import importlib as _importlib
 from app.adapters.sources.registry import register as register_source_factory
 from app.adapters.sources.freehub import FreeHubApiClient, FreeHubJobSource
+from app.adapters.sources.freehub_recovery import FreeHubDescriptionRecovery
 from app.adapters.sources.telegram import TelegramChannelJobSource
 from app.adapters.sources.scraper_file import (
     LinkedInFileJobSource,
@@ -159,6 +160,7 @@ def compose():
             poller=lambda: freehub_logic.poll_once(client=client),
             marker=lambda job: freehub_logic.mark_project_seen(job),
             http_client=client,
+            description_recovery=FreeHubDescriptionRecovery(client),
         )
 
     def _telegram_channels_factory(**overrides):
