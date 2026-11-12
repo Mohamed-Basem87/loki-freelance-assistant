@@ -27,7 +27,7 @@ delivery itself is deliberately **not** part of this process any more.
 4.  [Source Ingestion](#4-source-ingestion)
 5.  [Telegram Ingestion and Recovery](#5-telegram-ingestion-and-recovery)
 6.  [FreeHub Ingestion and Recovery](#6-freehub-ingestion-and-recovery)
-7.  [LinkedIn and Wuzzuf Scraper](#7-linkedin-and-wuzzuf-scraper)
+7.  [LinkedIn, Wuzzuf, and Upwork Scraper](#7-linkedin-wuzzuf-and-upwork-scraper)
 8.  [Parsing, Normalization, and Identity](#8-parsing-normalization-and-identity)
 9.  [Classification Architecture](#9-classification-architecture)
 10. [LLM Subsystem](#10-llm-subsystem)
@@ -181,11 +181,12 @@ shutdown hooks run exactly once.
                                       recovery, bounded reconnect
 
   Source workers                      Generic poll loop per configured
-  (freehub/linkedin/wuzzuf)           `JobSource`; parse -> `process_job()`
+  (freehub/linkedin/wuzzuf/upwork)    `JobSource`; parse -> `process_job()`
 
-  Scraper scheduler                   Runs the in-image LinkedIn/Wuzzuf
-                                      scraper as a subprocess and keeps
-                                      the JSON snapshot fresh
+  Scraper scheduler                   Runs the in-image scraper as one
+                                      subprocess per poll cadence
+                                      (LinkedIn/Wuzzuf 300s, Upwork 60s)
+                                      and keeps the JSON snapshot fresh
 
   Classification retry worker         Retries durably `Pending`
                                       classifications
@@ -333,8 +334,9 @@ classification and notification logic.
     recovery.
 -   **FreeHub:** HTTP polling with persisted seen state and bounded
     recovery. Upstream platforms: Kafiil, Freelancer, Mostaql, Nafezly.
--   **LinkedIn/Wuzzuf:** an in-container scraper process producing a
-    curated JSON snapshot that file-backed adapters poll.
+-   **LinkedIn/Wuzzuf/Upwork:** an in-container scraper process producing
+    a curated JSON snapshot that file-backed adapters poll. LinkedIn and
+    Wuzzuf share a 300s cadence; Upwork runs on its own 60s fast path.
 
 ### Configuration
 
@@ -539,46 +541,66 @@ protection.
 
 ------------------------------------------------------------------------
 
-# 7. LinkedIn and Wuzzuf Scraper
+# 7. LinkedIn, Wuzzuf, and Upwork Scraper
 
-LinkedIn and Wuzzuf are handled by a scraper that now ships **inside the
-image** (`scraper/scraper.py`). There is no host-side cron or host script:
-a registered worker (`app.wiring.scraper_scheduler`) runs the scraper as a
-subprocess on the same cadence the file adapters poll its snapshot.
+LinkedIn, Wuzzuf, and Upwork are handled by a scraper that ships **inside
+the image** (`scraper/scraper.py`). There is no host-side cron or host
+script: the registered scheduler worker (`app.wiring.scraper_scheduler`)
+runs the scraper as a subprocess.
+
+Sources are grouped by their configured `poll_interval` and each group
+gets its own scheduler loop, so freshness can differ per platform without
+scraping every platform at the fastest cadence. The default deployment
+runs two groups:
 
 ``` text
-scraper_scheduler worker
-      |
-      v
-Launch scraper subprocess (scraper/scraper.py)
-      |
-   +--+--------------+
-   v                 v
-LinkedIn           Wuzzuf
-   |                 |
-   +--------+--------+
-            v
-     Discover listings
-            |
-            v
-      Open detail pages
-            |
-            v
-   Extract / curate details
-            |
-            v
-      Normalize records
-            |
-            v
-   scraper/jobs_results.json
-            |
-            v
-   LinkedInFileJobSource /
-   WuzzufFileJobSource
-            |
-            v
-    Shared Job Pipeline
+scraper_scheduler:300                         scraper_scheduler:60
+        |                                             |
+        v                                             v
+--sources linkedin,wuzzuf                     --sources upwork
+                                             --max-upwork-pages 1
+                                             --upwork-detail-max 3
+                                             --upwork-snapshot-limit 15
+        |                                             |
+        +------------------+--------------------------+
+                           v
+              Launch scraper subprocess
+                           |
+                 +---------+---------+
+                 v                   v
+             LinkedIn / Wuzzuf     Upwork
+                 |                   |
+                 +---------+---------+
+                           v
+                  Discover listings
+                           |
+                           v
+                    Open detail pages
+                           |
+                           v
+                 Extract / curate details
+                           |
+                           v
+                    Normalize records
+                           |
+                           v
+                 scraper/jobs_results.json
+                           |
+                 +---------+---------+
+                 v                   v
+       LinkedInFileJobSource    UpworkFileJobSource
+       WuzzufFileJobSource
+                 |                   |
+                 +---------+---------+
+                           v
+                    Shared Job Pipeline
 ```
+
+A partial run (`--sources ...`) **merges** into the snapshot instead of
+overwriting it: records for the platforms this run scraped are replaced,
+and every other platform's records are kept. The read-merge-write is
+serialized with a lock file and written atomically, so the 60s and 300s
+subprocesses can safely update the same file while the app polls it.
 
 Why a subprocess rather than an import:
 
@@ -595,10 +617,34 @@ search is restricted to the newest postings (newest-first, last 24h) and
 only head-slices detail fetches; a Wuzzuf description can legitimately
 reach the scraper's 200K-char cap.
 
+## Upwork fast path
+
+Upwork guest search has no date-posted filter and returns 50 jobs per
+page, newest first. Only the newest 15 are written to the snapshot (the
+same 15 the previous 300s run kept after its detail cap), so the 60s run
+fetches a single search page and discards nothing that would have been
+stored. Upwork cards already carry the full posting text, so a detail
+page only enriches `datePosted` and the client country.
+
+Two mechanisms keep the minute cadence from hammering detail pages:
+
+-   A per-URL detail cache (`scraper/upwork_detail_cache.json`, newest
+    2,000 entries, 30-day max age) means a job already enriched in an
+    earlier run is never fetched again. Each run fetches at most 3 new
+    detail pages.
+-   After 4 consecutive blocked/failed detail fetches the run abandons
+    the rest and persists a 10-minute cooldown. Discovery keeps running
+    and blocked jobs keep their search-card description, so only the
+    date/client enrichment is postponed -- no job is dropped.
+
+Upwork is not added to `config/project.json` `sources` (the FreeHub
+upstream feed); it is a local `job_sources` entry backed by the scraper
+snapshot, exactly like LinkedIn and Wuzzuf.
+
 ## Scheduler health
 
 A scraper subprocess can fail while its parent loop remains alive. The
-scheduler therefore tracks consecutive failed runs.
+scheduler therefore tracks consecutive failed runs **per cadence group**.
 
 ``` text
 Scraper scheduler
@@ -642,7 +688,11 @@ scraper data is actually being refreshed
 ```
 
 The distinction is surfaced through worker liveness and container
-health.
+health. With multiple cadences each group beats its own liveness key
+(`scraper_scheduler:<interval>`), and `app/infra/healthcheck.py` requires
+all of them, so a dead 60s group cannot hide behind a healthy 300s
+group. A deployment with a single scraper cadence keeps the historical
+`scraper_scheduler` key.
 
 ------------------------------------------------------------------------
 
@@ -1560,7 +1610,7 @@ classification / guard can select it
 SOURCES
 Telegram (event-driven)
 FreeHub (HTTP polling)
-LinkedIn/Wuzzuf (scraper snapshot)
+LinkedIn/Wuzzuf/Upwork (scraper snapshot)
         |
         v
 SHARED PIPELINE (process_job)
@@ -1587,7 +1637,7 @@ Node.js service** for user-facing delivery.
 -   **Runtime:** one structured-concurrency process (`TaskGroup`),
     independent source workers, retry sweeps, heartbeat, healthcheck.
 -   **Sources:** Telegram (event-driven), FreeHub (HTTP, 4 platforms),
-    LinkedIn/Wuzzuf (in-image scraper subprocess).
+    LinkedIn/Wuzzuf/Upwork (in-image scraper subprocesses).
 -   **Classification:** 7 deterministic categories plus `full_stack`
     arbitration-only, with bounded LLM arbitration.
 -   **Guard:** fail-closed, durable terminal decisions, `full_stack`

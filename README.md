@@ -2,7 +2,7 @@
 
 > A production-oriented freelance-job **ingestion, classification, and
 > notification-guard** node. It ingests from FreeHub, Telegram channels, and
-> a LinkedIn/Wuzzuf scraper, classifies jobs into reusable category
+> a LinkedIn/Wuzzuf/Upwork scraper, classifies jobs into reusable category
 > profiles, arbitrates ambiguous cases with Gemini/Groq, applies the
 > Notification Guard where required, persists the result to Postgres, and
 > publishes guard-approved jobs to a Redis stream for a separate
@@ -107,7 +107,7 @@ The production dependency graph is assembled in `app/wiring/composition.py`.
    Source adapters             Persistence              LLM/Guard
    ├─ Telegram channels        ├─ Postgres               ├─ Gemini
    ├─ FreeHub                  ├─ JSON state             ├─ Groq
-   └─ LinkedIn/Wuzzuf          └─ Redis publish          └─ Guard
+   └─ LinkedIn/Wuzzuf/Upwork  └─ Redis publish          └─ Guard
           │                         │                         │
           └─────────────────────────┼─────────────────────────┘
                                     ▼
@@ -160,10 +160,12 @@ pipeline:
     recovery, bounded at **2,000 messages** per recovery pass.
 -   **FreeHub** — HTTP polling with persisted seen state and bounded
     backfill at **10 pages** per recovery pass.
--   **LinkedIn / Wuzzuf** — a curator process (`scraper/scraper.py`) that
-    writes `scraper/jobs_results.json`; the `LinkedInFileJobSource` /
-    `WuzzufFileJobSource` adapters poll that snapshot. The scraper runs
-    **inside the container** on the same cadence as the pollers (300s).
+-   **LinkedIn / Wuzzuf / Upwork** — a curator process
+    (`scraper/scraper.py`) that writes `scraper/jobs_results.json`; the
+    `LinkedInFileJobSource` / `WuzzufFileJobSource` / `UpworkFileJobSource`
+    adapters poll that snapshot. The scraper runs **inside the container**:
+    LinkedIn+Wuzzuf on their 300s cadence, Upwork on a 60s fast path with a
+    single search page, a 3-detail budget, and a per-URL detail cache.
 
 ## Category Architecture
 
@@ -354,11 +356,14 @@ project identity/dedup provides the real protection.
 
 ### Scraper scheduler
 
-The in-container scraper scheduler runs a single scrape immediately, then
-on the source poll cadence. A single transient failure leaves it `alive`
-(it keeps retrying); **3 consecutive failed runs** report it `dead` so the
-container healthcheck stops reporting healthy while LinkedIn/Wuzzuf data
-goes stale. It self-heals on the next successful run.
+The in-container scraper scheduler runs each cadence group immediately,
+then on that group's poll cadence (LinkedIn+Wuzzuf 300s, Upwork 60s). A
+single transient failure leaves a group `alive` (it keeps retrying);
+**3 consecutive failed runs** report that group's worker `dead` so the
+container healthcheck stops reporting healthy while its data goes stale.
+It self-heals on the next successful run. With multiple cadences each
+group has its own liveness key (`scraper_scheduler:<interval>`), so a dead
+60s group cannot hide behind a healthy 300s group.
 
 ### LLM cooldown behavior
 
@@ -460,7 +465,7 @@ The suite covers major areas including:
 -   job identity/deduplication and cross-source identity
 -   Telegram lifecycle, recovery, and reconnection
 -   FreeHub polling/backfill
--   LinkedIn/Wuzzuf scraper file source and scheduler
+-   LinkedIn/Wuzzuf/Upwork scraper file source and scheduler
 -   Redis publish/replay and notification DTO shape
 -   URL shortening
 -   JSON state recovery
@@ -523,7 +528,7 @@ app/
 
 config/project.json      # deployment-independent configuration baseline
 migrations/postgres/     # versioned schema migrations
-scraper/                 # in-container LinkedIn/Wuzzuf scraper
+scraper/                 # in-container LinkedIn/Wuzzuf/Upwork scraper
 database/                # JSON state (runtime)
 tests/
 scripts/                 # migrate_postgres.py, ci_smoke_test.py, test.sh

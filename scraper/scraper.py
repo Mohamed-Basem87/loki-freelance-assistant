@@ -1,8 +1,12 @@
+import argparse
 import asyncio
+import contextlib
 import html as html_module
 import json
+import os
 import random
 import re
+import time
 from math import ceil
 from urllib.parse import quote, urljoin, urlparse
 
@@ -121,6 +125,279 @@ UPWORK_MAX_BACKOFF_SECONDS = 120
 # expose the client's country, recorded separately as ClientLocation.
 UPWORK_COMPANY_PLACEHOLDER = "N/A"
 UPWORK_LOCATION_PLACEHOLDER = "Anywhere"
+
+
+# ------------------------------------------------------------
+# RUN OPTIONS / SOURCE SELECTION
+# ------------------------------------------------------------
+# The app schedules the scraper per source group (e.g. a 60s Upwork-only
+# run alongside a 300s LinkedIn+Wuzzuf run), so the same script has to
+# support scraping a subset of platforms. Defaults preserve the original
+# all-sources, full-page, 15-detail behaviour for a manual `python
+# scraper.py` run.
+
+SOURCE_PLATFORMS = {
+    "wuzzuf": "Wuzzuf",
+    "linkedin": "LinkedIn",
+    "upwork": "Upwork",
+}
+ALL_SOURCES = tuple(SOURCE_PLATFORMS)
+
+DEFAULT_RUN_OPTIONS = {
+    "sources": ALL_SOURCES,
+    "max_upwork_pages": MAX_UPWORK_PAGES,
+    "upwork_detail_budget": UPWORK_DETAIL_MAX_PER_RUN,
+    "upwork_snapshot_limit": UPWORK_DETAIL_MAX_PER_RUN,
+}
+
+RUN_OPTIONS = dict(DEFAULT_RUN_OPTIONS)
+
+# Upwork detail pages are the expensive/block-prone half of the scrape:
+# success is intermittent (~4/5 HTTP 200 in live sampling, the rest 403).
+# Remembering a successful enrichment per URL means a 1-minute poll only
+# ever fetches details for genuinely new postings instead of re-fetching
+# the same newest-15 every cycle.
+UPWORK_DETAIL_CACHE_FILE = "upwork_detail_cache.json"
+UPWORK_CACHE_FIELDS = (
+    "Company",
+    "DatePosted",
+    "ClientLocation",
+    "DetailStatus",
+    "DetailFetcher",
+)
+# The card always provides the description, so caching it would only bloat
+# the file (a new top-15 URL can be enriched every minute). ~2,000 entries
+# is many hours of turnover -- far longer than a URL stays in the newest-15
+# window -- while keeping the cache small enough to load on every run.
+UPWORK_CACHE_MAX_ENTRIES = 2000
+UPWORK_CACHE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
+
+# Consecutive blocked/failed Upwork details inside one run after which the
+# remaining detail fetches are abandoned and enrichment is parked for a
+# while. Discovery keeps running, and cards already carry the full job
+# description, so a cooldown costs freshness of the DatePosted/client
+# country enrichment only -- never a job.
+UPWORK_BLOCK_STREAK_LIMIT = 4
+UPWORK_BLOCK_COOLDOWN_SECONDS = 10 * 60
+
+
+def _normalize_source_list(value):
+    """Parse `--sources` into a validated tuple of source ids."""
+    if value is None:
+        return ALL_SOURCES
+    if isinstance(value, str):
+        raw = value.strip().lower()
+        if raw in ("", "all"):
+            return ALL_SOURCES
+        requested = [part.strip() for part in raw.split(",") if part.strip()]
+    else:
+        requested = [str(part).strip().lower() for part in value if str(part).strip()]
+    unknown = sorted(set(requested) - set(ALL_SOURCES))
+    if unknown:
+        raise ValueError(
+            f"unknown source(s): {', '.join(unknown)} "
+            f"(expected one or more of: {', '.join(ALL_SOURCES)})"
+        )
+    if not requested:
+        return ALL_SOURCES
+    # Keep a stable order regardless of CLI ordering.
+    return tuple(name for name in ALL_SOURCES if name in requested)
+
+
+def _selected_sources():
+    return tuple(RUN_OPTIONS.get("sources") or ALL_SOURCES)
+
+
+def _atomic_write_json(filename, data):
+    """Write JSON via a temp file + os.replace so readers never see a
+    half-written snapshot (the app polls this file concurrently)."""
+    directory = os.path.dirname(os.path.abspath(filename))
+    tmp_path = os.path.join(
+        directory,
+        f".{os.path.basename(filename)}.{os.getpid()}.tmp",
+    )
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, filename)
+
+
+@contextlib.contextmanager
+def _snapshot_lock(filename, timeout=10.0):
+    """Cross-process lock around the snapshot read-merge-write.
+
+    The Upwork-only 60s run and the LinkedIn+Wuzzuf 300s run are separate
+    subprocesses that both update jobs_results.json. Each writer has valid
+    data for its own sources, but an interleaved read-modify-write could
+    resurrect a stale slice of the other source. A lock file (O_EXCL, the
+    same mechanism on Windows and Linux) removes that window. Lock
+    acquisition is best-effort: on timeout we log and proceed, because a
+    stuck lock must never stop job ingestion.
+    """
+    lock_path = f"{filename}.lock"
+    acquired = False
+    deadline = time.time() + timeout
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            acquired = True
+            break
+        except FileExistsError:
+            try:
+                if time.time() - os.path.getmtime(lock_path) > 60:
+                    os.unlink(lock_path)
+                    continue
+            except OSError:
+                pass
+            if time.time() >= deadline:
+                print(
+                    f"[WARN] snapshot lock {lock_path} timed out after "
+                    f"{timeout:.1f}s; writing anyway."
+                )
+                break
+            time.sleep(0.05)
+
+    try:
+        yield
+    finally:
+        if acquired:
+            try:
+                os.unlink(lock_path)
+            except OSError:
+                pass
+
+
+def _load_snapshot_records(filename):
+    try:
+        with open(filename, "r", encoding="utf-8") as handle:
+            records = json.load(handle)
+    except (OSError, ValueError):
+        return []
+    return records if isinstance(records, list) else []
+
+
+def _merge_snapshot(filename, records):
+    """Replace this run's platforms in the on-disk snapshot, keeping every
+    record from the sources this run did not scrape.
+
+    A partial run must not erase the other platforms' snapshot: the app's
+    FileJobSource adapters each filter the same file, and a restart between
+    an Upwork-only write and the next full run would otherwise leave them
+    with an empty snapshot.
+    """
+    scraped_platforms = {
+        SOURCE_PLATFORMS[name]
+        for name in _selected_sources()
+        if name in SOURCE_PLATFORMS
+    }
+    with _snapshot_lock(filename):
+        existing = _load_snapshot_records(filename)
+        kept = [
+            record
+            for record in existing
+            if isinstance(record, dict)
+            and str(record.get("source") or "").strip() not in scraped_platforms
+        ]
+        merged = list(records) + kept
+        _atomic_write_json(filename, merged)
+    return len(kept)
+
+
+def load_upwork_detail_cache(filename=UPWORK_DETAIL_CACHE_FILE):
+    """Load the per-URL Upwork detail cache, tolerating absence/corruption."""
+    entries, cooldown_until = None, 0
+    try:
+        with open(filename, "r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+        if isinstance(raw, dict):
+            entries = raw.get("entries")
+            cooldown_until = raw.get("cooldown_until") or 0
+    except (OSError, ValueError):
+        entries, cooldown_until = None, 0
+
+    now = time.time()
+    pruned = {}
+    for url, entry in (entries or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        fetched_at = entry.get("fetched_at") or 0
+        if not entry.get("DetailStatus"):
+            # Card-only entries written by older builds (or a partial
+            # write) never had a detail fetch; drop them so the job is
+            # enriched on a later run instead of being served forever.
+            continue
+        if now - fetched_at > UPWORK_CACHE_MAX_AGE_SECONDS:
+            continue
+        pruned[url] = entry
+
+    if len(pruned) > UPWORK_CACHE_MAX_ENTRIES:
+        newest = sorted(
+            pruned.items(),
+            key=lambda item: item[1].get("fetched_at") or 0,
+            reverse=True,
+        )
+        pruned = dict(newest[:UPWORK_CACHE_MAX_ENTRIES])
+
+    return {
+        "entries": pruned,
+        "cooldown_until": float(cooldown_until or 0),
+    }
+
+
+def save_upwork_detail_cache(cache, filename=UPWORK_DETAIL_CACHE_FILE):
+    _atomic_write_json(
+        filename,
+        {
+            "entries": cache.get("entries") or {},
+            "cooldown_until": cache.get("cooldown_until") or 0,
+        },
+    )
+
+
+def _apply_cached_upwork_detail(job, cache):
+    """Overlay a cached detail enrichment onto a search-card job.
+
+    Returns True when the job was fully served from cache (no detail
+    request needed).
+    """
+    entry = (cache.get("entries") or {}).get(job.get("Link") or "")
+    if not entry:
+        return False
+    for field in UPWORK_CACHE_FIELDS:
+        value = entry.get(field)
+        if value:
+            job[field] = value
+    job.pop("DetailBlocked", None)
+    job.pop("DetailError", None)
+    job.pop("DetailNote", None)
+    return True
+
+
+def _remember_upwork_detail(job, cache):
+    """Persist a successful detail enrichment for future runs.
+
+    Only jobs that actually went through a detail fetch may be cached.
+    Search-card jobs carry a usable description but no DatePosted/client
+    country; caching those would make every later run serve them from
+    cache and never enrich them. ``DetailStatus`` is set by both detail
+    parsers and by the failure handler, so its presence is the marker of
+    an attempted fetch; blocked/errored fetches are never cached.
+    """
+    if job.get("DetailBlocked") or job.get("DetailError"):
+        return False
+    if not job.get("DetailStatus"):
+        return False
+    url = job.get("Link") or ""
+    if not url:
+        return False
+    entry = {
+        field: job[field]
+        for field in UPWORK_CACHE_FIELDS
+        if job.get(field)
+    }
+    entry["fetched_at"] = time.time()
+    cache.setdefault("entries", {})[url] = entry
+    return True
 
 
 # ------------------------------------------------------------
@@ -2141,7 +2418,8 @@ def parse_linkedin_detail(
 async def detail_worker(
     session,
     job,
-    semaphore
+    semaphore,
+    abort=None,
 ):
 
     platform = job.get(
@@ -2157,6 +2435,12 @@ async def detail_worker(
     # full list-card description instead of failing the job.
 
     if platform == "Upwork":
+
+        # Set by scrape_upwork_details() after a run of blocked/failed
+        # details: leave the remaining jobs on their card data instead of
+        # hammering an endpoint that is already refusing us.
+        if abort is not None and abort.get("flag"):
+            return job
 
         url = job["Link"]
 
@@ -2320,23 +2604,28 @@ async def scrape_all_details(
 
     # Upwork cards already carry the full description, so the detail
     # fetch only enriches the newest handful (datePosted + client
-    # country). Discovery stays at MAX_UPWORK_PAGES.
+    # country). Discovery stays at RUN_OPTIONS["max_upwork_pages"].
+    upwork_snapshot_limit = RUN_OPTIONS.get(
+        "upwork_snapshot_limit",
+        UPWORK_DETAIL_MAX_PER_RUN,
+    )
+
     if (
-        UPWORK_DETAIL_MAX_PER_RUN
+        upwork_snapshot_limit
         is not None
         and
         len(upwork_jobs)
-        > UPWORK_DETAIL_MAX_PER_RUN
+        > upwork_snapshot_limit
     ):
 
         print(
-            f"[Upwork] Capping detail crawl to newest "
-            f"{UPWORK_DETAIL_MAX_PER_RUN} of "
+            f"[Upwork] Capping snapshot to newest "
+            f"{upwork_snapshot_limit} of "
             f"{len(upwork_jobs)} discovered jobs."
         )
 
         upwork_jobs = upwork_jobs[
-            :UPWORK_DETAIL_MAX_PER_RUN
+            :upwork_snapshot_limit
         ]
 
     results = []
@@ -2481,14 +2770,60 @@ async def scrape_all_details(
 
     async def scrape_upwork_details():
 
-        completed = []
-
         if not upwork_jobs:
-            return completed
+            return []
+
+        cache = load_upwork_detail_cache()
+
+        # Serve already-enriched URLs from the cache: no request at all.
+        targets = []
+        for job in upwork_jobs:
+            if not _apply_cached_upwork_detail(job, cache):
+                targets.append(job)
+
+        cache_hits = len(upwork_jobs) - len(targets)
+        budget = RUN_OPTIONS.get(
+            "upwork_detail_budget",
+            UPWORK_DETAIL_MAX_PER_RUN,
+        )
+        if budget is not None:
+            budget = max(0, int(budget))
+            targets = targets[:budget]
+
+        now = time.time()
+        cooldown_until = float(cache.get("cooldown_until") or 0)
+        if now < cooldown_until:
+            print(
+                f"[Upwork Detail] cooldown active for another "
+                f"{cooldown_until - now:.0f}s; skipping "
+                f"{len(targets)} detail fetch(es)."
+            )
+            save_upwork_detail_cache(cache)
+            return upwork_jobs
+
+        if not targets:
+            print(
+                f"[Upwork Detail] {cache_hits} job(s) served from cache; "
+                f"no detail request needed."
+            )
+            save_upwork_detail_cache(cache)
+            return upwork_jobs
+
+        print(
+            f"[Upwork Detail] {cache_hits} cache hit(s), "
+            f"fetching {len(targets)} of {len(upwork_jobs)}."
+        )
 
         semaphore = asyncio.Semaphore(
             UPWORK_DETAIL_CONCURRENCY
         )
+
+        # Shared within this run: once enough consecutive details are
+        # blocked/failed, stop spending requests (and persist a cooldown
+        # so the next run does not immediately repeat the mistake).
+        abort = {"flag": False}
+        blocked_streak = {"count": 0}
+        scraped = {}
 
         async with upwork_session() as session:
 
@@ -2497,10 +2832,11 @@ async def scrape_all_details(
                     detail_worker(
                         session,
                         job,
-                        semaphore
+                        semaphore,
+                        abort=abort,
                     )
                 )
-                for job in upwork_jobs
+                for job in targets
             ]
 
             processed = 0
@@ -2511,9 +2847,31 @@ async def scrape_all_details(
 
                 result = await future
 
-                completed.append(
-                    result
+                scraped[result.get("Link") or ""] = result
+
+                ok = not (
+                    result.get("DetailBlocked")
+                    or result.get("DetailError")
                 )
+
+                if ok:
+                    blocked_streak["count"] = 0
+                else:
+                    blocked_streak["count"] += 1
+                    if (
+                        blocked_streak["count"] >= UPWORK_BLOCK_STREAK_LIMIT
+                        and not abort["flag"]
+                    ):
+                        abort["flag"] = True
+                        cache["cooldown_until"] = (
+                            time.time() + UPWORK_BLOCK_COOLDOWN_SECONDS
+                        )
+                        print(
+                            f"[Upwork Detail] {blocked_streak['count']} "
+                            f"consecutive blocked/failed details; "
+                            f"pausing detail enrichment for "
+                            f"{UPWORK_BLOCK_COOLDOWN_SECONDS}s."
+                        )
 
                 processed += 1
 
@@ -2521,14 +2879,14 @@ async def scrape_all_details(
                     processed % 5 == 0
                     or
                     processed == len(
-                        upwork_jobs
+                        targets
                     )
                 ):
 
                     successful = sum(
                         1
                         for item
-                        in completed
+                        in scraped.values()
                         if not item.get(
                             "DetailBlocked"
                         )
@@ -2540,9 +2898,23 @@ async def scrape_all_details(
                     print(
                         f"[Upwork Detail] "
                         f"{processed}/"
-                        f"{len(upwork_jobs)} "
+                        f"{len(targets)} "
                         f"| OK={successful}"
                     )
+
+        # Rebuild the snapshot slice in discovery order; jobs whose fetch
+        # was skipped (budget/cooldown/abort) keep their card data.
+        completed = [
+            scraped.get(job.get("Link") or "", job)
+            for job in upwork_jobs
+        ]
+
+        for job in completed:
+            _remember_upwork_detail(job, cache)
+
+        # Persist every run: loading prunes stale/card-only/over-cap
+        # entries, and this write is what makes that pruning durable.
+        save_upwork_detail_cache(cache)
 
         return completed
 
@@ -3367,15 +3739,20 @@ async def scrape_upwork():
         else:
 
             pages_planned = (
-                MAX_UPWORK_PAGES
+                (RUN_OPTIONS.get("max_upwork_pages") or MAX_UPWORK_PAGES)
                 or 1
             )
 
-        if MAX_UPWORK_PAGES is not None:
+        max_upwork_pages = RUN_OPTIONS.get(
+            "max_upwork_pages",
+            MAX_UPWORK_PAGES,
+        )
+
+        if max_upwork_pages is not None:
 
             pages_planned = min(
                 pages_planned,
-                MAX_UPWORK_PAGES
+                max_upwork_pages
             )
 
         if (
@@ -3967,18 +4344,26 @@ def save_results(
     filename=OUTPUT_FILE
 ):
 
-    with open(
-        filename,
-        "w",
-        encoding="utf-8"
-    ) as file:
+    if set(_selected_sources()) != set(ALL_SOURCES):
 
-        json.dump(
+        kept = _merge_snapshot(
+            filename,
             jobs,
-            file,
-            ensure_ascii=False,
-            indent=2
         )
+
+        print(
+            f"\nSaved {len(jobs)} "
+            f"jobs to {filename} "
+            f"(kept {kept} record(s) from "
+            f"sources not scraped this run)"
+        )
+
+        return
+
+    _atomic_write_json(
+        filename,
+        jobs,
+    )
 
     print(
         f"\nSaved {len(jobs)} "
@@ -4015,12 +4400,40 @@ async def unified_job_scraper():
     # 1. DISCOVERY
     # --------------------------------------------------------
 
-    wuzzuf_jobs, linkedin_jobs, upwork_jobs = (
-        await asyncio.gather(
-            scrape_wuzzuf(),
-            scrape_linkedin(),
-            scrape_upwork(),
-        )
+    selected_sources = _selected_sources()
+
+    print(
+        f"Sources:        "
+        f"{', '.join(selected_sources)}"
+    )
+
+    fetchers = {
+        "wuzzuf": scrape_wuzzuf,
+        "linkedin": scrape_linkedin,
+        "upwork": scrape_upwork,
+    }
+
+    discovery_tasks = {
+        name: asyncio.create_task(fetchers[name]())
+        for name in selected_sources
+    }
+
+    wuzzuf_jobs = (
+        await discovery_tasks["wuzzuf"]
+        if "wuzzuf" in discovery_tasks
+        else []
+    )
+
+    linkedin_jobs = (
+        await discovery_tasks["linkedin"]
+        if "linkedin" in discovery_tasks
+        else []
+    )
+
+    upwork_jobs = (
+        await discovery_tasks["upwork"]
+        if "upwork" in discovery_tasks
+        else []
     )
 
     discovered = (
@@ -4226,10 +4639,97 @@ async def unified_job_scraper():
 # RUN
 # ============================================================
 
-if __name__ == "__main__":
+def parse_args(argv=None):
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "Scrape Wuzzuf/LinkedIn/Upwork job listings into "
+            "jobs_results.json."
+        )
+    )
+
+    parser.add_argument(
+        "--sources",
+        default="all",
+        help=(
+            "Comma-separated subset of: "
+            f"{', '.join(ALL_SOURCES)} (default: all). "
+            "A partial run merges its records into the existing "
+            "snapshot instead of overwriting it."
+        ),
+    )
+
+    parser.add_argument(
+        "--max-upwork-pages",
+        type=int,
+        default=None,
+        help="Override MAX_UPWORK_PAGES for this run.",
+    )
+
+    parser.add_argument(
+        "--upwork-detail-max",
+        type=int,
+        default=None,
+        help=(
+            "Maximum number of uncached Upwork detail pages to fetch "
+            "this run."
+        ),
+    )
+
+    parser.add_argument(
+        "--upwork-snapshot-limit",
+        type=int,
+        default=None,
+        help=(
+            "How many newest Upwork jobs make it into the snapshot "
+            "(independent of the detail budget)."
+        ),
+    )
+
+    return parser.parse_args(argv)
+
+
+def configure_run(args):
+
+    try:
+        sources = _normalize_source_list(args.sources)
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}")
+
+    RUN_OPTIONS["sources"] = sources
+
+    if args.max_upwork_pages is not None:
+        RUN_OPTIONS["max_upwork_pages"] = max(
+            1,
+            int(args.max_upwork_pages),
+        )
+
+    if args.upwork_detail_max is not None:
+        RUN_OPTIONS["upwork_detail_budget"] = max(
+            0,
+            int(args.upwork_detail_max),
+        )
+
+    if args.upwork_snapshot_limit is not None:
+        RUN_OPTIONS["upwork_snapshot_limit"] = max(
+            0,
+            int(args.upwork_snapshot_limit),
+        )
+
+
+def main(argv=None):
+
+    configure_run(parse_args(argv))
 
     results = asyncio.run(
         unified_job_scraper()
     )
 
     print("\nDONE.")
+
+    return results
+
+
+if __name__ == "__main__":
+
+    main()

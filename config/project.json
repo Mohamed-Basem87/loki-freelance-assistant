@@ -167,14 +167,22 @@
     {
       "id": "upwork",
       "adapter": "app.adapters.sources.scraper_file:UpworkFileJobSource",
-      "poll_interval": 300,
+      "poll_interval": 60,
       "enabled": true,
       "display_name": "Upwork",
       "aliases": [
         "upwork"
       ],
       "settings": {
-        "file_path": "scraper/jobs_results.json"
+        "file_path": "scraper/jobs_results.json",
+        "scraper_args": [
+          "--max-upwork-pages",
+          "1",
+          "--upwork-detail-max",
+          "3",
+          "--upwork-snapshot-limit",
+          "15"
+        ]
       }
     }
   ]
