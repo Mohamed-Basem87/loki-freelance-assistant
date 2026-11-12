@@ -106,7 +106,8 @@
       "notification_retry",
       "user_notifications",
       "linkedin",
-      "wuzzuf"
+      "wuzzuf",
+      "upwork"
     ],
     "telegram_recovery_retry_base_seconds": 5,
     "telegram_recovery_retry_cap_seconds": 300
@@ -158,6 +159,19 @@
       "display_name": "Wuzzuf",
       "aliases": [
         "wuzzuf"
+      ],
+      "settings": {
+        "file_path": "scraper/jobs_results.json"
+      }
+    },
+    {
+      "id": "upwork",
+      "adapter": "app.adapters.sources.scraper_file:UpworkFileJobSource",
+      "poll_interval": 300,
+      "enabled": true,
+      "display_name": "Upwork",
+      "aliases": [
+        "upwork"
       ],
       "settings": {
         "file_path": "scraper/jobs_results.json"

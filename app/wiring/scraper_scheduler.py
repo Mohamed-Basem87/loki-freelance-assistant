@@ -1,10 +1,10 @@
-"""Container-resident scheduler for the LinkedIn/Wuzzuf scraper.
+"""Container-resident scheduler for the LinkedIn/Wuzzuf/Upwork scraper.
 
 The scraper (scraper/scraper.py) and its deps now live inside the image,
 so no host cron / host-side scraper is needed: this worker runs the
 scraper as a subprocess on the same cadence the FileJobSource pollers read
-its snapshot (config job-source poll_interval; 300s for both linkedin and
-wuzzuf). The whole LinkedIn/Wuzzuf pipeline stays inside the container.
+its snapshot (config job-source poll_interval; 300s for linkedin, wuzzuf
+and upwork). The whole scraper pipeline stays inside the container.
 
 Why a subprocess and not an import:
 
@@ -42,7 +42,7 @@ WORKER_ID = "scraper_scheduler"
 # exception and loops forever, so a scraper that has been broken for
 # hours (site markup changed, every parse raises) looked identical to a
 # healthy one to both the heartbeat and the container healthcheck --
-# LinkedIn/Wuzzuf data goes stale while the container stays HEALTHY.
+# LinkedIn/Wuzzuf/Upwork data goes stale while the container stays HEALTHY.
 # Crossing this threshold makes that failure visible: healthcheck.py
 # already fails the container when any critical worker reports "dead",
 # so escalating here, without any change to healthcheck.py's core
@@ -142,7 +142,7 @@ def scraper_scheduler_factory(
                 if consecutive_failures == CONSECUTIVE_FAILURE_THRESHOLD:
                     print(
                         f"[SCRAPER] {consecutive_failures} consecutive failed "
-                        "runs; LinkedIn/Wuzzuf data is now stale. Reporting "
+                        "runs; LinkedIn/Wuzzuf/Upwork data is now stale. Reporting "
                         f"worker {worker_id!r} as dead so the container "
                         "healthcheck stops reporting healthy while ingestion "
                         "is actually broken."

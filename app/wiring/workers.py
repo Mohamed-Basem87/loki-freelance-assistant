@@ -184,7 +184,7 @@ def default_registry(runtime=None):
         )
         if hasattr(source, "aclose"):
             registry.register_shutdown(source.aclose)
-    # The scraper that feeds the LinkedIn/Wuzzuf FileJobSource adapters
+    # The scraper that feeds the LinkedIn/Wuzzuf/Upwork FileJobSource adapters
     # ships inside the image (see app/wiring/scraper_scheduler.py). It only makes
     # sense to schedule it when an enabled JobSource actually reads the
     # scraper snapshot, so the scheduler worker is started exactly when a
