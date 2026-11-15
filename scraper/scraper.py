@@ -89,6 +89,19 @@ LINKEDIN_DETAIL_CONCURRENCY = 2
 UPWORK_BASE = "https://www.upwork.com"
 UPWORK_SEARCH_ENDPOINT = f"{UPWORK_BASE}/nx/search/jobs/"
 
+# Cloudflare fronts Upwork's guest pages. curl_cffi's generic
+# impersonate="chrome" profile started getting a 403 "Challenge - Upwork"
+# page in Nov 2026, while these pinned browser profiles still passed.
+# Order matters: use the first one, and only fall back to the next when a
+# response is challenged/blocked. Fingerprints rotate over time, so treat
+# this as a best-effort workaround, not a stable Upwork integration.
+UPWORK_IMPERSONATIONS = (
+    "chrome136",
+    "chrome133a",
+    "safari",
+)
+UPWORK_IMPERSONATION = UPWORK_IMPERSONATIONS[0]
+
 # Guest search returns 50 cards per page. per_page=100 silently falls
 # back to 10, so 50 is the usable maximum.
 UPWORK_PER_PAGE = 50
@@ -151,6 +164,28 @@ DEFAULT_RUN_OPTIONS = {
 }
 
 RUN_OPTIONS = dict(DEFAULT_RUN_OPTIONS)
+
+# Discovery-level alerts (e.g. Upwork's search returning a Cloudflare
+# challenge) are replayed after the run summary. The scheduler only echoes
+# the last 15 lines of scraper output, so without an end-of-run alert a
+# blocked source looked exactly like a source with zero new jobs.
+DISCOVERY_ALERTS = []
+
+
+def _looks_like_discovery_block(error):
+    lowered = (error or "").lower()
+    return any(
+        token in lowered
+        for token in (
+            "401",
+            "403",
+            "999",
+            "blocked",
+            "challenge",
+            "cloudflare",
+        )
+    )
+
 
 # Upwork detail pages are the expensive/block-prone half of the scrape:
 # success is intermittent (~4/5 HTTP 200 in live sampling, the rest 403).
@@ -2953,6 +2988,7 @@ async def scrape_all_details(
 UPWORK_CHALLENGE_MARKERS = (
     "just a moment",
     "cf-chl",
+    "challenge - upwork",
     "enable javascript and cookies",
     "verify you are human",
     "checking your browser",
@@ -3084,8 +3120,13 @@ async def fetch_upwork(
 
     A 429/503 is retried with exponential backoff + jitter (honouring
     Retry-After when present). A Cloudflare challenge, 401, 403 or 999
-    is terminal for this request and reported as blocked/login-walled.
+    is terminal for this request *after* trying the next pinned browser
+    profile: Upwork's bot protection rejects some curl_cffi fingerprints
+    while accepting others. The profile that succeeds is remembered for
+    the rest of the process so later requests do not re-probe.
     """
+
+    global UPWORK_IMPERSONATION
 
     async with semaphore:
 
@@ -3096,14 +3137,17 @@ async def fetch_upwork(
             )
 
         retry_429 = 0
+        tried_impersonations = []
 
         while True:
+
+            impersonation = UPWORK_IMPERSONATION
 
             try:
 
                 raw = await session.get(
                     url,
-                    impersonate="chrome",
+                    impersonate=impersonation,
                     timeout=HTTP_TIMEOUT,
                     allow_redirects=True,
                 )
@@ -3125,10 +3169,14 @@ async def fetch_upwork(
                 not response.looks_challenged
             ):
 
+                UPWORK_IMPERSONATION = impersonation
+
                 return (
                     response,
                     None
                 )
+
+            blocked_reason = None
 
             if (
                 response.status == 200
@@ -3136,9 +3184,47 @@ async def fetch_upwork(
                 response.looks_challenged
             ):
 
+                blocked_reason = (
+                    "HTTP 200 but Cloudflare/bot-challenge page"
+                )
+
+            elif response.status in (401, 403, 999):
+
+                blocked_reason = (
+                    f"HTTP {response.status} (blocked/login-walled)"
+                )
+
+            if blocked_reason:
+
+                tried_impersonations.append(
+                    impersonation
+                )
+
+                replacement = next(
+                    (
+                        candidate
+                        for candidate in UPWORK_IMPERSONATIONS
+                        if candidate not in tried_impersonations
+                    ),
+                    None,
+                )
+
+                if replacement:
+
+                    print(
+                        f"[Upwork] {blocked_reason} with "
+                        f"impersonate={impersonation}; "
+                        f"retrying as {replacement}"
+                    )
+
+                    UPWORK_IMPERSONATION = replacement
+
+                    continue
+
                 return (
                     None,
-                    "HTTP 200 but Cloudflare/bot-challenge page"
+                    f"{blocked_reason} for all profiles "
+                    f"({', '.join(tried_impersonations)})"
                 )
 
             if response.status in (429, 503):
@@ -3183,13 +3269,6 @@ async def fetch_upwork(
                 )
 
                 continue
-
-            if response.status in (401, 403, 999):
-
-                return (
-                    None,
-                    f"HTTP {response.status} (blocked/login-walled)"
-                )
 
             return (
                 None,
@@ -3709,6 +3788,12 @@ async def scrape_upwork():
 
             print(
                 f"[Upwork] Page 1 failed: "
+                f"{first['error']}"
+            )
+
+            DISCOVERY_ALERTS.append(
+                "upwork discovery "
+                f"{'blocked' if _looks_like_discovery_block(first['error']) else 'failed'}: "
                 f"{first['error']}"
             )
 
@@ -4377,6 +4462,8 @@ def save_results(
 
 async def unified_job_scraper():
 
+    DISCOVERY_ALERTS.clear()
+
     started = (
         asyncio.get_running_loop()
         .time()
@@ -4605,6 +4692,13 @@ async def unified_job_scraper():
         f"{detail_blocked}"
     )
 
+    for alert in DISCOVERY_ALERTS:
+
+        print(
+            f"Discovery alert: "
+            f"{alert}"
+        )
+
     print(
         f"Kept on search-card description: "
         f"{detail_kept_on_card}"
@@ -4726,6 +4820,12 @@ def main(argv=None):
     )
 
     print("\nDONE.")
+
+    for alert in DISCOVERY_ALERTS:
+
+        print(
+            f"[ALERT] {alert}"
+        )
 
     return results
 

@@ -637,6 +637,19 @@ Two mechanisms keep the minute cadence from hammering detail pages:
     and blocked jobs keep their search-card description, so only the
     date/client enrichment is postponed -- no job is dropped.
 
+Upwork sits behind Cloudflare, which started returning `403 Challenge -
+Upwork` for curl_cffi's generic `chrome` profile in Nov 2026. The Upwork
+requests therefore use a short, ordered list of pinned browser profiles
+(`chrome136`, `chrome133a`, `safari`) and fall back only when a response
+is challenged; the first profile that succeeds is reused for the rest of
+that run. This is a best-effort workaround, not a stable integration: a
+future fingerprint rotation can still block every profile. When Upwork
+discovery itself is blocked, the run prints a `[ALERT] upwork discovery
+blocked: ...` line after `DONE.` (and a `Discovery alert:` line in the
+summary), so `docker logs` shows it even though the scheduler only echoes
+the last 15 output lines. Detail-level blocks still use the existing
+`Detail blocked` counter and cooldown.
+
 Upwork is not added to `config/project.json` `sources` (the FreeHub
 upstream feed); it is a local `job_sources` entry backed by the scraper
 snapshot, exactly like LinkedIn and Wuzzuf.

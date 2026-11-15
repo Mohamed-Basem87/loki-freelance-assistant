@@ -243,3 +243,162 @@ def test_output_keeps_described_blocked_job_but_drops_empty_failures():
     assert len(output) == 1
     assert output[0]["source"] == "Upwork"
     assert output[0]["description"] == "Build the thing."
+
+
+# ================================================================
+# Browser-profile fallback + discovery-block alerting
+# ================================================================
+
+class FakeRawResponse:
+
+    def __init__(
+        self,
+        html,
+        status_code=200,
+        url="https://www.upwork.com/nx/search/jobs/",
+    ):
+        self.status_code = status_code
+        self.content = html.encode("utf-8")
+        self.url = url
+        self.headers = {}
+        self.text = html
+
+
+class FakeSession:
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.impersonations = []
+
+    async def get(self, url, **kwargs):
+        self.impersonations.append(kwargs.get("impersonate"))
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+
+class FakeSessionContext:
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+
+def test_fetch_upwork_falls_back_to_next_profile_on_challenge(monkeypatch):
+    monkeypatch.setattr(sc, "UPWORK_IMPERSONATION", "chrome136")
+
+    session = FakeSession(
+        [
+            FakeRawResponse("<title>Challenge - Upwork</title>", status_code=403),
+            FakeRawResponse("<html>real search page</html>", status_code=200),
+        ]
+    )
+
+    response, error = asyncio.run(
+        sc.fetch_upwork(
+            session,
+            "https://www.upwork.com/nx/search/jobs/",
+            asyncio.Semaphore(1),
+        )
+    )
+
+    assert error is None
+    assert response is not None
+    assert response.status == 200
+    assert session.impersonations == ["chrome136", "chrome133a"]
+    # The working profile is remembered for the rest of the process.
+    assert sc.UPWORK_IMPERSONATION == "chrome133a"
+
+
+def test_fetch_upwork_treats_200_challenge_page_as_blocked(monkeypatch):
+    monkeypatch.setattr(sc, "UPWORK_IMPERSONATION", "chrome136")
+
+    session = FakeSession(
+        [
+            FakeRawResponse("<title>Challenge - Upwork</title>", status_code=200),
+            FakeRawResponse("<html>real search page</html>", status_code=200),
+        ]
+    )
+
+    response, error = asyncio.run(
+        sc.fetch_upwork(
+            session,
+            "https://www.upwork.com/nx/search/jobs/",
+            asyncio.Semaphore(1),
+        )
+    )
+
+    assert error is None
+    assert response is not None
+    assert session.impersonations == ["chrome136", "chrome133a"]
+
+
+def test_fetch_upwork_reports_all_profiles_when_all_are_blocked(monkeypatch):
+    monkeypatch.setattr(sc, "UPWORK_IMPERSONATION", "chrome136")
+
+    session = FakeSession(
+        [
+            FakeRawResponse("<title>Challenge - Upwork</title>", status_code=403),
+            FakeRawResponse("<title>Challenge - Upwork</title>", status_code=403),
+            FakeRawResponse("<title>Challenge - Upwork</title>", status_code=403),
+        ]
+    )
+
+    response, error = asyncio.run(
+        sc.fetch_upwork(
+            session,
+            "https://www.upwork.com/nx/search/jobs/",
+            asyncio.Semaphore(1),
+        )
+    )
+
+    assert response is None
+    assert "HTTP 403" in error
+    for profile in sc.UPWORK_IMPERSONATIONS:
+        assert profile in error
+    assert session.impersonations == list(sc.UPWORK_IMPERSONATIONS)
+
+
+def test_scrape_upwork_records_discovery_block_alert(monkeypatch):
+    async def fake_search_page(*args, **kwargs):
+        return {
+            "page": 1,
+            "url": "https://www.upwork.com/nx/search/jobs/",
+            "status": 403,
+            "error": "HTTP 403 (blocked/login-walled) for all profiles (chrome136, chrome133a, safari)",
+            "jobs": [],
+            "total": None,
+            "next": "",
+        }
+
+    monkeypatch.setattr(sc, "upwork_session", lambda: FakeSessionContext())
+    monkeypatch.setattr(sc, "fetch_upwork_search_page", fake_search_page)
+    monkeypatch.setattr(sc, "DISCOVERY_ALERTS", [])
+
+    jobs = asyncio.run(sc.scrape_upwork())
+
+    assert jobs == []
+    assert len(sc.DISCOVERY_ALERTS) == 1
+    alert = sc.DISCOVERY_ALERTS[0]
+    assert "upwork discovery blocked" in alert
+    assert "HTTP 403" in alert
+
+
+def test_main_replays_discovery_alerts_after_done(monkeypatch, capsys):
+    alert = "upwork discovery blocked: HTTP 403 (blocked/login-walled)"
+
+    async def fake_unified_job_scraper():
+        return []
+
+    monkeypatch.setattr(sc, "unified_job_scraper", fake_unified_job_scraper)
+    monkeypatch.setattr(sc, "DISCOVERY_ALERTS", [alert])
+
+    sc.main([])
+
+    output = capsys.readouterr().out
+    assert "DONE." in output
+    assert f"[ALERT] {alert}" in output
+    assert output.index("DONE.") < output.index("[ALERT]")
