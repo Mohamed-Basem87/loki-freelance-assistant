@@ -95,6 +95,7 @@ _ADAPTER_LIVENESS_IDS = {
 # any such source is actually running, the scheduler's own liveness key
 # is just as critical as the poller's.
 _SCRAPER_ADAPTER_MODULE_PREFIX = "app.adapters.sources.scraper_file:"
+_SCRAPER_SCHEDULER_WORKER_ID = "scraper_scheduler"
 
 # Persistence workers (app.services.logger.DBLogger, app.services.state.StateManager) report
 # their own liveness key only when they have actually run at least once,
@@ -160,18 +161,7 @@ def expected_critical_workers(enabled_workers=None, job_sources=None):
         and cfg.adapter.startswith(_SCRAPER_ADAPTER_MODULE_PREFIX)
         for cfg in job_sources
     ):
-        # Sources sharing a poll interval share one scheduler worker id;
-        # different cadences get different ids (see scraper_schedule).
-        # Requiring the exact set keeps a fast-cadence group that has
-        # silently died from hiding behind the slow group's healthy beat.
-        from app.wiring.scraper_scheduler import scraper_schedule
-
-        for schedule in scraper_schedule(
-            cfg
-            for cfg in job_sources
-            if cfg.enabled and cfg.id in enabled_workers
-        ):
-            critical.add(schedule["worker_id"])
+        critical.add(_SCRAPER_SCHEDULER_WORKER_ID)
     critical.add("__heartbeat__")
     return critical
 

@@ -184,19 +184,13 @@ def default_registry(runtime=None):
         )
         if hasattr(source, "aclose"):
             registry.register_shutdown(source.aclose)
-    # The scraper that feeds the LinkedIn/Wuzzuf/Upwork FileJobSource adapters
+    # The scraper that feeds the LinkedIn/Wuzzuf FileJobSource adapters
     # ships inside the image (see app/wiring/scraper_scheduler.py). It only makes
     # sense to schedule it when an enabled JobSource actually reads the
     # scraper snapshot, so the scheduler worker is started exactly when a
     # scraper_file-backed job source is running. It runs the scraper as a
-    # subprocess on each source's poll cadence, so there is nothing
+    # subprocess on the source's poll cadence, so there is nothing
     # host-side (no cron, no host script) in the pipeline.
-    #
-    # Sources are grouped by poll interval: equal cadences share one
-    # subprocess, different cadences get independent loops under their
-    # own worker liveness keys. That is what lets Upwork poll every 60s
-    # while LinkedIn/Wuzzuf stay at 300s without running the whole
-    # three-site scrape five times as often.
     scraper_file_sources = [
         cfg for cfg in _enabled_source_cfgs
         if str(cfg.adapter or "").startswith("app.adapters.sources.scraper_file:")
@@ -204,22 +198,20 @@ def default_registry(runtime=None):
     if scraper_file_sources:
         from app.wiring.scraper_scheduler import (
             scraper_scheduler_factory,
-            scraper_schedule,
+            WORKER_ID,
             SCRAPER_SCRIPT,
             SCRAPER_WORKDIR,
         )
-        _schedules = scraper_schedule(scraper_file_sources)
-        for _schedule in _schedules:
-            _worker_id = _schedule["worker_id"]
-            registry.register(
-                _worker_id,
-                scraper_scheduler_factory(
-                    script_path=SCRAPER_SCRIPT,
-                    workdir=SCRAPER_WORKDIR,
-                    schedules=[_schedule],
-                    worker_id=_worker_id,
-                ),
-            )
+        _scraper_interval = min(cfg.poll_interval for cfg in scraper_file_sources)
+        registry.register(
+            WORKER_ID,
+            scraper_scheduler_factory(
+                script_path=SCRAPER_SCRIPT,
+                workdir=SCRAPER_WORKDIR,
+                interval=_scraper_interval,
+                worker_id=WORKER_ID,
+            ),
+        )
     if "classification_retry" in enabled:
         from app.services.job_processor import classification_retry_loop
         registry.register("classification_retry", lambda: classification_retry_loop(RUNTIME.notification_retry_interval))
