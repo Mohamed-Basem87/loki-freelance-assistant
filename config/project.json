@@ -74,6 +74,13 @@
         "wuzzuf",
         "وظف"
       ]
+    },
+    {
+      "id": "upwork",
+      "display_name": "Upwork",
+      "aliases": [
+        "upwork"
+      ]
     }
   ],
   "runtime": {
@@ -86,7 +93,7 @@
     "user_bot_batch_size": 20,
     "user_bot_max_attempts": 5,
     "http_timeout_seconds": 30,
-  "external_call_timeout_seconds": 60,
+    "external_call_timeout_seconds": 60,
     "telegram_message_limit": 4096,
     "message_safety_margin": 96,
     "max_description_length": 3000,
@@ -96,7 +103,7 @@
     "notification_backoff_cap_seconds": 300,
     "telegram_max_recovery_messages": 2000,
     "freehub_max_backfill_pages": 10,
-    "user_bot_poll_interval": 1.0,
+    "user_bot_poll_interval": 1,
     "database_file_path": "loki_freelance_bot.db",
     "rejection_reason_category_id": "data_analysis",
     "enabled_workers": [
