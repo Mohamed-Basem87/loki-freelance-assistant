@@ -74,13 +74,6 @@
         "wuzzuf",
         "وظف"
       ]
-    },
-    {
-      "id": "upwork",
-      "display_name": "Upwork",
-      "aliases": [
-        "upwork"
-      ]
     }
   ],
   "runtime": {
