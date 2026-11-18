@@ -1,6 +1,6 @@
-"""JobSources (LinkedIn / Wuzzuf) backed by the scraper's JSON snapshot.
+"""JobSources (LinkedIn / Wuzzuf / Upwork) backed by the scraper's JSON snapshot.
 
-scripts/linkedin_wuzzuf_scraper.py writes a jobs_results.json snapshot of
+scraper/scraper.py writes a jobs_results.json snapshot of
 already-normalized records (title, description, raw_text, source, url,
 company). These adapters attach the app to that file and feed its records
 through the normal pipeline exactly like FreeHub: poll() -> normalize() ->
@@ -113,3 +113,8 @@ class LinkedInFileJobSource(FileJobSource):
 class WuzzufFileJobSource(FileJobSource):
     id = "wuzzuf"
     platform = "Wuzzuf"
+
+
+class UpworkFileJobSource(FileJobSource):
+    id = "upwork"
+    platform = "Upwork"

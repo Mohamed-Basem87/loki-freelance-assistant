@@ -43,10 +43,11 @@ def _scriptless_scraper(monkeypatch):
     """
     import app.wiring.scraper_scheduler as scheduler_module
 
-    run_info = {"exit_codes": [], "runs": 0}
+    run_info = {"exit_codes": [], "runs": 0, "args": []}
 
-    async def fake_run(script_path, workdir, timeout=600):
+    async def fake_run(script_path, workdir, timeout=600, args=()):
         run_info["runs"] += 1
+        run_info["args"].append(tuple(args))
         codes = run_info["exit_codes"]
         if not codes:
             return 1
@@ -240,6 +241,185 @@ def test_scheduler_reports_dead_after_sustained_failures(tmp_path, _scriptless_s
 
     asyncio.run(scenario())
     assert CONSECUTIVE_FAILURE_THRESHOLD >= 1  # sanity: threshold is meaningful
+
+
+def test_run_scraper_once_forwards_cli_args_to_the_child(tmp_path):
+    script = tmp_path / "scraper.py"
+    script.write_text(
+        "import json, sys, pathlib\n"
+        "pathlib.Path('argv.json').write_text(json.dumps(sys.argv[1:]))\n",
+        encoding="utf-8",
+    )
+
+    code = asyncio.run(
+        _run_scraper_once(
+            script,
+            tmp_path,
+            args=("--sources", "upwork", "--upwork-detail-max", "3"),
+        )
+    )
+
+    assert code == 0
+    assert json.loads((tmp_path / "argv.json").read_text(encoding="utf-8")) == [
+        "--sources",
+        "upwork",
+        "--upwork-detail-max",
+        "3",
+    ]
+
+
+def test_scraper_schedule_groups_sources_by_poll_interval():
+    from app.infra.runtime_config import JobSourceConfig
+    from app.wiring.scraper_scheduler import scraper_schedule
+
+    cfgs = (
+        JobSourceConfig(
+            id="linkedin",
+            adapter="app.adapters.sources.scraper_file:LinkedInFileJobSource",
+            poll_interval=300,
+            enabled=True,
+        ),
+        JobSourceConfig(
+            id="wuzzuf",
+            adapter="app.adapters.sources.scraper_file:WuzzufFileJobSource",
+            poll_interval=300,
+            enabled=True,
+        ),
+        JobSourceConfig(
+            id="upwork",
+            adapter="app.adapters.sources.scraper_file:UpworkFileJobSource",
+            poll_interval=60,
+            enabled=True,
+        ),
+    )
+
+    schedule = scraper_schedule(cfgs)
+
+    assert [item["interval"] for item in schedule] == [60, 300]
+    by_interval = {item["interval"]: item for item in schedule}
+    assert by_interval[60]["sources"] == ["upwork"]
+    assert by_interval[300]["sources"] == ["linkedin", "wuzzuf"]
+    # Distinct liveness keys with multiple cadences: a dead fast group must
+    # not hide behind the slow group's still-alive beat.
+    assert by_interval[60]["worker_id"] == "scraper_scheduler:60"
+    assert by_interval[300]["worker_id"] == "scraper_scheduler:300"
+
+
+def test_scraper_schedule_keeps_legacy_worker_id_for_single_cadence():
+    from app.infra.runtime_config import JobSourceConfig
+    from app.wiring.scraper_scheduler import scraper_schedule
+
+    schedule = scraper_schedule(
+        (
+            JobSourceConfig(
+                id="linkedin",
+                adapter="app.adapters.sources.scraper_file:LinkedInFileJobSource",
+                poll_interval=300,
+                enabled=True,
+            ),
+            JobSourceConfig(
+                id="freehub",
+                adapter="app.adapters.sources.freehub:FreeHubJobSource",
+                poll_interval=60,
+                enabled=True,
+            ),
+        )
+    )
+
+    # The non-scraper adapter never joins a scraper schedule; only one
+    # cadence remains, so the historical id (and its healthcheck
+    # expectation) is preserved.
+    assert schedule == [
+        {
+            "interval": 300.0,
+            "sources": ["linkedin"],
+            "extra_args": [],
+            "worker_id": "scraper_scheduler",
+        }
+    ]
+
+
+def test_scraper_schedule_carries_source_scraper_args():
+    from app.infra.runtime_config import JobSourceConfig
+    from app.wiring.scraper_scheduler import scraper_schedule
+
+    schedule = scraper_schedule(
+        (
+            JobSourceConfig(
+                id="upwork",
+                adapter="app.adapters.sources.scraper_file:UpworkFileJobSource",
+                poll_interval=60,
+                enabled=True,
+                settings={
+                    "file_path": "scraper/jobs_results.json",
+                    "scraper_args": [
+                        "--max-upwork-pages", "1",
+                        "--upwork-detail-max", "3",
+                        "--upwork-snapshot-limit", "15",
+                    ],
+                },
+            ),
+        )
+    )
+
+    assert schedule[0]["extra_args"] == [
+        "--max-upwork-pages", "1",
+        "--upwork-detail-max", "3",
+        "--upwork-snapshot-limit", "15",
+    ]
+
+
+def test_multi_group_scheduler_runs_each_group_with_its_own_args(
+    tmp_path, _beatless, _scriptless_scraper
+):
+    from app.infra.runtime_config import JobSourceConfig
+    from app.wiring.scraper_scheduler import scraper_schedule
+
+    _scriptless_scraper["exit_codes"] = [0]
+
+    cfgs = (
+        JobSourceConfig(
+            id="linkedin",
+            adapter="app.adapters.sources.scraper_file:LinkedInFileJobSource",
+            poll_interval=300,
+            enabled=True,
+        ),
+        JobSourceConfig(
+            id="upwork",
+            adapter="app.adapters.sources.scraper_file:UpworkFileJobSource",
+            poll_interval=60,
+            enabled=True,
+            settings={"scraper_args": ["--max-upwork-pages", "1"]},
+        ),
+    )
+
+    loop = scraper_scheduler_factory(
+        script_path=tmp_path / "scraper.py",
+        workdir=tmp_path,
+        schedules=scraper_schedule(cfgs),
+    )
+
+    async def scenario():
+        task = asyncio.create_task(loop())
+        expected = {
+            ("--sources", "linkedin"),
+            ("--sources", "upwork", "--max-upwork-pages", "1"),
+        }
+        for _ in range(400):
+            if expected.issubset(set(_scriptless_scraper["args"])):
+                break
+            await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+
+    called_args = set(_scriptless_scraper["args"])
+    assert ("--sources", "linkedin") in called_args
+    assert (
+        "--sources", "upwork", "--max-upwork-pages", "1"
+    ) in called_args
 
 
 def test_scheduler_recovers_to_alive_after_a_successful_run_following_failures(

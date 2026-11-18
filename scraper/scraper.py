@@ -1,8 +1,12 @@
+import argparse
 import asyncio
+import contextlib
 import html as html_module
 import json
+import os
 import random
 import re
+import time
 from math import ceil
 from urllib.parse import quote, urljoin, urlparse
 
@@ -71,6 +75,364 @@ LINKEDIN_DETAIL_MAX_PER_RUN = 15
 
 LINKEDIN_SEARCH_CONCURRENCY = 3
 LINKEDIN_DETAIL_CONCURRENCY = 2
+
+
+# ------------------------------------------------------------
+# UPWORK
+# ------------------------------------------------------------
+#
+# COMPLIANCE: Upwork's robots.txt disallows /nx/ and /jobs/, and its
+# llms.txt asks automated clients to avoid dynamic search and
+# login-gated pages. Guest scraping is therefore a production risk;
+# prefer Upwork's official API/partner feed where available.
+
+UPWORK_BASE = "https://www.upwork.com"
+UPWORK_SEARCH_ENDPOINT = f"{UPWORK_BASE}/nx/search/jobs/"
+
+# Cloudflare fronts Upwork's guest pages. curl_cffi's generic
+# impersonate="chrome" profile started getting a 403 "Challenge - Upwork"
+# page in Nov 2026, while these pinned browser profiles still passed.
+# Order matters: use the first one, and only fall back to the next when a
+# response is challenged/blocked. Fingerprints rotate over time, so treat
+# this as a best-effort workaround, not a stable Upwork integration.
+UPWORK_IMPERSONATIONS = (
+    "chrome136",
+    "chrome133a",
+    "safari",
+)
+UPWORK_IMPERSONATION = UPWORK_IMPERSONATIONS[0]
+
+# Guest search returns 50 cards per page. per_page=100 silently falls
+# back to 10, so 50 is the usable maximum.
+UPWORK_PER_PAGE = 50
+
+# None = every page the reported total implies.
+# Keep 3 while testing: with no keyword, Upwork reports 35k+ jobs
+# (700+ pages), so an uncapped run is not realistic.
+MAX_UPWORK_PAGES = 3
+
+# Upwork's `t` query param is a JOB TYPE filter, not a date-posted
+# filter: t=0 -> hourly, t=1 -> fixed price, omit -> both. Keep None
+# so discovery covers every job type. The guest search exposes no
+# date-posted facet at all; sort=recency is the only temporal control.
+UPWORK_JOB_TYPE = None
+
+UPWORK_SORT_BY = "recency"
+
+# Card descriptions are already the complete job description, so only
+# the newest handful need the expensive detail fetch (which also gives
+# a structured datePosted and the client's country).
+UPWORK_DETAIL_MAX_PER_RUN = 15
+
+UPWORK_SEARCH_CONCURRENCY = 2
+UPWORK_DETAIL_CONCURRENCY = 2
+UPWORK_SEARCH_PACING = 1.0
+UPWORK_DETAIL_PACING = 1.5
+
+# Clamp a server-provided Retry-After so a bad header cannot park a
+# request for an hour.
+UPWORK_MAX_BACKOFF_SECONDS = 120
+
+# Guest search returns no client name or location, so these are
+# explicit placeholders rather than fabricated values. Detail pages
+# expose the client's country, recorded separately as ClientLocation.
+UPWORK_COMPANY_PLACEHOLDER = "N/A"
+UPWORK_LOCATION_PLACEHOLDER = "Anywhere"
+
+
+# ------------------------------------------------------------
+# RUN OPTIONS / SOURCE SELECTION
+# ------------------------------------------------------------
+# The app schedules the scraper per source group (e.g. a 60s Upwork-only
+# run alongside a 300s LinkedIn+Wuzzuf run), so the same script has to
+# support scraping a subset of platforms. Defaults preserve the original
+# all-sources, full-page, 15-detail behaviour for a manual `python
+# scraper.py` run.
+
+SOURCE_PLATFORMS = {
+    "wuzzuf": "Wuzzuf",
+    "linkedin": "LinkedIn",
+    "upwork": "Upwork",
+}
+ALL_SOURCES = tuple(SOURCE_PLATFORMS)
+
+DEFAULT_RUN_OPTIONS = {
+    "sources": ALL_SOURCES,
+    "max_upwork_pages": MAX_UPWORK_PAGES,
+    "upwork_detail_budget": UPWORK_DETAIL_MAX_PER_RUN,
+    "upwork_snapshot_limit": UPWORK_DETAIL_MAX_PER_RUN,
+}
+
+RUN_OPTIONS = dict(DEFAULT_RUN_OPTIONS)
+
+# Discovery-level alerts (e.g. Upwork's search returning a Cloudflare
+# challenge) are replayed after the run summary. The scheduler only echoes
+# the last 15 lines of scraper output, so without an end-of-run alert a
+# blocked source looked exactly like a source with zero new jobs.
+DISCOVERY_ALERTS = []
+
+
+def _looks_like_discovery_block(error):
+    lowered = (error or "").lower()
+    return any(
+        token in lowered
+        for token in (
+            "401",
+            "403",
+            "999",
+            "blocked",
+            "challenge",
+            "cloudflare",
+        )
+    )
+
+
+# Upwork detail pages are the expensive/block-prone half of the scrape:
+# success is intermittent (~4/5 HTTP 200 in live sampling, the rest 403).
+# Remembering a successful enrichment per URL means a 1-minute poll only
+# ever fetches details for genuinely new postings instead of re-fetching
+# the same newest-15 every cycle.
+UPWORK_DETAIL_CACHE_FILE = "upwork_detail_cache.json"
+UPWORK_CACHE_FIELDS = (
+    "Company",
+    "DatePosted",
+    "ClientLocation",
+    "DetailStatus",
+    "DetailFetcher",
+)
+# The card always provides the description, so caching it would only bloat
+# the file (a new top-15 URL can be enriched every minute). ~2,000 entries
+# is many hours of turnover -- far longer than a URL stays in the newest-15
+# window -- while keeping the cache small enough to load on every run.
+UPWORK_CACHE_MAX_ENTRIES = 2000
+UPWORK_CACHE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
+
+# Consecutive blocked/failed Upwork details inside one run after which the
+# remaining detail fetches are abandoned and enrichment is parked for a
+# while. Discovery keeps running, and cards already carry the full job
+# description, so a cooldown costs freshness of the DatePosted/client
+# country enrichment only -- never a job.
+UPWORK_BLOCK_STREAK_LIMIT = 4
+UPWORK_BLOCK_COOLDOWN_SECONDS = 10 * 60
+
+
+def _normalize_source_list(value):
+    """Parse `--sources` into a validated tuple of source ids."""
+    if value is None:
+        return ALL_SOURCES
+    if isinstance(value, str):
+        raw = value.strip().lower()
+        if raw in ("", "all"):
+            return ALL_SOURCES
+        requested = [part.strip() for part in raw.split(",") if part.strip()]
+    else:
+        requested = [str(part).strip().lower() for part in value if str(part).strip()]
+    unknown = sorted(set(requested) - set(ALL_SOURCES))
+    if unknown:
+        raise ValueError(
+            f"unknown source(s): {', '.join(unknown)} "
+            f"(expected one or more of: {', '.join(ALL_SOURCES)})"
+        )
+    if not requested:
+        return ALL_SOURCES
+    # Keep a stable order regardless of CLI ordering.
+    return tuple(name for name in ALL_SOURCES if name in requested)
+
+
+def _selected_sources():
+    return tuple(RUN_OPTIONS.get("sources") or ALL_SOURCES)
+
+
+def _atomic_write_json(filename, data):
+    """Write JSON via a temp file + os.replace so readers never see a
+    half-written snapshot (the app polls this file concurrently)."""
+    directory = os.path.dirname(os.path.abspath(filename))
+    tmp_path = os.path.join(
+        directory,
+        f".{os.path.basename(filename)}.{os.getpid()}.tmp",
+    )
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, filename)
+
+
+@contextlib.contextmanager
+def _snapshot_lock(filename, timeout=10.0):
+    """Cross-process lock around the snapshot read-merge-write.
+
+    The Upwork-only 60s run and the LinkedIn+Wuzzuf 300s run are separate
+    subprocesses that both update jobs_results.json. Each writer has valid
+    data for its own sources, but an interleaved read-modify-write could
+    resurrect a stale slice of the other source. A lock file (O_EXCL, the
+    same mechanism on Windows and Linux) removes that window. Lock
+    acquisition is best-effort: on timeout we log and proceed, because a
+    stuck lock must never stop job ingestion.
+    """
+    lock_path = f"{filename}.lock"
+    acquired = False
+    deadline = time.time() + timeout
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            acquired = True
+            break
+        except FileExistsError:
+            try:
+                if time.time() - os.path.getmtime(lock_path) > 60:
+                    os.unlink(lock_path)
+                    continue
+            except OSError:
+                pass
+            if time.time() >= deadline:
+                print(
+                    f"[WARN] snapshot lock {lock_path} timed out after "
+                    f"{timeout:.1f}s; writing anyway."
+                )
+                break
+            time.sleep(0.05)
+
+    try:
+        yield
+    finally:
+        if acquired:
+            try:
+                os.unlink(lock_path)
+            except OSError:
+                pass
+
+
+def _load_snapshot_records(filename):
+    try:
+        with open(filename, "r", encoding="utf-8") as handle:
+            records = json.load(handle)
+    except (OSError, ValueError):
+        return []
+    return records if isinstance(records, list) else []
+
+
+def _merge_snapshot(filename, records):
+    """Replace this run's platforms in the on-disk snapshot, keeping every
+    record from the sources this run did not scrape.
+
+    A partial run must not erase the other platforms' snapshot: the app's
+    FileJobSource adapters each filter the same file, and a restart between
+    an Upwork-only write and the next full run would otherwise leave them
+    with an empty snapshot.
+    """
+    scraped_platforms = {
+        SOURCE_PLATFORMS[name]
+        for name in _selected_sources()
+        if name in SOURCE_PLATFORMS
+    }
+    with _snapshot_lock(filename):
+        existing = _load_snapshot_records(filename)
+        kept = [
+            record
+            for record in existing
+            if isinstance(record, dict)
+            and str(record.get("source") or "").strip() not in scraped_platforms
+        ]
+        merged = list(records) + kept
+        _atomic_write_json(filename, merged)
+    return len(kept)
+
+
+def load_upwork_detail_cache(filename=UPWORK_DETAIL_CACHE_FILE):
+    """Load the per-URL Upwork detail cache, tolerating absence/corruption."""
+    entries, cooldown_until = None, 0
+    try:
+        with open(filename, "r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+        if isinstance(raw, dict):
+            entries = raw.get("entries")
+            cooldown_until = raw.get("cooldown_until") or 0
+    except (OSError, ValueError):
+        entries, cooldown_until = None, 0
+
+    now = time.time()
+    pruned = {}
+    for url, entry in (entries or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        fetched_at = entry.get("fetched_at") or 0
+        if not entry.get("DetailStatus"):
+            # Card-only entries written by older builds (or a partial
+            # write) never had a detail fetch; drop them so the job is
+            # enriched on a later run instead of being served forever.
+            continue
+        if now - fetched_at > UPWORK_CACHE_MAX_AGE_SECONDS:
+            continue
+        pruned[url] = entry
+
+    if len(pruned) > UPWORK_CACHE_MAX_ENTRIES:
+        newest = sorted(
+            pruned.items(),
+            key=lambda item: item[1].get("fetched_at") or 0,
+            reverse=True,
+        )
+        pruned = dict(newest[:UPWORK_CACHE_MAX_ENTRIES])
+
+    return {
+        "entries": pruned,
+        "cooldown_until": float(cooldown_until or 0),
+    }
+
+
+def save_upwork_detail_cache(cache, filename=UPWORK_DETAIL_CACHE_FILE):
+    _atomic_write_json(
+        filename,
+        {
+            "entries": cache.get("entries") or {},
+            "cooldown_until": cache.get("cooldown_until") or 0,
+        },
+    )
+
+
+def _apply_cached_upwork_detail(job, cache):
+    """Overlay a cached detail enrichment onto a search-card job.
+
+    Returns True when the job was fully served from cache (no detail
+    request needed).
+    """
+    entry = (cache.get("entries") or {}).get(job.get("Link") or "")
+    if not entry:
+        return False
+    for field in UPWORK_CACHE_FIELDS:
+        value = entry.get(field)
+        if value:
+            job[field] = value
+    job.pop("DetailBlocked", None)
+    job.pop("DetailError", None)
+    job.pop("DetailNote", None)
+    return True
+
+
+def _remember_upwork_detail(job, cache):
+    """Persist a successful detail enrichment for future runs.
+
+    Only jobs that actually went through a detail fetch may be cached.
+    Search-card jobs carry a usable description but no DatePosted/client
+    country; caching those would make every later run serve them from
+    cache and never enrich them. ``DetailStatus`` is set by both detail
+    parsers and by the failure handler, so its presence is the marker of
+    an attempted fetch; blocked/errored fetches are never cached.
+    """
+    if job.get("DetailBlocked") or job.get("DetailError"):
+        return False
+    if not job.get("DetailStatus"):
+        return False
+    url = job.get("Link") or ""
+    if not url:
+        return False
+    entry = {
+        field: job[field]
+        for field in UPWORK_CACHE_FIELDS
+        if job.get(field)
+    }
+    entry["fetched_at"] = time.time()
+    cache.setdefault("entries", {})[url] = entry
+    return True
 
 
 # ------------------------------------------------------------
@@ -257,6 +619,13 @@ def extract_jsonld_jobposting(response):
             if item.get("description"):
                 result["description"] = strip_html_tags(
                     item["description"]
+                )
+
+            # Upwork's JobPosting exposes the real posting timestamp;
+            # LinkedIn/Wuzzuf simply won't have this key.
+            if item.get("datePosted"):
+                result["datePosted"] = clean_text(
+                    item["datePosted"]
                 )
 
             org = item.get("hiringOrganization")
@@ -1782,7 +2151,7 @@ async def fetch_detail_with_backoff(
 
                 print(
                     f"[{platform}] "
-                    f"429 → waiting "
+                    f"429 -> waiting "
                     f"{wait_time:.1f}s"
                 )
 
@@ -2084,12 +2453,50 @@ def parse_linkedin_detail(
 async def detail_worker(
     session,
     job,
-    semaphore
+    semaphore,
+    abort=None,
 ):
 
     platform = job.get(
         "Platform"
     )
+
+    # --------------------------------------------------------
+    # UPWORK
+    # --------------------------------------------------------
+    # Upwork has its own fetch path (curl_cffi + UTF-8 response
+    # wrapper + Retry-After-aware backoff), so it must not go through
+    # fetch_detail_with_backoff(). A blocked/failed detail keeps the
+    # full list-card description instead of failing the job.
+
+    if platform == "Upwork":
+
+        # Set by scrape_upwork_details() after a run of blocked/failed
+        # details: leave the remaining jobs on their card data instead of
+        # hammering an endpoint that is already refusing us.
+        if abort is not None and abort.get("flag"):
+            return job
+
+        url = job["Link"]
+
+        response, error = await fetch_upwork(
+            session,
+            url,
+            semaphore,
+            pacing=UPWORK_DETAIL_PACING,
+        )
+
+        if response is None:
+
+            return handle_upwork_detail_failure(
+                job,
+                error
+            )
+
+        return parse_upwork_detail(
+            job,
+            response
+        )
 
     # --------------------------------------------------------
     # LINKEDIN
@@ -2200,6 +2607,13 @@ async def scrape_all_details(
         == "LinkedIn"
     ]
 
+    upwork_jobs = [
+        job
+        for job in jobs
+        if job["Platform"]
+        == "Upwork"
+    ]
+
     # Only detail-crawl the newest handful (see LINKEDIN_DETAIL_MAX_PER_RUN).
     # Jobs arrive newest-first because build_linkedin_search_url() now
     # sends sortBy=DD, so a head-slice keeps the freshest postings.
@@ -2221,6 +2635,32 @@ async def scrape_all_details(
 
         linkedin_jobs = linkedin_jobs[
             :LINKEDIN_DETAIL_MAX_PER_RUN
+        ]
+
+    # Upwork cards already carry the full description, so the detail
+    # fetch only enriches the newest handful (datePosted + client
+    # country). Discovery stays at RUN_OPTIONS["max_upwork_pages"].
+    upwork_snapshot_limit = RUN_OPTIONS.get(
+        "upwork_snapshot_limit",
+        UPWORK_DETAIL_MAX_PER_RUN,
+    )
+
+    if (
+        upwork_snapshot_limit
+        is not None
+        and
+        len(upwork_jobs)
+        > upwork_snapshot_limit
+    ):
+
+        print(
+            f"[Upwork] Capping snapshot to newest "
+            f"{upwork_snapshot_limit} of "
+            f"{len(upwork_jobs)} discovered jobs."
+        )
+
+        upwork_jobs = upwork_jobs[
+            :upwork_snapshot_limit
         ]
 
     results = []
@@ -2363,10 +2803,161 @@ async def scrape_all_details(
 
         return completed
 
-    wuzzuf_results, linkedin_results = (
+    async def scrape_upwork_details():
+
+        if not upwork_jobs:
+            return []
+
+        cache = load_upwork_detail_cache()
+
+        # Serve already-enriched URLs from the cache: no request at all.
+        targets = []
+        for job in upwork_jobs:
+            if not _apply_cached_upwork_detail(job, cache):
+                targets.append(job)
+
+        cache_hits = len(upwork_jobs) - len(targets)
+        budget = RUN_OPTIONS.get(
+            "upwork_detail_budget",
+            UPWORK_DETAIL_MAX_PER_RUN,
+        )
+        if budget is not None:
+            budget = max(0, int(budget))
+            targets = targets[:budget]
+
+        now = time.time()
+        cooldown_until = float(cache.get("cooldown_until") or 0)
+        if now < cooldown_until:
+            print(
+                f"[Upwork Detail] cooldown active for another "
+                f"{cooldown_until - now:.0f}s; skipping "
+                f"{len(targets)} detail fetch(es)."
+            )
+            save_upwork_detail_cache(cache)
+            return upwork_jobs
+
+        if not targets:
+            print(
+                f"[Upwork Detail] {cache_hits} job(s) served from cache; "
+                f"no detail request needed."
+            )
+            save_upwork_detail_cache(cache)
+            return upwork_jobs
+
+        print(
+            f"[Upwork Detail] {cache_hits} cache hit(s), "
+            f"fetching {len(targets)} of {len(upwork_jobs)}."
+        )
+
+        semaphore = asyncio.Semaphore(
+            UPWORK_DETAIL_CONCURRENCY
+        )
+
+        # Shared within this run: once enough consecutive details are
+        # blocked/failed, stop spending requests (and persist a cooldown
+        # so the next run does not immediately repeat the mistake).
+        abort = {"flag": False}
+        blocked_streak = {"count": 0}
+        scraped = {}
+
+        async with upwork_session() as session:
+
+            tasks = [
+                asyncio.create_task(
+                    detail_worker(
+                        session,
+                        job,
+                        semaphore,
+                        abort=abort,
+                    )
+                )
+                for job in targets
+            ]
+
+            processed = 0
+
+            for future in asyncio.as_completed(
+                tasks
+            ):
+
+                result = await future
+
+                scraped[result.get("Link") or ""] = result
+
+                ok = not (
+                    result.get("DetailBlocked")
+                    or result.get("DetailError")
+                )
+
+                if ok:
+                    blocked_streak["count"] = 0
+                else:
+                    blocked_streak["count"] += 1
+                    if (
+                        blocked_streak["count"] >= UPWORK_BLOCK_STREAK_LIMIT
+                        and not abort["flag"]
+                    ):
+                        abort["flag"] = True
+                        cache["cooldown_until"] = (
+                            time.time() + UPWORK_BLOCK_COOLDOWN_SECONDS
+                        )
+                        print(
+                            f"[Upwork Detail] {blocked_streak['count']} "
+                            f"consecutive blocked/failed details; "
+                            f"pausing detail enrichment for "
+                            f"{UPWORK_BLOCK_COOLDOWN_SECONDS}s."
+                        )
+
+                processed += 1
+
+                if (
+                    processed % 5 == 0
+                    or
+                    processed == len(
+                        targets
+                    )
+                ):
+
+                    successful = sum(
+                        1
+                        for item
+                        in scraped.values()
+                        if not item.get(
+                            "DetailBlocked"
+                        )
+                        and not item.get(
+                            "DetailError"
+                        )
+                    )
+
+                    print(
+                        f"[Upwork Detail] "
+                        f"{processed}/"
+                        f"{len(targets)} "
+                        f"| OK={successful}"
+                    )
+
+        # Rebuild the snapshot slice in discovery order; jobs whose fetch
+        # was skipped (budget/cooldown/abort) keep their card data.
+        completed = [
+            scraped.get(job.get("Link") or "", job)
+            for job in upwork_jobs
+        ]
+
+        for job in completed:
+            _remember_upwork_detail(job, cache)
+
+        # Persist every run: loading prunes stale/card-only/over-cap
+        # entries, and this write is what makes that pruning durable.
+        save_upwork_detail_cache(cache)
+
+        return completed
+
+    wuzzuf_results, linkedin_results, upwork_results = (
         await asyncio.gather(
             scrape_wuzzuf_details(),
             scrape_linkedin_details(),
+            scrape_upwork_details(),
         )
     )
 
@@ -2378,7 +2969,1250 @@ async def scrape_all_details(
         linkedin_results
     )
 
+    results.extend(
+        upwork_results
+    )
+
     return results
+
+
+# ============================================================
+# UPWORK SEARCH
+# ============================================================
+
+# Markers that indicate a bot challenge / block page rather than real
+# content. Deliberately does NOT include the bare word "captcha":
+# Upwork's normal search page embeds googleRecaptchaEnterpriseSiteKey
+# in its Nuxt config, and matching that word marked every real page as
+# a challenge.
+UPWORK_CHALLENGE_MARKERS = (
+    "just a moment",
+    "cf-chl",
+    "challenge - upwork",
+    "enable javascript and cookies",
+    "verify you are human",
+    "checking your browser",
+    "unusual traffic",
+    "access denied",
+    "attention required",
+)
+
+# Detail-specific login-wall markers. Applied only to detail responses,
+# never to search pages (whose nav always mentions logging in).
+UPWORK_DETAIL_BLOCK_MARKERS = (
+    "sign in to view",
+    "log in to view",
+    "join upwork to see",
+    "sign up to view",
+    "login required",
+    "authwall",
+    "this job is no longer available",
+    "this job has been closed",
+)
+
+
+class _UpworkResponse:
+    """
+    curl_cffi response wrapper with the same surface scrapling's
+    Response object gives the extractors.
+
+    Text is decoded explicitly as UTF-8: curl_cffi otherwise falls back
+    to ISO-8859-1 on some responses, turning Upwork's en-dashes and
+    bullets into mojibake before extraction even sees them.
+    """
+
+    __slots__ = (
+        "status",
+        "url",
+        "text",
+        "body",
+        "headers",
+        "_selector",
+    )
+
+    def __init__(self, raw):
+
+        self.status = raw.status_code
+        self.url = str(raw.url)
+        self.body = raw.content or b""
+        self.headers = raw.headers
+        self._selector = None
+
+        try:
+            self.text = self.body.decode(
+                "utf-8",
+                "replace"
+            )
+        except Exception:
+            try:
+                self.text = raw.text or ""
+            except Exception:
+                self.text = ""
+
+    def css(self, query):
+
+        if self._selector is None:
+
+            self._selector = Selector(
+                content=self.text or "",
+                url=self.url,
+            )
+
+        return self._selector.css(query)
+
+    @property
+    def looks_challenged(self):
+
+        lower = (self.text or "").lower()
+
+        return any(
+            marker in lower
+            for marker in UPWORK_CHALLENGE_MARKERS
+        )
+
+
+def upwork_session():
+    """Single spot that creates Upwork's HTTP client."""
+
+    return CurlCffiAsyncSession()
+
+
+def _first_text(nodes):
+
+    if not nodes:
+        return ""
+
+    return clean_text(
+        nodes[0].get_all_text()
+    )
+
+
+def _parse_retry_after(value):
+    """Return a sane number of seconds from a Retry-After header."""
+
+    if value is None:
+        return None
+
+    try:
+        seconds = float(
+            str(value).strip()
+        )
+    except (TypeError, ValueError):
+        return None
+
+    if seconds < 0:
+        return None
+
+    return min(
+        seconds,
+        UPWORK_MAX_BACKOFF_SECONDS
+    )
+
+
+async def fetch_upwork(
+    session,
+    url,
+    semaphore,
+    pacing=0.0,
+):
+    """
+    Fetch one Upwork URL with the same guardrails as the other sources.
+
+    A 429/503 is retried with exponential backoff + jitter (honouring
+    Retry-After when present). A Cloudflare challenge, 401, 403 or 999
+    is terminal for this request *after* trying the next pinned browser
+    profile: Upwork's bot protection rejects some curl_cffi fingerprints
+    while accepting others. The profile that succeeds is remembered for
+    the rest of the process so later requests do not re-probe.
+    """
+
+    global UPWORK_IMPERSONATION
+
+    async with semaphore:
+
+        if pacing:
+
+            await asyncio.sleep(
+                pacing
+            )
+
+        retry_429 = 0
+        tried_impersonations = []
+
+        while True:
+
+            impersonation = UPWORK_IMPERSONATION
+
+            try:
+
+                raw = await session.get(
+                    url,
+                    impersonate=impersonation,
+                    timeout=HTTP_TIMEOUT,
+                    allow_redirects=True,
+                )
+
+            except Exception as exc:
+
+                return (
+                    None,
+                    f"{type(exc).__name__}: {exc}"
+                )
+
+            response = _UpworkResponse(
+                raw
+            )
+
+            if (
+                response.status == 200
+                and
+                not response.looks_challenged
+            ):
+
+                UPWORK_IMPERSONATION = impersonation
+
+                return (
+                    response,
+                    None
+                )
+
+            blocked_reason = None
+
+            if (
+                response.status == 200
+                and
+                response.looks_challenged
+            ):
+
+                blocked_reason = (
+                    "HTTP 200 but Cloudflare/bot-challenge page"
+                )
+
+            elif response.status in (401, 403, 999):
+
+                blocked_reason = (
+                    f"HTTP {response.status} (blocked/login-walled)"
+                )
+
+            if blocked_reason:
+
+                tried_impersonations.append(
+                    impersonation
+                )
+
+                replacement = next(
+                    (
+                        candidate
+                        for candidate in UPWORK_IMPERSONATIONS
+                        if candidate not in tried_impersonations
+                    ),
+                    None,
+                )
+
+                if replacement:
+
+                    print(
+                        f"[Upwork] {blocked_reason} with "
+                        f"impersonate={impersonation}; "
+                        f"retrying as {replacement}"
+                    )
+
+                    UPWORK_IMPERSONATION = replacement
+
+                    continue
+
+                return (
+                    None,
+                    f"{blocked_reason} for all profiles "
+                    f"({', '.join(tried_impersonations)})"
+                )
+
+            if response.status in (429, 503):
+
+                if retry_429 >= MAX_429_RETRIES:
+
+                    return (
+                        None,
+                        f"HTTP {response.status} after "
+                        f"{MAX_429_RETRIES} retries"
+                    )
+
+                retry_429 += 1
+
+                wait_time = _parse_retry_after(
+                    response.headers.get("Retry-After")
+                    if response.headers
+                    else None
+                )
+
+                if wait_time is None:
+
+                    wait_time = (
+                        BACKOFF_429
+                        * (2 ** (retry_429 - 1))
+                        + random.uniform(0, 1)
+                    )
+
+                wait_time = min(
+                    wait_time,
+                    UPWORK_MAX_BACKOFF_SECONDS
+                )
+
+                print(
+                    f"[Upwork] {response.status} -> waiting "
+                    f"{wait_time:.1f}s "
+                    f"(retry {retry_429}/{MAX_429_RETRIES})"
+                )
+
+                await asyncio.sleep(
+                    wait_time
+                )
+
+                continue
+
+            return (
+                None,
+                f"HTTP {response.status}"
+            )
+
+
+def build_upwork_search_url(
+    keyword=None,
+    page=1,
+    per_page=UPWORK_PER_PAGE,
+    job_type=UPWORK_JOB_TYPE,
+):
+    """
+    Build a guest search URL.
+
+    No location filter is applied: the caller asked for all jobs, and
+    Upwork's guest search already returns a global result set. Its
+    page size is capped at 50 even though the query accepts larger
+    numbers (larger values silently fall back to 10).
+    """
+
+    try:
+        per_page = int(per_page)
+    except (TypeError, ValueError):
+        per_page = UPWORK_PER_PAGE
+
+    per_page = max(
+        1,
+        min(per_page, UPWORK_PER_PAGE)
+    )
+
+    params = []
+
+    if keyword:
+
+        params.append(
+            f"q={quote(str(keyword))}"
+        )
+
+    params.append(
+        f"sort={UPWORK_SORT_BY}"
+    )
+
+    job_type = (
+        str(job_type).strip().lower()
+        if job_type
+        else ""
+    )
+
+    if job_type == "hourly":
+
+        params.append("t=0")
+
+    elif job_type == "fixed":
+
+        params.append("t=1")
+
+    params.append(
+        f"per_page={per_page}"
+    )
+
+    if page > 1:
+
+        params.append(
+            f"page={int(page)}"
+        )
+
+    return (
+        f"{UPWORK_SEARCH_ENDPOINT}"
+        f"?{'&'.join(params)}"
+    )
+
+
+def extract_upwork_job_id(url):
+    """
+    Extract the URL id from ..._~022120881892029947726.
+
+    The card's data-ev-job-uid is a different tracking id, so it is
+    kept separately as CardUID and never used as JobID.
+    """
+
+    if not url:
+        return ""
+
+    match = re.search(
+        r"~(\d+)",
+        url,
+    )
+
+    if match:
+        return match.group(1)
+
+    return ""
+
+
+def extract_upwork_total(response):
+
+    try:
+        text = response.text or ""
+    except Exception:
+        return None
+
+    match = re.search(
+        r"([\d,]+)\s+jobs?\s+found",
+        text,
+        re.I,
+    )
+
+    if match:
+
+        try:
+            return int(
+                match.group(1).replace(",", "")
+            )
+        except (TypeError, ValueError):
+            pass
+
+    return None
+
+
+def extract_upwork_next_url(response):
+
+    nodes = (
+        response.css(
+            "link[rel='next']"
+        )
+        or response.css(
+            "a[rel='next']"
+        )
+    )
+
+    if not nodes:
+        return ""
+
+    href = get_attr(
+        nodes[0],
+        "href"
+    )
+
+    if not href:
+        return ""
+
+    return absolute_url(
+        UPWORK_BASE,
+        href
+    )
+
+
+def extract_upwork_jobs(response):
+    """
+    Extract one page of Upwork job cards.
+
+    The card description is a structured field of the result card, not
+    a raw page dump: Upwork puts the full posting text in
+    p.body-medium. Confirmed on 50/50 sampled cards (many 1,500-8,000+
+    chars, ending on a complete sentence), so it is safe to store as
+    the job description even when a detail fetch is unavailable.
+    CardText is kept as a diagnostic only.
+    """
+
+    cards = response.css(
+        "article.job-tile"
+    )
+
+    jobs = []
+
+    for card in cards:
+
+        # ----------------------------------------------------
+        # TITLE + LINK
+        # ----------------------------------------------------
+
+        title_nodes = (
+            card.css(
+                "[data-test='job-tile-title-link']"
+            )
+            or card.css(
+                "h2.job-tile-title a"
+            )
+            or card.css(
+                "h2 a[href*='/jobs/']"
+            )
+        )
+
+        title = _first_text(
+            title_nodes
+        )
+
+        if not title:
+            continue
+
+        link = ""
+
+        if title_nodes:
+
+            href = get_attr(
+                title_nodes[0],
+                "href",
+            )
+
+            if href:
+
+                link = canonical_url(
+                    absolute_url(
+                        UPWORK_BASE,
+                        href,
+                    )
+                )
+
+        if not link:
+
+            for node in card.css(
+                "a[href*='/jobs/']"
+            ):
+
+                href = get_attr(
+                    node,
+                    "href"
+                )
+
+                if href:
+
+                    link = canonical_url(
+                        absolute_url(
+                            UPWORK_BASE,
+                            href,
+                        )
+                    )
+
+                    break
+
+        if not link:
+            continue
+
+        # ----------------------------------------------------
+        # POSTED / TYPE / EXPERIENCE / BUDGET
+        # ----------------------------------------------------
+
+        posted = _first_text(
+            card.css(
+                "[data-test='job-pubilshed-date'], "
+                "[data-test='job-published-date']"
+            )
+        ) or "N/A"
+
+        job_type_raw = _first_text(
+            card.css(
+                "[data-test='job-type-label']"
+            )
+        )
+
+        experience = _first_text(
+            card.css(
+                "[data-test='experience-level']"
+            )
+        )
+
+        # Hourly cards put the rate range inside the job-type label
+        # ("Hourly: $12.00 - $28.00") and have no separate budget node.
+        # Fixed-price cards keep "Fixed price" there and put the budget
+        # in [data-test='is-fixed-price']. Normalise both so JobType is
+        # just "Hourly"/"Fixed price" and Budget is the actual money.
+        job_type = job_type_raw
+
+        hourly_budget = ""
+
+        lowered_type = job_type_raw.lower()
+
+        if lowered_type.startswith("hourly"):
+
+            job_type = "Hourly"
+
+            _, _, hourly_budget = job_type_raw.partition(":")
+
+            hourly_budget = clean_text(
+                hourly_budget
+            )
+
+        elif lowered_type.startswith("fixed"):
+
+            job_type = "Fixed price"
+
+        budget = (
+            _first_text(
+                card.css(
+                    "[data-test='is-fixed-price']"
+                )
+            )
+            or hourly_budget
+        )
+
+        if (
+            budget
+            and
+            job_type == "Hourly"
+            and
+            "/hr" not in budget.lower()
+        ):
+
+            budget = f"{budget}/hr"
+
+        # The third info item on hourly cards is "Est. time: ...", not
+        # a budget. Keep it separately for diagnostics.
+        duration = ""
+
+        for item in card.css(
+            "ul.job-tile-info-list li"
+        ):
+
+            text = clean_text(
+                item.get_all_text()
+            )
+
+            if text.lower().startswith("est. time"):
+
+                duration = text
+
+                break
+
+        # ----------------------------------------------------
+        # DESCRIPTION (structured card field)
+        # ----------------------------------------------------
+
+        description_nodes = (
+            card.css(
+                "div.air3-line-clamp p.body-medium"
+            )
+            or card.css(
+                "p.body-medium"
+            )
+        )
+
+        description = strip_html_tags(
+            _first_text(description_nodes)
+        )
+
+        # ----------------------------------------------------
+        # SKILLS
+        # ----------------------------------------------------
+
+        skills = []
+
+        seen_skills = set()
+
+        for node in card.css(
+            "button.air3-token, [data-test='token']"
+        ):
+
+            skill = clean_text(
+                node.get_all_text()
+            )
+
+            if (
+                skill
+                and
+                skill not in seen_skills
+            ):
+
+                seen_skills.add(
+                    skill
+                )
+
+                skills.append(
+                    skill
+                )
+
+        # ----------------------------------------------------
+        # CARD TEXT (diagnostic only - never a description)
+        # ----------------------------------------------------
+
+        card_text = clean_text(
+            card.get_all_text()
+        )
+
+        jobs.append({
+
+            "Platform":
+                "Upwork",
+
+            "Title":
+                title,
+
+            # Guest search does not expose the client name/country.
+            "Company":
+                UPWORK_COMPANY_PLACEHOLDER,
+
+            "Location":
+                UPWORK_LOCATION_PLACEHOLDER,
+
+            "Posted":
+                posted,
+
+            "Link":
+                link,
+
+            "JobID":
+                extract_upwork_job_id(link),
+
+            "CardUID":
+                get_attr(card, "data-ev-job-uid") or "",
+
+            "JobType":
+                job_type,
+
+            "ExperienceLevel":
+                experience,
+
+            "Budget":
+                budget,
+
+            "Duration":
+                duration,
+
+            "Skills":
+                skills,
+
+            "Description":
+                description,
+
+            "DescriptionSource":
+                "search_card" if description else "",
+
+            "CardText":
+                card_text,
+        })
+
+    return jobs
+
+
+async def fetch_upwork_search_page(
+    session,
+    semaphore,
+    page,
+    keyword,
+    per_page,
+    job_type,
+):
+
+    url = build_upwork_search_url(
+        keyword=keyword,
+        page=page,
+        per_page=per_page,
+        job_type=job_type,
+    )
+
+    response, error = await fetch_upwork(
+        session,
+        url,
+        semaphore,
+        pacing=UPWORK_SEARCH_PACING,
+    )
+
+    if response is None:
+
+        return {
+            "page": page,
+            "url": url,
+            "status": None,
+            "error": error,
+            "jobs": [],
+            "total": None,
+            "next": "",
+        }
+
+    return {
+        "page": page,
+        "url": response.url,
+        "status": response.status,
+        "error": None,
+        "jobs": extract_upwork_jobs(response),
+        "total": extract_upwork_total(response),
+        "next": extract_upwork_next_url(response),
+    }
+
+
+async def scrape_upwork():
+
+    print("\n" + "=" * 70)
+    print("UPWORK SEARCH")
+    print("=" * 70)
+
+    all_jobs = []
+
+    seen_urls = set()
+
+    seen_signatures = set()
+
+    page_results = []
+
+    async with upwork_session() as session:
+
+        semaphore = asyncio.Semaphore(
+            UPWORK_SEARCH_CONCURRENCY
+        )
+
+        first = await fetch_upwork_search_page(
+            session,
+            semaphore,
+            page=1,
+            keyword=KEYWORD,
+            per_page=UPWORK_PER_PAGE,
+            job_type=UPWORK_JOB_TYPE,
+        )
+
+        page_results.append(
+            first
+        )
+
+        print(
+            f"[Upwork] Page 1 | "
+            f"jobs={len(first['jobs'])} | "
+            f"status={first['status']}"
+        )
+
+        if first["error"]:
+
+            print(
+                f"[Upwork] Page 1 failed: "
+                f"{first['error']}"
+            )
+
+            DISCOVERY_ALERTS.append(
+                "upwork discovery "
+                f"{'blocked' if _looks_like_discovery_block(first['error']) else 'failed'}: "
+                f"{first['error']}"
+            )
+
+        total = first["total"]
+
+        if total:
+
+            print(
+                f"[Upwork] Reported total: "
+                f"{total}"
+            )
+
+        print(
+            "[Upwork] Note: guest search has no date-posted filter; "
+            "sort=recency is the only temporal control."
+        )
+
+        # ----------------------------------------------------
+        # PAGE COUNT
+        # ----------------------------------------------------
+
+        if total:
+
+            pages_planned = ceil(
+                total / max(1, int(UPWORK_PER_PAGE))
+            )
+
+        else:
+
+            pages_planned = (
+                (RUN_OPTIONS.get("max_upwork_pages") or MAX_UPWORK_PAGES)
+                or 1
+            )
+
+        max_upwork_pages = RUN_OPTIONS.get(
+            "max_upwork_pages",
+            MAX_UPWORK_PAGES,
+        )
+
+        if max_upwork_pages is not None:
+
+            pages_planned = min(
+                pages_planned,
+                max_upwork_pages
+            )
+
+        if (
+            not first["next"]
+            and
+            not total
+        ):
+
+            pages_planned = 1
+
+        pages_planned = max(
+            1,
+            pages_planned
+        )
+
+        print(
+            f"[Upwork] Pages planned: "
+            f"{pages_planned}"
+        )
+
+        if first["next"] and total:
+
+            implied = ceil(
+                total / max(1, int(UPWORK_PER_PAGE))
+            )
+
+            if pages_planned < implied:
+
+                print(
+                    f"[Upwork] Capped at max_pages="
+                    f"{pages_planned} of "
+                    f"{implied} implied pages."
+                )
+
+        # ----------------------------------------------------
+        # REMAINING PAGES IN PARALLEL (small, gated pool)
+        # ----------------------------------------------------
+
+        if pages_planned > 1:
+
+            tasks = [
+                asyncio.create_task(
+                    fetch_upwork_search_page(
+                        session,
+                        semaphore,
+                        page=page,
+                        keyword=KEYWORD,
+                        per_page=UPWORK_PER_PAGE,
+                        job_type=UPWORK_JOB_TYPE,
+                    )
+                )
+                for page in range(
+                    2,
+                    pages_planned + 1
+                )
+            ]
+
+            results = await asyncio.gather(
+                *tasks,
+                return_exceptions=True
+            )
+
+            for result in results:
+
+                if isinstance(
+                    result,
+                    Exception
+                ):
+
+                    print(
+                        "[Upwork] "
+                        f"Page worker failed: "
+                        f"{result}"
+                    )
+
+                    continue
+
+                page_results.append(
+                    result
+                )
+
+    # --------------------------------------------------------
+    # AGGREGATE (preserve page order, dedupe by link)
+    # --------------------------------------------------------
+
+    for result in page_results:
+
+        page = result["page"]
+
+        jobs = result["jobs"]
+
+        if result["error"]:
+
+            print(
+                f"[Upwork] Page {page} failed: "
+                f"{result['error']}"
+            )
+
+            continue
+
+        signature = tuple(
+            sorted(
+                job["Link"]
+                for job in jobs
+                if job.get("Link")
+            )
+        )
+
+        if (
+            signature
+            and
+            signature in seen_signatures
+        ):
+
+            print(
+                f"[Upwork] Page {page} repeated; "
+                "skipping."
+            )
+
+            continue
+
+        seen_signatures.add(
+            signature
+        )
+
+        new_count = 0
+
+        for job in jobs:
+
+            link = job["Link"]
+
+            if link in seen_urls:
+                continue
+
+            seen_urls.add(
+                link
+            )
+
+            all_jobs.append(
+                job
+            )
+
+            new_count += 1
+
+        if page != 1:
+
+            print(
+                f"[Upwork] Page {page} | "
+                f"jobs={len(jobs)} | "
+                f"new={new_count} | "
+                f"status={result['status']}"
+            )
+
+    print(
+        f"\n[Upwork] FINAL UNIQUE: "
+        f"{len(all_jobs)}"
+    )
+
+    return all_jobs
+
+
+# ============================================================
+# UPWORK DETAIL EXTRACTION
+# ============================================================
+
+def _keep_card_description(job, note):
+
+    if job.get("Description"):
+
+        job["DescriptionSource"] = "search_card"
+
+        job["DetailNote"] = note
+
+    else:
+
+        job["DetailError"] = note
+
+
+def handle_upwork_detail_failure(job, error):
+
+    job["DetailStatus"] = None
+
+    job["DetailFetcher"] = "HTTP"
+
+    lowered = (error or "").lower()
+
+    if (
+        "403" in lowered
+        or "401" in lowered
+        or "999" in lowered
+        or "blocked" in lowered
+        or "login" in lowered
+        or "challenge" in lowered
+    ):
+
+        job["DetailBlocked"] = True
+
+        _keep_card_description(
+            job,
+            f"Detail fetch blocked ({error}); "
+            "keeping the full list-card description."
+        )
+
+    else:
+
+        _keep_card_description(
+            job,
+            f"Detail fetch failed ({error}); "
+            "keeping the full list-card description."
+        )
+
+    return job
+
+
+def parse_upwork_detail(
+    job,
+    response
+):
+    """
+    Structured detail extraction only.
+
+    Tier 1: JobPosting JSON-LD.
+    Tier 2: known Upwork description containers.
+    No tier 3: the raw page is never used as a description.
+
+    Detail pages are intermittently accessible to guests (confirmed
+    4/5 HTTP 200 in live sampling, with the rest 403), so a blocked
+    detail keeps the full list-card description instead of failing the
+    whole job.
+    """
+
+    try:
+
+        description = ""
+
+        source = ""
+
+        structured = extract_jsonld_jobposting(
+            response
+        )
+
+        if (
+            structured
+            and
+            structured.get("description")
+        ):
+
+            description = structured["description"]
+
+            source = "detail_jsonld"
+
+            if structured.get("title"):
+                job["Title"] = structured["title"]
+
+            # Upwork's JobPosting always names Upwork itself as the
+            # hiringOrganization, not the real client. Never copy that
+            # into Company; leave the list-card placeholder alone.
+            company = structured.get("company") or ""
+
+            if (
+                company
+                and
+                company.strip().lower() != "upwork"
+            ):
+
+                job["Company"] = company
+
+            if structured.get("datePosted"):
+
+                job["DatePosted"] = structured["datePosted"]
+
+        else:
+
+            nodes = response.css(
+                "[data-test='Description'], "
+                "[data-test='job-description'], "
+                ".job-description, "
+                "section[class*='job-description']"
+            )
+
+            if nodes:
+
+                description = strip_html_tags(
+                    nodes[0].get_all_text()
+                )
+
+                if description:
+                    source = "detail_dom"
+
+        # ----------------------------------------------------
+        # CLIENT LOCATION
+        # ----------------------------------------------------
+        # Only the detail page exposes it; the search card does not.
+        # Recorded as its own diagnostic rather than overwriting the
+        # card's placeholder Location.
+
+        location_nodes = (
+            response.css(
+                "[data-qa='client-location'] strong"
+            )
+            or response.css(
+                "[data-qa='client-location']"
+            )
+        )
+
+        if location_nodes:
+
+            client_location = _first_text(
+                location_nodes
+            )
+
+            # The bare <li> also contains the client's local time
+            # ("United States 9:08 AM"); drop that trailing clock.
+            client_location = re.sub(
+                r"\s+\d{1,2}:\d{2}\s*(AM|PM)\s*$",
+                "",
+                client_location,
+                flags=re.IGNORECASE,
+            ).strip()
+
+            if client_location:
+                job["ClientLocation"] = client_location
+
+        job["DetailStatus"] = response.status
+
+        job["DetailFetcher"] = "HTTP"
+
+        if description:
+
+            job["Description"] = description
+
+            job["DescriptionSource"] = source
+
+            job.pop("DetailBlocked", None)
+            job.pop("DetailError", None)
+            job.pop("DetailNote", None)
+
+            return job
+
+        lower = (response.text or "").lower()
+
+        blocked = any(
+            marker in lower
+            for marker in UPWORK_DETAIL_BLOCK_MARKERS
+        )
+
+        if blocked:
+
+            job["DetailBlocked"] = True
+
+            _keep_card_description(
+                job,
+                "Detail page is login-walled/blocked for guests; "
+                "keeping the full list-card description."
+            )
+
+        else:
+
+            _keep_card_description(
+                job,
+                "Detail extraction found no structured description; "
+                "keeping the full list-card description."
+            )
+
+        return job
+
+    except Exception as exc:
+
+        _keep_card_description(
+            job,
+            f"Detail parse error ({type(exc).__name__}: {exc}); "
+            "keeping the full list-card description."
+        )
+
+        return job
 
 
 # ============================================================
@@ -2554,17 +4388,22 @@ def to_output_schema(jobs):
     # Skip jobs whose detail fetch hit a login-wall/blocked response
     # (DetailBlocked) or failed outright for any other reason
     # (DetailError -- HTTP failure, parse failure, missing job id,
-    # or Wuzzuf structured-description extraction failing). Both
-    # cases leave Description == "". Emitting either with an empty
-    # description would let the app permanently commit a bad,
-    # empty-description classification for that URL -- once
-    # process_job() records a terminal decision for a job_uuid, a
-    # later run that succeeds for the same URL will never be
-    # reprocessed. Leaving these out of this run's snapshot instead
-    # means they are simply retried on the next scrape, with no
-    # wrong data ever recorded in between.
+    # or Wuzzuf structured-description extraction failing), *unless*
+    # the job still has a real description from discovery.
+    #
+    # For Wuzzuf/LinkedIn a failed detail leaves Description == "", so
+    # these are still dropped. Upwork is the exception: its search
+    # cards already carry the full posting text, so a blocked detail
+    # (confirmed 1-in-5 live) must keep the job rather than throw away
+    # a perfectly usable description. Emitting an empty description
+    # would let the app permanently commit a bad classification for
+    # that URL, so the empty case is still excluded and retried on the
+    # next scrape.
     def _is_failed_detail(job):
-        return bool(job.get("DetailBlocked") or job.get("DetailError"))
+        return bool(
+            (job.get("DetailBlocked") or job.get("DetailError"))
+            and not job.get("Description")
+        )
 
     skipped = sum(1 for job in jobs if _is_failed_detail(job))
 
@@ -2590,18 +4429,26 @@ def save_results(
     filename=OUTPUT_FILE
 ):
 
-    with open(
-        filename,
-        "w",
-        encoding="utf-8"
-    ) as file:
+    if set(_selected_sources()) != set(ALL_SOURCES):
 
-        json.dump(
+        kept = _merge_snapshot(
+            filename,
             jobs,
-            file,
-            ensure_ascii=False,
-            indent=2
         )
+
+        print(
+            f"\nSaved {len(jobs)} "
+            f"jobs to {filename} "
+            f"(kept {kept} record(s) from "
+            f"sources not scraped this run)"
+        )
+
+        return
+
+    _atomic_write_json(
+        filename,
+        jobs,
+    )
 
     print(
         f"\nSaved {len(jobs)} "
@@ -2614,6 +4461,8 @@ def save_results(
 # ============================================================
 
 async def unified_job_scraper():
+
+    DISCOVERY_ALERTS.clear()
 
     started = (
         asyncio.get_running_loop()
@@ -2630,23 +4479,54 @@ async def unified_job_scraper():
     )
 
     print(
-        f"Location: {LOCATION}"
+        f"Location: {LOCATION} "
+        f"(Upwork is global: no location filter)"
     )
 
     # --------------------------------------------------------
     # 1. DISCOVERY
     # --------------------------------------------------------
 
-    wuzzuf_jobs, linkedin_jobs = (
-        await asyncio.gather(
-            scrape_wuzzuf(),
-            scrape_linkedin(),
-        )
+    selected_sources = _selected_sources()
+
+    print(
+        f"Sources:        "
+        f"{', '.join(selected_sources)}"
+    )
+
+    fetchers = {
+        "wuzzuf": scrape_wuzzuf,
+        "linkedin": scrape_linkedin,
+        "upwork": scrape_upwork,
+    }
+
+    discovery_tasks = {
+        name: asyncio.create_task(fetchers[name]())
+        for name in selected_sources
+    }
+
+    wuzzuf_jobs = (
+        await discovery_tasks["wuzzuf"]
+        if "wuzzuf" in discovery_tasks
+        else []
+    )
+
+    linkedin_jobs = (
+        await discovery_tasks["linkedin"]
+        if "linkedin" in discovery_tasks
+        else []
+    )
+
+    upwork_jobs = (
+        await discovery_tasks["upwork"]
+        if "upwork" in discovery_tasks
+        else []
     )
 
     discovered = (
         wuzzuf_jobs
         + linkedin_jobs
+        + upwork_jobs
     )
 
     print("\n" + "=" * 70)
@@ -2724,6 +4604,13 @@ async def unified_job_scraper():
         == "LinkedIn"
     )
 
+    upwork_count = sum(
+        1
+        for job in detailed
+        if job["Platform"]
+        == "Upwork"
+    )
+
     detail_errors = sum(
         1
         for job in detailed
@@ -2743,7 +4630,21 @@ async def unified_job_scraper():
     detail_excluded = sum(
         1
         for job in detailed
-        if job.get("DetailBlocked") or job.get("DetailError")
+        if (
+            job.get("DetailBlocked")
+            or job.get("DetailError")
+        )
+        and not job.get("Description")
+    )
+
+    detail_kept_on_card = sum(
+        1
+        for job in detailed
+        if (
+            job.get("DetailBlocked")
+            or job.get("DetailError")
+        )
+        and job.get("Description")
     )
 
     elapsed = (
@@ -2777,17 +4678,34 @@ async def unified_job_scraper():
     )
 
     print(
+        f"Upwork:         "
+        f"{upwork_count}"
+    )
+
+    print(
         f"Detail errors:  "
         f"{detail_errors}"
     )
 
     print(
         f"Detail blocked: "
-        f"{detail_blocked} (excluded from output, will retry next run)"
+        f"{detail_blocked}"
+    )
+
+    for alert in DISCOVERY_ALERTS:
+
+        print(
+            f"Discovery alert: "
+            f"{alert}"
+        )
+
+    print(
+        f"Kept on search-card description: "
+        f"{detail_kept_on_card}"
     )
 
     print(
-        f"Excluded from output (blocked+errored): "
+        f"Excluded from output (no usable description): "
         f"{detail_excluded}"
     )
 
@@ -2815,10 +4733,103 @@ async def unified_job_scraper():
 # RUN
 # ============================================================
 
-if __name__ == "__main__":
+def parse_args(argv=None):
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "Scrape Wuzzuf/LinkedIn/Upwork job listings into "
+            "jobs_results.json."
+        )
+    )
+
+    parser.add_argument(
+        "--sources",
+        default="all",
+        help=(
+            "Comma-separated subset of: "
+            f"{', '.join(ALL_SOURCES)} (default: all). "
+            "A partial run merges its records into the existing "
+            "snapshot instead of overwriting it."
+        ),
+    )
+
+    parser.add_argument(
+        "--max-upwork-pages",
+        type=int,
+        default=None,
+        help="Override MAX_UPWORK_PAGES for this run.",
+    )
+
+    parser.add_argument(
+        "--upwork-detail-max",
+        type=int,
+        default=None,
+        help=(
+            "Maximum number of uncached Upwork detail pages to fetch "
+            "this run."
+        ),
+    )
+
+    parser.add_argument(
+        "--upwork-snapshot-limit",
+        type=int,
+        default=None,
+        help=(
+            "How many newest Upwork jobs make it into the snapshot "
+            "(independent of the detail budget)."
+        ),
+    )
+
+    return parser.parse_args(argv)
+
+
+def configure_run(args):
+
+    try:
+        sources = _normalize_source_list(args.sources)
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}")
+
+    RUN_OPTIONS["sources"] = sources
+
+    if args.max_upwork_pages is not None:
+        RUN_OPTIONS["max_upwork_pages"] = max(
+            1,
+            int(args.max_upwork_pages),
+        )
+
+    if args.upwork_detail_max is not None:
+        RUN_OPTIONS["upwork_detail_budget"] = max(
+            0,
+            int(args.upwork_detail_max),
+        )
+
+    if args.upwork_snapshot_limit is not None:
+        RUN_OPTIONS["upwork_snapshot_limit"] = max(
+            0,
+            int(args.upwork_snapshot_limit),
+        )
+
+
+def main(argv=None):
+
+    configure_run(parse_args(argv))
 
     results = asyncio.run(
         unified_job_scraper()
     )
 
     print("\nDONE.")
+
+    for alert in DISCOVERY_ALERTS:
+
+        print(
+            f"[ALERT] {alert}"
+        )
+
+    return results
+
+
+if __name__ == "__main__":
+
+    main()
