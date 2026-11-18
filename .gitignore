@@ -19,12 +19,6 @@ database/*.bak
 logs/
 *.log
 
-# Scraper runtime output (snapshots/state/caches produced in-container)
-scraper/jobs_results.json
-scraper/seen_jobs_state.json
-scraper/upwork_detail_cache.json
-scraper/*.lock
-
 # Python cache
 __pycache__/
 *.py[cod]
@@ -49,9 +43,6 @@ AGENTS.md
 
 # OpenCode AI assistant config (development tool, not application)
 opencode.json
-
-# Model evaluation reports (local analysis artifacts)
-reports/
 
 # Test artifacts
 .pytest_cache/

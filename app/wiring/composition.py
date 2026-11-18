@@ -31,7 +31,6 @@ from app.adapters.sources.telegram import TelegramChannelJobSource
 from app.adapters.sources.scraper_file import (
     LinkedInFileJobSource,
     WuzzufFileJobSource,
-    UpworkFileJobSource,
     ScraperFileClient,
 )
 from app.infra.runtime_config import JOB_SOURCES
@@ -207,7 +206,7 @@ def compose():
             register_source_factory(_cfg.id, _freehub_factory)
         elif _adapter is TelegramChannelJobSource:
             register_source_factory(_cfg.id, _telegram_channels_factory)
-        elif _adapter in (LinkedInFileJobSource, WuzzufFileJobSource, UpworkFileJobSource):
+        elif _adapter in (LinkedInFileJobSource, WuzzufFileJobSource):
             register_source_factory(
                 _cfg.id, partial(_scraper_file_factory, _adapter)
             )

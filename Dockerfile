@@ -16,7 +16,7 @@ COPY requirements.txt .
 # what pip resolved, leaving no build toolchain in the final image.
 # requirements.txt also carries the in-container LinkedIn/Wuzzuf scraper
 # deps (scrapling + curl_cffi import chain) and pytest; the scraper is
-# driven by app.wiring.scraper_scheduler (no host-side cron/script).
+# driven by app.scraper_scheduler (no host-side cron/script).
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 

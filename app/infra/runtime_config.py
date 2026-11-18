@@ -400,7 +400,7 @@ if RUNTIME.url_shortener_failure_mode not in {"fail_open", "fail_closed"}:
         f"got {RUNTIME.url_shortener_failure_mode!r}"
     )
 
-_known_workers = {"telegram", "freehub", "classification_retry", "notification_retry", "user_notifications", "linkedin", "wuzzuf", "upwork"}
+_known_workers = {"telegram", "freehub", "classification_retry", "notification_retry", "user_notifications", "linkedin", "wuzzuf"}
 _unknown_workers = sorted(set(RUNTIME.enabled_workers) - _known_workers)
 if _unknown_workers:
     raise ValueError(f"ENABLED_WORKERS contains unknown worker(s): {', '.join(_unknown_workers)}")

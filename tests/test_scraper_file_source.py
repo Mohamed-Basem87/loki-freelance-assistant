@@ -13,7 +13,6 @@ import json
 from app.adapters.sources.scraper_file import (
     LinkedInFileJobSource,
     ScraperFileClient,
-    UpworkFileJobSource,
     WuzzufFileJobSource,
 )
 
@@ -137,26 +136,6 @@ def test_identity_source_matches_source_id():
     assert WuzzufFileJobSource(
         client=ScraperFileClient(file_path="unused.json", platform="Wuzzuf")
     ).identity_source == "wuzzuf"
-    assert UpworkFileJobSource(
-        client=ScraperFileClient(file_path="unused.json", platform="Upwork")
-    ).identity_source == "upwork"
-
-
-def test_upwork_source_reads_its_own_slice(tmp_path):
-    snap = _write_snapshot(
-        tmp_path / "jobs_results.json",
-        [
-            _record(platform="Upwork", url="https://upwork.invalid/jobs/~0221"),
-            _record(platform="Wuzzuf", url="https://wuzzuf.invalid/job/2"),
-        ],
-    )
-    source = UpworkFileJobSource(
-        client=ScraperFileClient(file_path=str(snap), platform="Upwork")
-    )
-    jobs = asyncio.run(source.poll())
-    assert [job["url"] for job in jobs] == ["https://upwork.invalid/jobs/~0221"]
-    assert jobs[0]["identity_source"] == "upwork"
-    assert jobs[0]["source"] == "Upwork"
 
 
 def test_poll_skips_blank_url_records_instead_of_collapsing_them(tmp_path):
